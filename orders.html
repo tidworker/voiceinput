@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>訂單列表</title>
+  <style>
+    /* 黑底白字，沿用原系統外觀 */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      padding: 0;
+      background-color: black;
+      color: white;
+      text-align: center;
+    }
+    /* 重新點餐按鈕樣式 */
+    #resetButton {
+      background-color: orange;
+      color: black;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    /* 統一內容區：訂單表格與其他內容，高度 340px */
+    #contentContainer {
+      width: 90%;
+      height: 340px;
+      margin: 20px auto;
+      border: 0;
+      overflow-y: auto;
+      background-color: black;
+    }
+    /* 訂單表格 */
+    table {
+      width: 100%;
+      background-color: black;
+      color: white;
+      border-collapse: collapse;
+    }
+    table, th, td {
+      border: 1px solid white;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    /* 表頭：橘色背景，白底黑字 */
+    thead tr th {
+      background-color: orange;
+      color: black;
+    }
+    /* 總金額文字 */
+    #totalAmount {
+      color: white;
+      font-size: 18px;
+      margin-top: 10px;
+    }
+    /* 圖片樣式 */
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <br />
+  <img src="3.png" alt="圖片" />
+  
+  <!-- 訂單內容區 -->
+  <div id="contentContainer">
+    <table id="orderTable">
+      <thead>
+        <tr>
+          <th>編號</th>
+          <th>品項</th>
+          <th>份數</th>
+          <th>備註</th>
+          <th>單價</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- 透過 JavaScript 動態加入訂單資料 -->
+      </tbody>
+    </table>
+  </div>
+  
+  <p id="totalAmount">總金額：0 元</p>
+  
+  <!-- 返回點餐系統按鈕 -->
+  <button id="resetButton" onclick="goBack()">返回點餐系統</button>
+  
+  <script>
+    // 讀取 localStorage 中的訂單資料並顯示在表格中
+    function loadOrders() {
+      let ordersStr = localStorage.getItem("orders");
+      if (!ordersStr) {
+        return;
+      }
+      let orders = JSON.parse(ordersStr);
+      let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      tbody.innerHTML = "";
+      let total = 0;
+      orders.forEach((order, index) => {
+        let row = tbody.insertRow();
+        // 編號欄位（自動編號）
+        let cellIndex = row.insertCell();
+        cellIndex.innerText = index + 1;
+        // 品項
+        let cellDish = row.insertCell();
+        cellDish.innerText = order.dish;
+        // 份數
+        let cellQuantity = row.insertCell();
+        cellQuantity.innerText = order.quantity;
+        // 備註
+        let cellRemark = row.insertCell();
+        cellRemark.innerText = order.remark;
+        // 單價
+        let cellPrice = row.insertCell();
+        cellPrice.innerText = order.price;
+        total += parseFloat(order.quantity) * parseFloat(order.price);
+      });
+      document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
+    }
+    
+    // 返回點餐系統（假設點餐系統頁面為 index.html，可依需求調整）
+    function goBack() {
+      window.location.href = "index.html";
+    }
+    
+    window.onload = loadOrders;
+  </script>
+</body>
+</html>
