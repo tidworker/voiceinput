@@ -13,6 +13,7 @@
       background-color: black;
       color: white;
       text-align: center;
+      user-select: none;
     }
     /* 圖片 */
     img {
@@ -230,9 +231,7 @@
           const db = JSON.parse(text);
           if (db.charMapping) {
             charMapping = db.charMapping;
-            if (db.groupMapping) {
-              groupMapping = db.groupMapping;
-            }
+            if (db.groupMapping) { groupMapping = db.groupMapping; }
           }
         })
         .catch(err => { console.error("載入字庫資料失敗：" + err.message); });
@@ -254,9 +253,7 @@
       let converted = "";
       for (let i = 0; i < dishChinese.length; i++) {
         const ch = dishChinese.charAt(i);
-        if (charMapping[ch] !== undefined) {
-          converted += charMapping[ch];
-        }
+        if (charMapping[ch] !== undefined) { converted += charMapping[ch]; }
       }
       return converted;
     }
@@ -288,7 +285,8 @@
         };
         recognition.onerror = function(event) {
           currentRecognition = null;
-          if (holdActive) { resolve("_RESTART_"); } else { resolve(null); }
+          if (holdActive) { resolve("_RESTART_"); }
+          else { resolve(null); }
         };
         recognition.start();
       });
@@ -559,6 +557,27 @@
       let current = parseInt(input.value) || 1;
       if (current > 1) input.value = current - 1;
     }
+
+    // ------------------ 主頁面全域右滑切換至 orders.html ------------------
+    let globalStartX = null, globalStartY = null;
+    document.addEventListener("touchstart", function(e) {
+      if (e.touches.length === 1) {
+        globalStartX = e.touches[0].clientX;
+        globalStartY = e.touches[0].clientY;
+      }
+    });
+    document.addEventListener("touchend", function(e) {
+      if (globalStartX === null) return;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const deltaX = endX - globalStartX;
+      const deltaY = endY - globalStartY;
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
+        window.location.href = "orders.html";
+      }
+      globalStartX = null;
+      globalStartY = null;
+    });
   </script>
 </body>
 </html>
