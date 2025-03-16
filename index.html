@@ -109,26 +109,6 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 左右方形按鈕 */
-    #decreaseButton,
-    #increaseButton {
-      position: fixed;
-      bottom: 50px;
-      width: 150px;
-      height: 100px;
-      background-color: black;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    #decreaseButton {
-      left: calc(50% - 35px - 150px - 10px);
-    }
-    #increaseButton {
-      left: calc(50% + 35px + 10px);
-    }
     /* 浮動錄音按鈕 */
     #voiceButton {
       position: fixed;
@@ -193,10 +173,8 @@
       </div>
     </div>
   </div>
-  <!-- 左、右、浮動按鈕 -->
-  <button id="decreaseButton"></button>
+  <!-- 浮動錄音按鈕 -->
   <button id="voiceButton"></button>
-  <button id="increaseButton"></button>
 
   <script>
     // 全域變數與初始設定
@@ -346,10 +324,10 @@
       let deltaY = currentY - startY;
       if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
         if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          // 修改為全域左滑切換到 orders.html（deltaX 小於 -30）
+          // 左滑：全域左滑切換到 orders.html（deltaX 小於 -30）
           deltaX < 0 ? deleteCurrentVoiceLine() : startGreenMode();
         } else {
-          deltaY < 0 ? deleteLatestOrder() : startOrdering();
+          // 垂直滑動手勢，此處不做處理，由下方 contentContainer 事件處理
         }
         swipeToggled = true;
       }
@@ -605,7 +583,7 @@
     // 當頁面載入時讀取未完成訂單內容
     loadCurrentOrder();
 
-    // ------------------ 主頁面左滑僅在 #contentContainer 區域觸發換頁至 orders.html ------------------
+    // ------------------ 在 #contentContainer 區域內偵測滑動手勢 ------------------
     let globalStartX = null, globalStartY = null;
     const contentContainer = document.getElementById("contentContainer");
     contentContainer.addEventListener("touchstart", function(e) {
@@ -620,13 +598,78 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 判斷為水平左滑（deltaX 小於 -30）
+      // 若水平滑動且左滑超過 30 像素則換頁
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
+      }
+      // 若垂直滑動且超過 30 像素則依起始位置調整品項數量
+      else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
+        const containerRect = contentContainer.getBoundingClientRect();
+        const containerMidX = containerRect.left + containerRect.width / 2;
+        if (globalStartX < containerMidX) {
+          // 左半邊：調整訂單的份數
+          adjustOrderQuantity(deltaY);
+        } else {
+          // 右半邊：調整備註欄中的品項數量
+          adjustRemarkQuantity(deltaY);
+        }
       }
       globalStartX = null;
       globalStartY = null;
     });
+
+    // 根據垂直滑動距離調整訂單品項數量（左半邊觸控區）
+    function adjustOrderQuantity(deltaY) {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      if (tbody.rows.length === 0) return;
+      const row = tbody.rows[tbody.rows.length - 1];
+      let qty = parseInt(row.cells[1].innerText);
+      if (isNaN(qty)) qty = 1;
+      // 上滑（deltaY 為負）則增加，下滑則減少
+      if (deltaY < 0) {
+         qty += 1;
+      } else if (deltaY > 0) {
+         qty = Math.max(1, qty - 1);
+      }
+      row.cells[1].innerText = qty;
+      updateTotalAmount();
+    }
+
+    // 根據垂直滑動距離調整備註欄中品項的數量（右半邊觸控區）
+    function adjustRemarkQuantity(deltaY) {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      if (tbody.rows.length === 0) return;
+      const row = tbody.rows[tbody.rows.length - 1];
+      let remark = row.cells[2].innerText.trim();
+      if (remark === "") return; // 無備註則不處理
+      let dishName = remark;
+      let freeQty;
+      if (remark.indexOf("×") >= 0) {
+         let parts = remark.split("×");
+         dishName = parts[0];
+         freeQty = parseInt(parts[1]);
+         if (isNaN(freeQty)) freeQty = parseInt(row.cells[1].innerText);
+      } else {
+         // 若備註僅為品項名稱，預設數量等同訂單份數
+         freeQty = parseInt(row.cells[1].innerText);
+         if (isNaN(freeQty)) freeQty = 1;
+      }
+      // 上滑增加，下滑減少
+      if (deltaY < 0) {
+         freeQty += 1;
+      } else if (deltaY > 0) {
+         freeQty -= 1;
+         if (freeQty < 1) {
+             // 若減少至 0，則清空備註
+             row.cells[2].innerText = "";
+             return;
+         }
+      }
+      let mainQty = parseInt(row.cells[1].innerText);
+      if (isNaN(mainQty)) mainQty = 1;
+      // 若 freeQty 等於 mainQty，則僅顯示品項名稱；否則顯示 "品項名稱×數量"
+      row.cells[2].innerText = (freeQty === mainQty) ? dishName : dishName + "×" + freeQty;
+    }
   </script>
 </body>
 </html>
