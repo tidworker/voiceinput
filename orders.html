@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單紀錄</title>
   <style>
-    /* 與主頁相同的黑底白字風格 */
+    /* 黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -62,7 +62,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄內文直接顯示 */
+    /* 備忘錄直接顯示內文 */
     .voiceMemo {
       text-align: left;
       color: orange;
@@ -74,14 +74,11 @@
 <body>
   <h1>訂單紀錄</h1>
   <div id="contentContainer">
-    <!-- 訂單區塊將由 JavaScript 渲染 -->
+    <!-- 訂單區塊將由 JavaScript 動態加入 -->
   </div>
-  
   <script>
-    // 全域變數：儲存從主頁傳來的訂單記錄
     let orderHistory = [];
-    
-    // 從 localStorage 讀取 orderHistory
+    // 從 localStorage 讀取訂單記錄（主頁存入）
     function loadOrderHistory() {
       const historyJSON = localStorage.getItem("orderHistory");
       if (historyJSON) {
@@ -90,13 +87,11 @@
         orderHistory = [];
       }
     }
-    
-    // 儲存 orderHistory 至 localStorage
+    // 儲存更新後的訂單記錄
     function saveOrderHistory() {
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
     }
-    
-    // 渲染所有訂單，依序顯示編號
+    // 渲染所有訂單，每筆訂單依編號顯示
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
@@ -108,13 +103,11 @@
         const orderBlock = document.createElement("div");
         orderBlock.classList.add("orderBlock");
         orderBlock.dataset.orderIndex = index;
-        
-        // 訂單編號顯示
+        // 顯示訂單編號
         const header = document.createElement("div");
         header.classList.add("orderHeader");
         header.innerText = "訂單 #" + (index + 1);
         orderBlock.appendChild(header);
-        
         // 建立訂單表格
         const table = document.createElement("table");
         const thead = document.createElement("thead");
@@ -145,21 +138,17 @@
         });
         table.appendChild(tbody);
         orderBlock.appendChild(table);
-        
-        // 顯示備忘錄內文（直接呈現，不加標題）
+        // 顯示備忘錄內文
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
-        
         // 附加左滑事件：左滑刪除該筆訂單
         attachOrderSwipe(orderBlock);
-        
         container.appendChild(orderBlock);
       });
     }
-    
-    // 為每個訂單區塊附加左滑事件，偵測水平左滑刪除訂單
+    // 附加訂單區塊的左滑刪除功能
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
       orderBlock.addEventListener("touchstart", function(e) {
@@ -172,7 +161,6 @@
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 判斷為水平左滑（deltaX 小於 -30 且主要為水平位移）
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
           const orderIndex = parseInt(orderBlock.dataset.orderIndex);
           if (confirm("確定刪除這筆訂單？")) {
@@ -183,14 +171,11 @@
         startY = null;
       });
     }
-    
-    // 刪除指定索引的訂單
     function deleteOrder(index) {
       orderHistory.splice(index, 1);
       saveOrderHistory();
       renderOrderHistory();
     }
-    
     // 全域右滑返回主頁（index.html）
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
@@ -205,15 +190,13 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 如果判斷為水平右滑（deltaX 大於 30 且主要為水平位移）
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
         window.location.href = "index.html";
       }
       globalStartX = null;
       globalStartY = null;
     });
-    
-    // 初始化：讀取並渲染訂單記錄
+    // 初始化
     loadOrderHistory();
     renderOrderHistory();
   </script>
