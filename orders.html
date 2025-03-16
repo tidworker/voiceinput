@@ -33,7 +33,7 @@
       overflow-y: auto;
       background-color: black;
     }
-    /* 訂單表格（不再含編號欄） */
+    /* 訂單表格樣式 */
     table {
       width: 100%;
       background-color: black;
@@ -56,7 +56,7 @@
       font-size: 18px;
       margin-top: 10px;
     }
-    /* 語音備忘錄區，除了原有備忘錄外，亦顯示訂單編號 */
+    /* 語音備忘錄區，顯示訂單編號 */
     #voiceOutput {
       margin-top: 10px;
       text-align: left;
@@ -106,7 +106,7 @@
     #increaseButton {
       left: calc(50% + 35px + 10px);
     }
-    /* 防止按鈕內文字選取 */
+    /* 防止按鈕內文字被選取 */
     #voiceButton, #voiceButton * {
       user-select: none;
     }
@@ -128,7 +128,7 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 訂單資料會從 localStorage 載入，累積顯示 -->
+        <!-- 訂單資料將從 localStorage 載入 -->
       </tbody>
     </table>
     <!-- 語音備忘錄區，同時顯示訂單編號 -->
@@ -144,7 +144,7 @@
   <button id="increaseButton"></button>
 
   <script>
-    // 若 localStorage 中沒有訂單編號，則以當前時間產生一個
+    // 若 localStorage 中沒有訂單編號，則產生一個並儲存
     function ensureOrderId() {
       let orderId = localStorage.getItem("orderId");
       if (!orderId) {
@@ -154,14 +154,14 @@
       return orderId;
     }
 
-    // 將訂單編號顯示於語音備忘錄區（memo）
+    // 顯示訂單編號於語音備忘錄區
     function showOrderId() {
       let orderId = ensureOrderId();
       let memoDiv = document.getElementById("voiceOutput");
       memoDiv.innerText = "訂單編號：" + orderId;
     }
 
-    // 讀取 localStorage 中的訂單資料並顯示在表格中
+    // 讀取 localStorage 中的訂單資料並更新表格與總金額
     function loadOrders() {
       let ordersStr = localStorage.getItem("orders");
       let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
@@ -185,15 +185,13 @@
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
 
-    // 載入頁面時顯示訂單編號與訂單資料（累積不自動刪除）
     window.onload = function() {
       showOrderId();
       loadOrders();
     };
 
     /* 紅色浮動按鈕手勢控制 */
-    // 此頁面保留紅色按鈕，功能修改：
-    // 若拖曳紅色按鈕向左超過 30px，放開時即連結至 index.html
+    // 若拖曳紅色按鈕向左超過 30px，放開時跳轉至 index.html
     let startX = 0, startY = 0;
     let swipeToggled = false;
     let gestureDirection = "";
@@ -205,7 +203,6 @@
       let deltaX = currentX - startX;
       let deltaY = currentY - startY;
       if (!swipeToggled && Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        // 只判斷水平拖曳
         gestureDirection = (deltaX < 0) ? "left" : "right";
         swipeToggled = true;
       }
@@ -214,21 +211,29 @@
     }
 
     voiceButton.addEventListener("mousedown", function(e) {
-      startX = e.pageX; startY = e.pageY;
+      startX = e.pageX;
+      startY = e.pageY;
       swipeToggled = false;
       gestureStartTime = Date.now();
       gestureDirection = "";
       e.preventDefault();
     });
     voiceButton.addEventListener("touchstart", function(e) {
-      startX = e.touches[0].pageX; startY = e.touches[0].pageY;
+      startX = e.touches[0].pageX;
+      startY = e.touches[0].pageY;
       swipeToggled = false;
       gestureStartTime = Date.now();
       gestureDirection = "";
       e.preventDefault();
     });
-    voiceButton.addEventListener("mousemove", function(e) { updateButtonPosition(e.pageX, e.pageY); });
-    voiceButton.addEventListener("touchmove", function(e) { updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY); e.preventDefault(); });
+    voiceButton.addEventListener("mousemove", function(e) {
+      updateButtonPosition(e.pageX, e.pageY);
+    });
+    // 針對 touchmove 加入 {passive: false} 選項
+    voiceButton.addEventListener("touchmove", function(e) {
+      updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
+      e.preventDefault();
+    }, {passive: false});
     function endDrag() {
       if (navigator.vibrate) { navigator.vibrate(50); }
       voiceButton.style.transform = "translate(-50%, 0)";
