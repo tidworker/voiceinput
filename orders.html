@@ -59,6 +59,13 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
+    /* 訂單總金額顯示 */
+    .orderTotal {
+      text-align: right;
+      font-weight: bold;
+      margin-top: 5px;
+      color: orange;
+    }
     /* 備忘錄直接顯示內文 */
     .voiceMemo {
       text-align: left;
@@ -69,9 +76,7 @@
   </style>
 </head>
 <body>
-  <br>
-  <br>
-  <!-- 原先的 <h1>訂單紀錄</h1> 已移除 -->
+  <!-- 移除標題 -->
   <div id="contentContainer">
     <!-- 訂單區塊將由 JavaScript 動態加入 -->
   </div>
@@ -137,6 +142,17 @@
         });
         table.appendChild(tbody);
         orderBlock.appendChild(table);
+        // 計算並顯示單筆訂單總金額
+        let total = 0;
+        order.orders.forEach(item => {
+          const qty = parseFloat(item.quantity);
+          const price = parseFloat(item.price);
+          if (!isNaN(qty) && !isNaN(price)) { total += qty * price; }
+        });
+        const totalDiv = document.createElement("div");
+        totalDiv.classList.add("orderTotal");
+        totalDiv.innerText = "總金額：" + total + " 元";
+        orderBlock.appendChild(totalDiv);
         // 顯示備忘錄內文
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
@@ -187,7 +203,6 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 若判斷為水平右滑（deltaX > 30）則返回 index.html
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
         window.location.href = "index.html";
       }
