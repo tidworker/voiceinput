@@ -109,8 +109,7 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 刪除左右方形按鈕 */
-    /* 只保留紅色浮動錄音按鈕 */
+    /* 刪除原有左右方形按鈕，僅保留紅色浮動錄音按鈕 */
     #voiceButton {
       position: fixed;
       bottom: 50px;
@@ -191,7 +190,7 @@
     let startX = 0, startY = 0;
     let swipeToggled = false;
 
-    // 模擬菜單資料（也可外部載入）
+    // 模擬菜單資料（可外部載入）
     let menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
@@ -199,7 +198,7 @@
       { keywords: ["freeDrink"], name: "免費飲料", price: 0 }
     ];
 
-    // 載入外部字庫與菜單（若有）
+    // 載入外部字庫與菜單
     function loadTranslationDatabase() {
       fetch("database.txt")
         .then(response => {
@@ -210,7 +209,9 @@
           const db = JSON.parse(text);
           if (db.charMapping) {
             charMapping = db.charMapping;
-            if (db.groupMapping) { groupMapping = db.groupMapping; }
+            if (db.groupMapping) {
+              groupMapping = db.groupMapping;
+            }
           }
         })
         .catch(err => { console.error("載入字庫資料失敗：" + err.message); });
@@ -232,16 +233,22 @@
       let converted = "";
       for (let i = 0; i < dishChinese.length; i++) {
         const ch = dishChinese.charAt(i);
-        if (charMapping[ch] !== undefined) { converted += charMapping[ch]; }
+        if (charMapping[ch] !== undefined) {
+          converted += charMapping[ch];
+        }
       }
       return converted;
     }
 
     function vibrateTwice() {
-      if (navigator.vibrate) { navigator.vibrate([50, 100, 50]); }
+      if (navigator.vibrate) {
+        navigator.vibrate([50, 100, 50]);
+      }
     }
     function vibrateOnce() {
-      if (navigator.vibrate) { navigator.vibrate(50); }
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
     }
 
     // 語音辨識處理
@@ -264,7 +271,11 @@
         };
         recognition.onerror = function(event) {
           currentRecognition = null;
-          if (holdActive) { resolve("_RESTART_"); } else { resolve(null); }
+          if (holdActive) {
+            resolve("_RESTART_");
+          } else {
+            resolve(null);
+          }
         };
         recognition.start();
       });
@@ -274,7 +285,10 @@
       if (!holdActive) return;
       startVoiceInputSingle().then((transcript) => {
         if (!holdActive) return;
-        if (transcript === "_RESTART_") { continuousRecognition(); return; }
+        if (transcript === "_RESTART_") {
+          continuousRecognition();
+          return;
+        }
         if (transcript && transcript.trim() !== "") {
           let text = transcript.trim();
           switch (currentMode) {
@@ -296,13 +310,8 @@
       });
     }
 
-    // 以下保留紅色按鈕的上滑功能
-    function startOrdering() {
-      currentMode = "red";
-      voiceButton.style.backgroundColor = "darkred";
-      if (navigator.vibrate) navigator.vibrate(50);
-      continuousRecognition();
-    }
+    // 紅色按鈕原有功能保留：
+    // 上滑：若快速上滑則刪除最新一筆餐點；若長按上滑則在 touchmove 時已刪除備忘錄內容
     function deleteLatestOrder() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       if (tbody.rows.length > 0) {
@@ -314,16 +323,21 @@
     }
     function deleteCurrentVoiceLine() {
       const voiceOutputDiv = document.getElementById("voiceOutput");
-      if (voiceOutputDiv.lastChild) { voiceOutputDiv.removeChild(voiceOutputDiv.lastChild); }
+      if (voiceOutputDiv.lastChild) {
+        voiceOutputDiv.removeChild(voiceOutputDiv.lastChild);
+      }
       vibrateTwice();
       voiceButton.style.backgroundColor = "darkred";
     }
     function startGreenMode() {
       currentMode = "green";
       voiceButton.style.backgroundColor = "darkred";
-      if (navigator.vibrate) navigator.vibrate(50);
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
       continuousRecognition();
     }
+    // 更新紅色按鈕的移動視覺效果（僅作顯示效果，不處理換頁）
     function updateButtonPosition(currentX, currentY) {
       let deltaX = currentX - startX;
       let deltaY = currentY - startY;
@@ -336,30 +350,53 @@
       }
     }
 
-    // 紅色按鈕事件（不包含左滑換頁，因為換頁判定區塊限制在 #contentContainer）
+    // 紅色按鈕事件處理（保持原有功能）
     voiceButton.addEventListener("touchstart", function(e) {
       startX = e.touches[0].pageX;
       startY = e.touches[0].pageY;
       holdActive = true;
       swipeToggled = false;
+      // 記錄觸控開始時間（用於上滑判定）
+      voiceStartTime = Date.now();
       e.stopPropagation();
       e.preventDefault();
     });
     voiceButton.addEventListener("touchmove", function(e) {
       if (!holdActive) return;
       updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
+      // 若判斷為上滑（垂直位移大於水平位移且 deltaY < -30），不在此切換頁面，由後續 touchend 處理
       e.preventDefault();
     });
     voiceButton.addEventListener("touchend", function(e) {
-      endDrag();
       e.stopPropagation();
       e.preventDefault();
+      let endTime = Date.now();
+      let duration = endTime - voiceStartTime;
+      let endX = e.changedTouches[0].pageX;
+      let endY = e.changedTouches[0].pageY;
+      let deltaX = endX - startX;
+      let deltaY = endY - startY;
+      holdActive = false;
+      // 還原按鈕視覺效果
+      voiceButton.style.transform = "translate(-50%, 0)";
+      voiceButton.style.backgroundColor = "red";
+      // 紅色按鈕自身功能：上滑
+      if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30) {
+        if (duration < 500) {
+          // 快速上滑：刪除最新的一筆餐點
+          deleteLatestOrder();
+          vibrateTwice();
+        }
+        // 若持續時間 >= 500ms，上滑計時器在 touchmove 已刪除備忘錄（不再重複處理）
+      }
+      // 其他情況不處理
     });
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX;
       startY = e.pageY;
       holdActive = true;
       swipeToggled = false;
+      voiceStartTime = Date.now();
       e.preventDefault();
     });
     voiceButton.addEventListener("mousemove", function(e) {
@@ -592,7 +629,7 @@
 
     loadCurrentOrder();
 
-    // ------------------ 限制左滑換頁的判定區塊在 #contentContainer ------------------
+    // ------------------ 限制左滑換頁的判定區域在 #contentContainer ------------------
     let containerStartX = null, containerStartY = null;
     const container = document.getElementById("contentContainer");
     container.addEventListener("touchstart", function(e) {
