@@ -199,7 +199,7 @@
           // 初始狀態設定為半透明
           ob.style.opacity = "0.6";
           // 改變轉場時間為 2 秒以達到慢慢恢復的效果
-          ob.style.transition = "opacity 2s";
+          ob.style.transition = "opacity 3s";
           // 利用 setTimeout 讓瀏覽器渲染後再變更為完全不透明
           setTimeout(() => {
             ob.style.opacity = "1";
@@ -242,7 +242,7 @@
               // 不同訂單間左滑：
               // 先讓第二筆訂單也套用效果
               orderBlock.style.transform = "translateX(-10px)";
-              orderBlock.style.opacity = "0.6";
+              orderBlock.style.opacity = "0.5";
               // 清除原先的倒數
               clearTimeout(globalSwipedTimer);
               // 延遲 0.5 秒後交換兩筆訂單順序
@@ -264,7 +264,7 @@
           } else {
             // 尚無其他待處理訂單，將此訂單設定為待處理狀態
             orderBlock.style.transform = "translateX(-10px)";
-            orderBlock.style.opacity = "0.6";
+            orderBlock.style.opacity = "0.5";
             globalSwipedOrder = orderBlock;
             globalSwipedTimer = setTimeout(function() {
               // 3秒內無後續操作則恢復原狀
