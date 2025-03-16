@@ -1,0 +1,286 @@
+[
+  {
+    "keywords": [
+      "chonyobin",
+      "bujiadan",
+      "bujia"
+    ],
+    "name": "蔥油餅",
+    "price": 20
+  },
+  {
+    "keywords": [
+      "chonyobinjiadan",
+      "danbin",
+      "jiadan"
+    ],
+    "name": "蔥油餅加蛋",
+    "price": 30
+  },
+  {
+    "keywords": [
+      "dacharngmiansian",
+      "dacharng",
+      "miansian",
+      "charng"
+    ],
+    "name": "大腸麵線",
+    "price": 50
+  },
+  {
+    "keywords": [
+      "rougengmiansian",
+      "rougeng",
+      "geng"
+    ],
+    "name": "肉羹麵線",
+    "price": 50
+  },
+  {
+    "keywords": [
+      "zonghemiansian",
+      "zonghe"
+    ],
+    "name": "綜合麵線",
+    "price": 50
+  },
+  {
+    "keywords": [
+      "chingmiansian",
+      "ching"
+    ],
+    "name": "清麵線",
+    "price": 40
+  },
+  {
+    "keywords": [
+      "chunmiansian",
+      "chun"
+    ],
+    "name": "純麵線",
+    "price": 40
+  },
+  {
+    "keywords": [
+      "rougengtong",
+      "gengtong"
+    ],
+    "name": "肉羹湯",
+    "price": 35
+  },
+  {
+    "keywords": [
+      "gongwantong",
+      "gongwan"
+    ],
+    "name": "貢丸湯",
+    "price": 35
+  },
+  {
+    "keywords": [
+      "zonghetong"
+    ],
+    "name": "綜合湯",
+    "price": 35
+  },
+  {
+    "keywords": [
+      "dachaomian",
+      "dachao",
+      "chaomian"
+    ],
+    "name": "大炒麵",
+    "price": 40
+  },
+  {
+    "keywords": [
+      "siaochaomian",
+      "siaochao"
+    ],
+    "name": "小炒麵",
+    "price": 30
+  },
+  {
+    "keywords": [
+      "hongcha",
+      "hong"
+    ],
+    "name": "紅茶",
+    "price": 10
+  },
+  {
+    "keywords": [
+      "naicha",
+      "nai"
+    ],
+    "name": "奶茶",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "mijiang",
+      "mi"
+    ],
+    "name": "米漿",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "doujiang",
+      "dou"
+    ],
+    "name": "豆漿",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "la"
+    ],
+    "name": "辣",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "wen"
+    ],
+    "name": "溫",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "ben"
+    ],
+    "name": "冰",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "bendoujiang",
+      "bendou"
+    ],
+    "name": "豆漿-冰",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "wenhongcha",
+      "wenhing"
+    ],
+    "name": "紅茶-溫",
+    "price": 10
+  },
+  {
+    "keywords": [
+      "benhongcha",
+      "benhong"
+    ],
+    "name": "紅茶-冰",
+    "price": 10
+  },
+  {
+    "keywords": [
+      "wennaicha",
+      "wennai"
+    ],
+    "name": "奶茶-溫",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "bennaicha",
+      "bennai"
+    ],
+    "name": "奶茶-冰",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "wendoujiang",
+      "wendou"
+    ],
+    "name": "豆漿-溫",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "wenmijiang",
+      "wendou"
+    ],
+    "name": "米漿-溫",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "benmijiang",
+      "benmi"
+    ],
+    "name": "米漿-冰",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "busuan",
+      "busuanni"
+    ],
+    "name": "不蒜",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "bulujhih",
+      "bujhih",
+      "bujialujhih"
+    ],
+    "name": "不要滷汁",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "erarjian"
+    ],
+    "name": "蚵仔煎",
+    "price": 99
+  },
+  {
+    "keywords": [
+      "hebaodan"
+    ],
+    "name": "荷包蛋",
+    "price": 15
+  },
+  {
+    "keywords": [
+      "siaochaodan",
+      "siaochaomianjiadan"
+    ],
+    "name": "小炒麵加蛋",
+    "price": 45
+  },
+  {
+    "keywords": [
+      "dachaodan",
+      "dachaomianjiadan",
+      "chaomianjiadan",
+      "chaomiandan"
+    ],
+    "name": "大炒麵加蛋",
+    "price": 55
+  },
+  {
+    "keywords": [
+      "bucai",
+      "busiangcai",
+      "bujiasiangcai"
+    ],
+    "name": "不菜",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "bucu",
+      "bujiacu"
+    ],
+    "name": "不醋",
+    "price": 0
+  }
+]
