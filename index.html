@@ -109,8 +109,8 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 移除原有左右方形按鈕 */
-    /* 浮動錄音按鈕 */
+    /* 刪除左右方形按鈕 */
+    /* 只保留紅色浮動錄音按鈕 */
     #voiceButton {
       position: fixed;
       bottom: 50px;
@@ -190,10 +190,6 @@
     let currentMode = "red";
     let startX = 0, startY = 0;
     let swipeToggled = false;
-    // 用於上滑手勢的計時器變數
-    let upSwipeTimer = null;
-    // 記錄紅色按鈕觸控起始時間
-    let voiceStartTime = 0;
 
     // 模擬菜單資料（也可外部載入）
     let menu = [
@@ -300,91 +296,70 @@
       });
     }
 
-    // 以下為紅色按鈕（voiceButton）的觸控處理
-    const voiceButton = document.getElementById("voiceButton");
+    // 以下保留紅色按鈕的上滑功能
+    function startOrdering() {
+      currentMode = "red";
+      voiceButton.style.backgroundColor = "darkred";
+      if (navigator.vibrate) navigator.vibrate(50);
+      continuousRecognition();
+    }
+    function deleteLatestOrder() {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      if (tbody.rows.length > 0) {
+        tbody.deleteRow(tbody.rows.length - 1);
+        updateTotalAmount();
+      }
+      vibrateTwice();
+      voiceButton.style.backgroundColor = "darkred";
+    }
+    function deleteCurrentVoiceLine() {
+      const voiceOutputDiv = document.getElementById("voiceOutput");
+      if (voiceOutputDiv.lastChild) { voiceOutputDiv.removeChild(voiceOutputDiv.lastChild); }
+      vibrateTwice();
+      voiceButton.style.backgroundColor = "darkred";
+    }
+    function startGreenMode() {
+      currentMode = "green";
+      voiceButton.style.backgroundColor = "darkred";
+      if (navigator.vibrate) navigator.vibrate(50);
+      continuousRecognition();
+    }
+    function updateButtonPosition(currentX, currentY) {
+      let deltaX = currentX - startX;
+      let deltaY = currentY - startY;
+      if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
+        swipeToggled = true;
+      }
+      if (deltaX !== 0 || deltaY !== 0) {
+        const angle = Math.atan2(deltaY, deltaX);
+        voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
+      }
+    }
 
+    // 紅色按鈕事件（不包含左滑換頁，因為換頁判定區塊限制在 #contentContainer）
     voiceButton.addEventListener("touchstart", function(e) {
-      // 只針對 touchstart（非 mousedown）
       startX = e.touches[0].pageX;
       startY = e.touches[0].pageY;
       holdActive = true;
       swipeToggled = false;
-      voiceStartTime = Date.now();
-      // 清除上次的上滑計時器
-      if (upSwipeTimer) { clearTimeout(upSwipeTimer); upSwipeTimer = null; }
       e.stopPropagation();
       e.preventDefault();
     });
-
     voiceButton.addEventListener("touchmove", function(e) {
       if (!holdActive) return;
-      // 更新位置
-      let currentX = e.touches[0].pageX;
-      let currentY = e.touches[0].pageY;
-      // 計算位移
-      let deltaX = currentX - startX;
-      let deltaY = currentY - startY;
-      // 更新紅色按鈕的移動位置（視覺效果）
-      const angle = Math.atan2(deltaY, deltaX);
-      voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
-      // 如果判斷為上滑（垂直方向，deltaY < -30且垂直位移大於水平位移）
-      if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30) {
-        // 設定一個 500ms 的計時器，若持續超過 500ms，則立即刪除備忘錄內容並震動
-        if (!upSwipeTimer) {
-          upSwipeTimer = setTimeout(function() {
-            // 清除備忘錄內容（只刪除，不等待 touchend）
-            document.getElementById("voiceOutput").innerHTML = "";
-            vibrateOnce();
-            // 標記已處理（可設置一個旗標）
-            upSwipeTimer = null;
-          }, 500);
-        }
-      }
+      updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
       e.preventDefault();
     });
-
     voiceButton.addEventListener("touchend", function(e) {
+      endDrag();
       e.stopPropagation();
       e.preventDefault();
-      let endTime = Date.now();
-      let duration = endTime - voiceStartTime;
-      // 計算最終位移
-      let endX = e.changedTouches[0].pageX;
-      let endY = e.changedTouches[0].pageY;
-      let deltaX = endX - startX;
-      let deltaY = endY - startY;
-      holdActive = false;
-      // 清除紅色按鈕的移動效果
-      voiceButton.style.transform = "translate(-50%, 0)";
-      voiceButton.style.backgroundColor = "red";
-      // 如果是水平左滑（deltaX < -30 且水平位移大於垂直位移），切換頁面至 orders.html
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-        // 取消上滑計時器（若有）
-        if (upSwipeTimer) { clearTimeout(upSwipeTimer); upSwipeTimer = null; }
-        window.location.href = "orders.html";
-      }
-      // 如果是垂直上滑（deltaY < -30且垂直位移大於水平位移）
-      else if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30) {
-        // 如果持續時間小於 500ms，則刪除最新的一筆訂單
-        if (duration < 500) {
-          deleteLatestOrder();
-          vibrateTwice();
-        }
-        // 如果持續時間 >= 500ms，備忘錄已在 touchmove 時刪除
-        // 清除上滑計時器（若還在計時）
-        if (upSwipeTimer) { clearTimeout(upSwipeTimer); upSwipeTimer = null; }
-      }
-      // 重置變數
-      startX = 0; startY = 0; swipeToggled = false;
     });
-
-    // 也保留 mouse 事件作基本相容處理
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX;
       startY = e.pageY;
       holdActive = true;
       swipeToggled = false;
-      voiceStartTime = Date.now();
       e.preventDefault();
     });
     voiceButton.addEventListener("mousemove", function(e) {
@@ -617,41 +592,26 @@
 
     loadCurrentOrder();
 
-    // ------------------ 主頁面全域：僅由紅色按鈕處理換頁手勢 ------------------
-    let globalStartX = null, globalStartY = null, globalStartTime = null;
-    // 這裡僅監聽紅色按鈕上的觸控事件，不在 document 上設定全域換頁
-    voiceButton.addEventListener("touchstart", function(e) {
-      // 由紅色按鈕觸控則記錄起始座標與時間
-      globalStartX = e.touches[0].clientX;
-      globalStartY = e.touches[0].clientY;
-      globalStartTime = Date.now();
-      e.stopPropagation();
-      e.preventDefault();
+    // ------------------ 限制左滑換頁的判定區塊在 #contentContainer ------------------
+    let containerStartX = null, containerStartY = null;
+    const container = document.getElementById("contentContainer");
+    container.addEventListener("touchstart", function(e) {
+      if (e.touches.length === 1) {
+        containerStartX = e.touches[0].clientX;
+        containerStartY = e.touches[0].clientY;
+      }
     });
-    voiceButton.addEventListener("touchend", function(e) {
-      let endTime = Date.now();
-      let duration = endTime - globalStartTime; // 持續時間毫秒
-      let endX = e.changedTouches[0].clientX;
-      let endY = e.changedTouches[0].clientY;
-      let deltaX = endX - globalStartX;
-      let deltaY = endY - globalStartY;
-      // 若判斷為水平左滑（deltaX < -30）
+    container.addEventListener("touchend", function(e) {
+      if (containerStartX === null) return;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const deltaX = endX - containerStartX;
+      const deltaY = endY - containerStartY;
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-        // 切換到 orders.html
         window.location.href = "orders.html";
       }
-      // 若判斷為垂直上滑（deltaY < -30）
-      else if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30) {
-        if (duration < 500) {
-          // 0.5秒內放開：刪除最新的一筆餐點
-          deleteLatestOrder();
-          vibrateTwice();
-        }
-        // 若duration >= 500，備忘錄已於 touchmove 中清除
-      }
-      globalStartX = null;
-      globalStartY = null;
-      globalStartTime = null;
+      containerStartX = null;
+      containerStartY = null;
     });
   </script>
 </body>
