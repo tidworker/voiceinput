@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單內容</title>
   <style>
-    /* 與主頁相同的樣式 */
+    /* 與主頁相同的黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -48,7 +48,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄直接顯示內文 */
+    /* 備忘錄區：直接顯示內文 */
     #voiceMemo {
       margin-top: 10px;
       text-align: left;
@@ -73,7 +73,7 @@
         <!-- 訂單資料將由 JavaScript 動態加入 -->
       </tbody>
     </table>
-    <!-- 下方直接顯示備忘錄內容 -->
+    <!-- 下方直接顯示備忘錄內文 -->
     <div id="voiceMemo">
       <p id="voiceMemoContent"></p>
     </div>
@@ -123,8 +123,8 @@
         tdPrice.innerText = order.price;
         tr.appendChild(tdPrice);
 
-        // 附加 swipe 事件：左滑刪除該筆訂單
-        attachRowSwipe(tr, index);
+        // 附加左滑事件：滑動刪除該筆訂單
+        attachRowSwipe(tr);
 
         tbody.appendChild(tr);
       });
@@ -134,7 +134,7 @@
     }
 
     // 附加表格列 swipe 事件：左滑刪除
-    function attachRowSwipe(row, index) {
+    function attachRowSwipe(row) {
       let startX = null, startY = null;
       row.addEventListener("touchstart", function(e) {
         startX = e.touches[0].clientX;
@@ -146,11 +146,11 @@
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 判斷水平滑動且為左滑 (deltaX 小於 -30 且水平位移大於垂直位移)
+        // 判斷水平左滑（deltaX 小於 -30 且主要為水平移動）
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          // 刪除該筆訂單
-          deleteOrder(parseInt(row.dataset.index));
-          // 避免事件冒泡
+          // 取得目前該列的 index
+          const index = parseInt(row.dataset.index);
+          deleteOrder(index);
           e.stopPropagation();
         }
         startX = null;
@@ -160,7 +160,6 @@
 
     // 刪除指定 index 的訂單，更新 orderData 與畫面
     function deleteOrder(index) {
-      // 從訂單陣列中移除該筆資料
       orderData.orders.splice(index, 1);
       saveOrderData();
       renderOrders();
@@ -172,22 +171,21 @@
 
     // ------------------ 全域右滑返回主頁 ------------------
     let globalStartX = null, globalStartY = null;
-    document.body.addEventListener("touchstart", function(e) {
-      // 只記錄單一觸控點
+    // 改用 document 監聽 touchstart 與 touchend
+    document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         globalStartX = e.touches[0].clientX;
         globalStartY = e.touches[0].clientY;
       }
     });
-    document.body.addEventListener("touchend", function(e) {
+    document.addEventListener("touchend", function(e) {
       if (globalStartX === null) return;
       const endX = e.changedTouches[0].clientX;
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 判斷水平右滑 (deltaX 大於 30 且水平位移大於垂直位移)
+      // 若水平位移大於垂直位移，且右滑超過 30px
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
-        // 返回主頁
         window.location.href = "index.html";
       }
       globalStartX = null;
