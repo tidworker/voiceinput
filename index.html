@@ -349,6 +349,7 @@
       let deltaY = currentY - startY;
       if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
         if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          // 修改為全域左滑切換到 orders.html（deltaX 小於 -30）
           deltaX < 0 ? deleteCurrentVoiceLine() : startGreenMode();
         } else {
           deltaY < 0 ? deleteLatestOrder() : startOrdering();
@@ -491,6 +492,7 @@
       document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
       document.getElementById("totalAmount").innerText = "總金額：0 元";
       document.getElementById("voiceOutput").innerHTML = "";
+      localStorage.removeItem("currentOrderData");
     }
 
     // 完成訂餐：將當前訂單內容與語音備忘錄存入 localStorage 的 orderHistory（累積記錄），再轉跳 orders.html
@@ -517,6 +519,8 @@
       if (historyJSON) { orderHistory = JSON.parse(historyJSON); }
       orderHistory.push(newOrder);
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
+      // 清除暫存的未完成訂單
+      localStorage.removeItem("currentOrderData");
       resetOrder();
       window.location.href = "orders.html";
     }
@@ -557,6 +561,53 @@
       if (current > 1) input.value = current - 1;
     }
 
+    // 以下為暫存當前訂單內容之功能
+    function saveCurrentOrder() {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      let currentOrderItems = [];
+      for (let i = 0; i < tbody.rows.length; i++) {
+        let row = tbody.rows[i];
+        currentOrderItems.push({
+          dish: row.cells[0].innerText,
+          quantity: row.cells[1].innerText,
+          remark: row.cells[2].innerText,
+          price: row.cells[3].innerText
+        });
+      }
+      const voiceMemo = document.getElementById("voiceOutput").innerText;
+      const currentOrderData = { orders: currentOrderItems, voiceMemo: voiceMemo };
+      localStorage.setItem("currentOrderData", JSON.stringify(currentOrderData));
+    }
+
+    function loadCurrentOrder() {
+      const currentJSON = localStorage.getItem("currentOrderData");
+      if (currentJSON) {
+        const currentData = JSON.parse(currentJSON);
+        const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+        tbody.innerHTML = "";
+        currentData.orders.forEach(item => {
+          const row = tbody.insertRow();
+          const cellDish = row.insertCell();
+          cellDish.innerText = item.dish;
+          cellDish.style.cursor = "pointer";
+          cellDish.onclick = function() { openModal(row); };
+          row.insertCell().innerText = item.quantity;
+          row.insertCell().innerText = item.remark;
+          row.insertCell().innerText = item.price;
+        });
+        document.getElementById("voiceOutput").innerText = currentData.voiceMemo;
+        updateTotalAmount();
+      }
+    }
+
+    // 當頁面卸載前保存未完成訂單內容
+    window.addEventListener("beforeunload", function(e) {
+      saveCurrentOrder();
+    });
+
+    // 當頁面載入時讀取未完成訂單內容
+    loadCurrentOrder();
+
     // ------------------ 主頁面全域左滑切換至 orders.html ------------------
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
@@ -571,7 +622,7 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 若判斷為水平左滑（deltaX 小於 -30）
+      // 判斷為水平左滑（deltaX 小於 -30）
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
       }
