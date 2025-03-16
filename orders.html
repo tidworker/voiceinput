@@ -5,53 +5,77 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單內容</title>
   <style>
+    /* 與主頁相同的樣式 */
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #f0f0f0;
-      color: #333;
-    }
-    h1, h2 {
+      margin: 10px;
+      padding: 0;
+      background-color: black;
+      color: white;
       text-align: center;
     }
+    /* 統一內容區 */
+    #contentContainer {
+      width: 90%;
+      margin: 20px auto;
+      overflow-y: auto;
+      background-color: black;
+    }
+    /* 訂單表格樣式 */
     table {
       width: 100%;
-      border-collapse: collapse;
-      background-color: #fff;
-      margin-bottom: 20px;
+      background-color: black;
+      color: white;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 3px;
     }
     table, th, td {
-      border: 1px solid #ccc;
+      border: 0;
     }
     th, td {
-      padding: 10px;
+      padding: 8px;
       text-align: left;
     }
+    table th {
+      background-color: orange;
+      color: black;
+    }
+    thead tr th:first-child {
+      border-top-left-radius: 3px;
+    }
+    thead tr th:last-child {
+      border-top-right-radius: 3px;
+    }
+    /* 備忘錄直接顯示內文 */
     #voiceMemo {
-      background-color: #fff;
+      margin-top: 10px;
+      text-align: left;
+      color: orange;
       padding: 10px;
-      border: 1px solid #ccc;
     }
   </style>
 </head>
 <body>
   <h1>訂單內容</h1>
-  <table id="orderSummary">
-    <thead>
-      <tr>
-        <th>品項</th>
-        <th>份數</th>
-        <th>備註</th>
-        <th>單價</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- 將在此產生訂單內容 -->
-    </tbody>
-  </table>
-  <div id="voiceMemo">
-    <h2>備忘錄</h2>
-    <p id="voiceMemoContent"></p>
+  <div id="contentContainer">
+    <table id="orderSummary">
+      <thead>
+        <tr>
+          <th>品項</th>
+          <th>份數</th>
+          <th>備註</th>
+          <th>單價</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- 訂單資料將由 JavaScript 動態加入 -->
+      </tbody>
+    </table>
+    <!-- 下方直接顯示備忘錄內容 -->
+    <div id="voiceMemo">
+      <p id="voiceMemoContent"></p>
+    </div>
   </div>
   <script>
     // 從 local storage 讀取訂單資料
@@ -61,21 +85,26 @@
       const tbody = document.querySelector("#orderSummary tbody");
       orderData.orders.forEach(order => {
         const tr = document.createElement("tr");
+
         const tdDish = document.createElement("td");
         tdDish.innerText = order.dish;
         tr.appendChild(tdDish);
+
         const tdQty = document.createElement("td");
         tdQty.innerText = order.quantity;
         tr.appendChild(tdQty);
+
         const tdRemark = document.createElement("td");
         tdRemark.innerText = order.remark;
         tr.appendChild(tdRemark);
+
         const tdPrice = document.createElement("td");
         tdPrice.innerText = order.price;
         tr.appendChild(tdPrice);
+
         tbody.appendChild(tr);
       });
-      // 顯示語音備忘錄內容
+      // 直接顯示備忘錄內容
       document.getElementById("voiceMemoContent").innerText = orderData.voiceMemo;
     } else {
       document.body.innerHTML = "<h1>沒有訂單資料</h1>";
