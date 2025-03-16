@@ -29,6 +29,7 @@
       margin-bottom: 15px;
       padding: 10px;
       position: relative;
+      /* 預設轉場效果 */
       transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單標題容器，左右分佈 */
@@ -81,9 +82,11 @@
   </div>
   <script>
     let orderHistory = [];
-    // 全域記錄目前待交換或待刪除的訂單區塊
+    // 全域記錄目前待處理（待交換／待刪除）的訂單區塊
     let globalSwipedOrder = null;
     let globalSwipedTimer = null;
+    // 全域記錄交換後需要做動畫的兩筆訂單的索引
+    let globalSwappedIndices = null;
     
     // 從 localStorage 讀取訂單記錄（主頁存入）
     function loadOrderHistory() {
@@ -102,7 +105,7 @@
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
-      // 重置全域狀態，避免因重新渲染導致舊狀態影響
+      // 重置全域待處理狀態，避免重新渲染時遺留
       globalSwipedOrder = null;
       if (globalSwipedTimer) {
         clearTimeout(globalSwipedTimer);
@@ -185,7 +188,32 @@
       });
     }
     
-    // 附加訂單區塊的左滑功能（依需求進行：第一次左滑後，3秒內若左滑另一筆則交換，若同一筆則刪除）
+    // 動畫：針對交換後的兩筆訂單，先維持半透明，然後慢慢恢復至完全不透明
+    function animateSwappedOrders() {
+      if (!globalSwappedIndices) return;
+      // 取得所有訂單區塊
+      const orderBlocks = document.querySelectorAll(".orderBlock");
+      globalSwappedIndices.forEach(idx => {
+        const ob = orderBlocks[idx];
+        if (ob) {
+          // 初始狀態設定為半透明
+          ob.style.opacity = "0.6";
+          // 改變轉場時間為 2 秒以達到慢慢恢復的效果
+          ob.style.transition = "opacity 2s";
+          // 利用 setTimeout 讓瀏覽器渲染後再變更為完全不透明
+          setTimeout(() => {
+            ob.style.opacity = "1";
+          }, 50);
+        }
+      });
+      // 重置交換索引
+      globalSwappedIndices = null;
+    }
+    
+    // 附加訂單區塊的左滑功能：
+    // - 第一次左滑後，3秒內若同一筆再次左滑則刪除
+    // - 3秒內若左滑另一筆訂單，則第二筆先套用效果，延遲 0.5 秒後交換兩筆訂單順序，
+    //   交換後維持半透明狀態，並慢慢恢復為完全不透明
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
 
@@ -200,32 +228,41 @@
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 檢查是否為水平左滑且距離超過 30px
+        // 判斷是否為水平左滑且滑動距離超過 30px
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          // 若已有全域左滑訂單
+          // 如果已有全域待處理訂單
           if (globalSwipedOrder) {
             if (globalSwipedOrder === orderBlock) {
-              // 同一筆訂單重複左滑，則刪除此筆訂單
+              // 同一筆訂單重複左滑，則刪除該筆訂單
               const orderIndex = parseInt(orderBlock.dataset.orderIndex);
               clearTimeout(globalSwipedTimer);
               globalSwipedOrder = null;
               deleteOrder(orderIndex);
             } else {
-              // 不同訂單間左滑，則進行順序交換
-              const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
-              const secondIndex = parseInt(orderBlock.dataset.orderIndex);
-              // 交換 orderHistory 陣列中的兩筆資料
-              const temp = orderHistory[firstIndex];
-              orderHistory[firstIndex] = orderHistory[secondIndex];
-              orderHistory[secondIndex] = temp;
+              // 不同訂單間左滑：
+              // 先讓第二筆訂單也套用效果
+              orderBlock.style.transform = "translateX(-10px)";
+              orderBlock.style.opacity = "0.6";
+              // 清除原先的倒數
               clearTimeout(globalSwipedTimer);
-              globalSwipedOrder = null;
-              saveOrderHistory();
-              renderOrderHistory();
-              return;
+              // 延遲 0.5 秒後交換兩筆訂單順序
+              globalSwipedTimer = setTimeout(function() {
+                const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
+                const secondIndex = parseInt(orderBlock.dataset.orderIndex);
+                // 交換 orderHistory 陣列中的兩筆資料
+                const temp = orderHistory[firstIndex];
+                orderHistory[firstIndex] = orderHistory[secondIndex];
+                orderHistory[secondIndex] = temp;
+                // 記錄交換後的索引（以便做動畫效果）
+                globalSwappedIndices = [firstIndex, secondIndex];
+                globalSwipedOrder = null;
+                saveOrderHistory();
+                renderOrderHistory();
+                animateSwappedOrders();
+              }, 500);
             }
           } else {
-            // 尚無其他左滑訂單，將此訂單設定為待交換／待刪除狀態
+            // 尚無其他待處理訂單，將此訂單設定為待處理狀態
             orderBlock.style.transform = "translateX(-10px)";
             orderBlock.style.opacity = "0.6";
             globalSwipedOrder = orderBlock;
