@@ -285,8 +285,7 @@
         };
         recognition.onerror = function(event) {
           currentRecognition = null;
-          if (holdActive) { resolve("_RESTART_"); }
-          else { resolve(null); }
+          if (holdActive) { resolve("_RESTART_"); } else { resolve(null); }
         };
         recognition.start();
       });
@@ -558,7 +557,7 @@
       if (current > 1) input.value = current - 1;
     }
 
-    // ------------------ 主頁面全域右滑切換至 orders.html ------------------
+    // ------------------ 主頁面全域左滑切換至 orders.html ------------------
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
@@ -572,7 +571,8 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
+      // 若判斷為水平左滑（deltaX 小於 -30）
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
       }
       globalStartX = null;
