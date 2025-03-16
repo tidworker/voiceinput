@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單紀錄</title>
   <style>
-    /* 黑底白字風格 */
+    /* 與主頁相同的黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -163,9 +163,7 @@
         const deltaY = endY - startY;
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
           const orderIndex = parseInt(orderBlock.dataset.orderIndex);
-          if (confirm("確定刪除這筆訂單？")) {
-            deleteOrder(orderIndex);
-          }
+          if (confirm("確定刪除這筆訂單？")) { deleteOrder(orderIndex); }
         }
         startX = null;
         startY = null;
