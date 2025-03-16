@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單列表</title>
   <style>
-    /* 與原系統相同的外觀設定 */
+    /* 與點餐系統相同的外觀設定 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -14,7 +14,7 @@
       color: white;
       text-align: center;
     }
-    /* 重新點餐按鈕樣式（本頁不採用，但保留樣式參考） */
+    /* 按鈕樣式 */
     #resetButton {
       background-color: orange;
       color: black;
@@ -33,7 +33,7 @@
       overflow-y: auto;
       background-color: black;
     }
-    /* 訂單表格樣式，與原系統一致 */
+    /* 訂單表格（不再含編號欄） */
     table {
       width: 100%;
       background-color: black;
@@ -56,7 +56,7 @@
       font-size: 18px;
       margin-top: 10px;
     }
-    /* 語音備忘錄區，樣式與原系統一致 */
+    /* 語音備忘錄區，除了原有備忘錄外，亦顯示訂單編號 */
     #voiceOutput {
       margin-top: 10px;
       text-align: left;
@@ -69,7 +69,7 @@
       max-width: 100%;
       height: auto;
     }
-    /* 紅色浮動按鈕（與原系統相同） */
+    /* 紅色浮動按鈕 */
     #voiceButton {
       position: fixed;
       bottom: 50px;
@@ -83,7 +83,7 @@
       cursor: pointer;
       z-index: 3000;
     }
-    /* 左右方形按鈕（保留原系統樣式，用於其他控制，如後續調整） */
+    /* 左右方形按鈕（保留原系統樣式） */
     #decreaseButton,
     #increaseButton {
       position: fixed;
@@ -106,7 +106,7 @@
     #increaseButton {
       left: calc(50% + 35px + 10px);
     }
-    /* 防止按鈕內文字被選取 */
+    /* 防止按鈕內文字選取 */
     #voiceButton, #voiceButton * {
       user-select: none;
     }
@@ -121,7 +121,6 @@
     <table id="orderTable">
       <thead>
         <tr>
-          <th>編號</th>
           <th>品項</th>
           <th>份數</th>
           <th>備註</th>
@@ -129,22 +128,40 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 訂單資料將透過 JavaScript 讀取 localStorage 自動累積顯示 -->
+        <!-- 訂單資料會從 localStorage 載入，累積顯示 -->
       </tbody>
     </table>
-    <!-- 語音備忘錄顯示區 -->
+    <!-- 語音備忘錄區，同時顯示訂單編號 -->
     <div id="voiceOutput"></div>
   </div>
 
   <p id="totalAmount">總金額：0 元</p>
 
-  <!-- 此頁面控制按鈕：原本的左右方形按鈕保留（功能可再調整） -->
+  <!-- 保留左右方形按鈕（功能可再調整） -->
   <button id="decreaseButton"></button>
+  <!-- 紅色浮動按鈕 -->
   <button id="voiceButton"></button>
   <button id="increaseButton"></button>
 
   <script>
-    /* 讀取 localStorage 中的訂單與語音備忘錄 */
+    // 若 localStorage 中沒有訂單編號，則以當前時間產生一個
+    function ensureOrderId() {
+      let orderId = localStorage.getItem("orderId");
+      if (!orderId) {
+        orderId = Date.now().toString();
+        localStorage.setItem("orderId", orderId);
+      }
+      return orderId;
+    }
+
+    // 將訂單編號顯示於語音備忘錄區（memo）
+    function showOrderId() {
+      let orderId = ensureOrderId();
+      let memoDiv = document.getElementById("voiceOutput");
+      memoDiv.innerText = "訂單編號：" + orderId;
+    }
+
+    // 讀取 localStorage 中的訂單資料並顯示在表格中
     function loadOrders() {
       let ordersStr = localStorage.getItem("orders");
       let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
@@ -152,10 +169,8 @@
       let total = 0;
       if (ordersStr) {
         let orders = JSON.parse(ordersStr);
-        orders.forEach((order, index) => {
+        orders.forEach((order) => {
           let row = tbody.insertRow();
-          let cellIndex = row.insertCell();
-          cellIndex.innerText = index + 1;  // 編號
           let cellDish = row.insertCell();
           cellDish.innerText = order.dish;
           let cellQuantity = row.insertCell();
@@ -169,76 +184,58 @@
       }
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
-    function loadVoiceMemo() {
-      // 若 localStorage 有儲存語音備忘錄（例如 key 為 "voiceMemo"），則顯示
-      let memo = localStorage.getItem("voiceMemo") || "";
-      document.getElementById("voiceOutput").innerText = memo;
-    }
+
+    // 載入頁面時顯示訂單編號與訂單資料（累積不自動刪除）
     window.onload = function() {
+      showOrderId();
       loadOrders();
-      loadVoiceMemo();
     };
 
     /* 紅色浮動按鈕手勢控制 */
-    // 本頁面保留紅色按鈕，功能修改：
+    // 此頁面保留紅色按鈕，功能修改：
     // 若拖曳紅色按鈕向左超過 30px，放開時即連結至 index.html
     let startX = 0, startY = 0;
     let swipeToggled = false;
     let gestureDirection = "";
     let gestureStartTime = 0;
     const voiceButton = document.getElementById("voiceButton");
-
-    // 設定紅色按鈕的基本位置（初始置中）
     voiceButton.style.transform = "translate(-50%, 0)";
 
     function updateButtonPosition(currentX, currentY) {
       let deltaX = currentX - startX;
       let deltaY = currentY - startY;
-      // 若水平拖曳較明顯
-      if (!swipeToggled && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
-        if (deltaX < 0) {
-          gestureDirection = "left";
-        } else {
-          gestureDirection = "right";
-        }
+      if (!swipeToggled && Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        // 只判斷水平拖曳
+        gestureDirection = (deltaX < 0) ? "left" : "right";
         swipeToggled = true;
       }
-      // 更新按鈕位置（僅做視覺效果）
       const angle = Math.atan2(deltaY, deltaX);
       voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
     }
 
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX; startY = e.pageY;
-      swipeToggled = false; 
+      swipeToggled = false;
       gestureStartTime = Date.now();
       gestureDirection = "";
       e.preventDefault();
     });
     voiceButton.addEventListener("touchstart", function(e) {
       startX = e.touches[0].pageX; startY = e.touches[0].pageY;
-      swipeToggled = false; 
+      swipeToggled = false;
       gestureStartTime = Date.now();
       gestureDirection = "";
       e.preventDefault();
     });
-    voiceButton.addEventListener("mousemove", function(e) {
-      updateButtonPosition(e.pageX, e.pageY);
-    });
-    voiceButton.addEventListener("touchmove", function(e) {
-      updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
-      e.preventDefault();
-    });
+    voiceButton.addEventListener("mousemove", function(e) { updateButtonPosition(e.pageX, e.pageY); });
+    voiceButton.addEventListener("touchmove", function(e) { updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY); e.preventDefault(); });
     function endDrag() {
       if (navigator.vibrate) { navigator.vibrate(50); }
-      // 重設按鈕位置與顏色
       voiceButton.style.transform = "translate(-50%, 0)";
       voiceButton.style.backgroundColor = "red";
-      // 若拖曳方向為 left，則連結至 index.html
       if (gestureDirection === "left") {
         window.location.href = "index.html";
       }
-      // 重置變數
       gestureDirection = "";
       swipeToggled = false;
     }
