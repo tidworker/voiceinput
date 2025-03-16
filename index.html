@@ -576,7 +576,23 @@
       document.getElementById("voiceOutput").innerHTML = "";
     }
 
+    // 當使用者按下「完成訂餐」時，先將訂單內容與語音備忘錄存入 local storage，
+    // 再轉跳至 orders.html 頁面顯示訂單內容
     function completeOrder() {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      const orders = [];
+      for (let i = 0; i < tbody.rows.length; i++) {
+        let row = tbody.rows[i];
+        orders.push({
+          dish: row.cells[0].innerText,
+          quantity: row.cells[1].innerText,
+          remark: row.cells[2].innerText,
+          price: row.cells[3].innerText
+        });
+      }
+      const voiceMemo = document.getElementById("voiceOutput").innerText;
+      const orderData = { orders, voiceMemo };
+      localStorage.setItem("orderData", JSON.stringify(orderData));
       window.location.href = "orders.html";
     }
   </script>
