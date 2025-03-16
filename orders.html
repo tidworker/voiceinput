@@ -188,7 +188,7 @@
       });
     }
     
-    // 動畫：針對交換後的兩筆訂單，先維持半透明，然後慢慢恢復至完全不透明
+    // 動畫：針對交換後的兩筆訂單，先保持向左移動 10px 與 50% 透明度，然後以 3 秒轉場慢慢恢復到原始位置與完全不透明
     function animateSwappedOrders() {
       if (!globalSwappedIndices) return;
       // 取得所有訂單區塊
@@ -196,13 +196,15 @@
       globalSwappedIndices.forEach(idx => {
         const ob = orderBlocks[idx];
         if (ob) {
-          // 初始狀態設定為半透明
-          ob.style.opacity = "0.6";
-          // 改變轉場時間為 2 秒以達到慢慢恢復的效果
-          ob.style.transition = "opacity 3s";
-          // 利用 setTimeout 讓瀏覽器渲染後再變更為完全不透明
+          // 初始狀態：維持 translateX(-10px) 與 50% 透明度
+          ob.style.transform = "translateX(-10px)";
+          ob.style.opacity = "0.5";
+          // 設定轉場效果為 3 秒
+          ob.style.transition = "opacity 3s, transform 3s";
+          // 利用 setTimeout 讓瀏覽器渲染後再逐漸恢復原狀
           setTimeout(() => {
             ob.style.opacity = "1";
+            ob.style.transform = "";
           }, 50);
         }
       });
@@ -213,7 +215,7 @@
     // 附加訂單區塊的左滑功能：
     // - 第一次左滑後，3秒內若同一筆再次左滑則刪除
     // - 3秒內若左滑另一筆訂單，則第二筆先套用效果，延遲 0.5 秒後交換兩筆訂單順序，
-    //   交換後維持半透明狀態，並慢慢恢復為完全不透明
+    //   交換後維持向左移動與半透明狀態，並慢慢恢復為原始位置與完全不透明（轉場 3 秒）
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
 
