@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單列表</title>
   <style>
-    /* 黑底白字，沿用原系統外觀 */
+    /* 與原系統相同的外觀設定 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -14,7 +14,7 @@
       color: white;
       text-align: center;
     }
-    /* 重新點餐按鈕樣式 */
+    /* 重新點餐按鈕樣式（本頁不採用，但保留樣式參考） */
     #resetButton {
       background-color: orange;
       color: black;
@@ -25,30 +25,27 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 統一內容區：訂單表格與其他內容，高度 340px */
+    /* 統一內容區 */
     #contentContainer {
       width: 90%;
       height: 340px;
       margin: 20px auto;
-      border: 0;
       overflow-y: auto;
       background-color: black;
     }
-    /* 訂單表格 */
+    /* 訂單表格樣式，與原系統一致 */
     table {
       width: 100%;
       background-color: black;
       color: white;
       border-collapse: collapse;
-    }
-    table, th, td {
       border: 1px solid white;
     }
     th, td {
       padding: 8px;
       text-align: left;
+      border: 1px solid white;
     }
-    /* 表頭：橘色背景，白底黑字 */
     thead tr th {
       background-color: orange;
       color: black;
@@ -59,18 +56,67 @@
       font-size: 18px;
       margin-top: 10px;
     }
-    /* 圖片樣式 */
+    /* 語音備忘錄區，樣式與原系統一致 */
+    #voiceOutput {
+      margin-top: 10px;
+      text-align: left;
+      color: orange;
+      padding: 10px;
+      border: 1px solid orange;
+    }
+    /* 圖片 */
     img {
       max-width: 100%;
       height: auto;
+    }
+    /* 紅色浮動按鈕（與原系統相同） */
+    #voiceButton {
+      position: fixed;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 70px;
+      background-color: red;
+      border: 5px solid white;
+      border-radius: 50%;
+      cursor: pointer;
+      z-index: 3000;
+    }
+    /* 左右方形按鈕（保留原系統樣式，用於其他控制，如後續調整） */
+    #decreaseButton,
+    #increaseButton {
+      position: fixed;
+      bottom: 50px;
+      width: 150px;
+      height: 100px;
+      background-color: black;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    /* 左側按鈕位置 */
+    #decreaseButton {
+      left: calc(50% - 35px - 150px - 10px);
+    }
+    /* 右側按鈕位置 */
+    #increaseButton {
+      left: calc(50% + 35px + 10px);
+    }
+    /* 防止按鈕內文字被選取 */
+    #voiceButton, #voiceButton * {
+      user-select: none;
     }
   </style>
 </head>
 <body>
   <br />
   <img src="3.png" alt="圖片" />
-  
-  <!-- 訂單內容區 -->
+
+  <!-- 訂單與語音備忘錄內容區 -->
   <div id="contentContainer">
     <table id="orderTable">
       <thead>
@@ -83,55 +129,121 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 透過 JavaScript 動態加入訂單資料 -->
+        <!-- 訂單資料將透過 JavaScript 讀取 localStorage 自動累積顯示 -->
       </tbody>
     </table>
+    <!-- 語音備忘錄顯示區 -->
+    <div id="voiceOutput"></div>
   </div>
-  
+
   <p id="totalAmount">總金額：0 元</p>
-  
-  <!-- 返回點餐系統按鈕 -->
-  <button id="resetButton" onclick="goBack()">返回點餐系統</button>
-  
+
+  <!-- 此頁面控制按鈕：原本的左右方形按鈕保留（功能可再調整） -->
+  <button id="decreaseButton"></button>
+  <button id="voiceButton"></button>
+  <button id="increaseButton"></button>
+
   <script>
-    // 讀取 localStorage 中的訂單資料並顯示在表格中
+    /* 讀取 localStorage 中的訂單與語音備忘錄 */
     function loadOrders() {
       let ordersStr = localStorage.getItem("orders");
-      if (!ordersStr) {
-        return;
-      }
-      let orders = JSON.parse(ordersStr);
       let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       tbody.innerHTML = "";
       let total = 0;
-      orders.forEach((order, index) => {
-        let row = tbody.insertRow();
-        // 編號欄位（自動編號）
-        let cellIndex = row.insertCell();
-        cellIndex.innerText = index + 1;
-        // 品項
-        let cellDish = row.insertCell();
-        cellDish.innerText = order.dish;
-        // 份數
-        let cellQuantity = row.insertCell();
-        cellQuantity.innerText = order.quantity;
-        // 備註
-        let cellRemark = row.insertCell();
-        cellRemark.innerText = order.remark;
-        // 單價
-        let cellPrice = row.insertCell();
-        cellPrice.innerText = order.price;
-        total += parseFloat(order.quantity) * parseFloat(order.price);
-      });
+      if (ordersStr) {
+        let orders = JSON.parse(ordersStr);
+        orders.forEach((order, index) => {
+          let row = tbody.insertRow();
+          let cellIndex = row.insertCell();
+          cellIndex.innerText = index + 1;  // 編號
+          let cellDish = row.insertCell();
+          cellDish.innerText = order.dish;
+          let cellQuantity = row.insertCell();
+          cellQuantity.innerText = order.quantity;
+          let cellRemark = row.insertCell();
+          cellRemark.innerText = order.remark;
+          let cellPrice = row.insertCell();
+          cellPrice.innerText = order.price;
+          total += parseFloat(order.quantity) * parseFloat(order.price);
+        });
+      }
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
-    
-    // 返回點餐系統（假設點餐系統頁面為 index.html，可依需求調整）
-    function goBack() {
-      window.location.href = "index.html";
+    function loadVoiceMemo() {
+      // 若 localStorage 有儲存語音備忘錄（例如 key 為 "voiceMemo"），則顯示
+      let memo = localStorage.getItem("voiceMemo") || "";
+      document.getElementById("voiceOutput").innerText = memo;
     }
-    
-    window.onload = loadOrders;
+    window.onload = function() {
+      loadOrders();
+      loadVoiceMemo();
+    };
+
+    /* 紅色浮動按鈕手勢控制 */
+    // 本頁面保留紅色按鈕，功能修改：
+    // 若拖曳紅色按鈕向左超過 30px，放開時即連結至 index.html
+    let startX = 0, startY = 0;
+    let swipeToggled = false;
+    let gestureDirection = "";
+    let gestureStartTime = 0;
+    const voiceButton = document.getElementById("voiceButton");
+
+    // 設定紅色按鈕的基本位置（初始置中）
+    voiceButton.style.transform = "translate(-50%, 0)";
+
+    function updateButtonPosition(currentX, currentY) {
+      let deltaX = currentX - startX;
+      let deltaY = currentY - startY;
+      // 若水平拖曳較明顯
+      if (!swipeToggled && Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 30) {
+        if (deltaX < 0) {
+          gestureDirection = "left";
+        } else {
+          gestureDirection = "right";
+        }
+        swipeToggled = true;
+      }
+      // 更新按鈕位置（僅做視覺效果）
+      const angle = Math.atan2(deltaY, deltaX);
+      voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
+    }
+
+    voiceButton.addEventListener("mousedown", function(e) {
+      startX = e.pageX; startY = e.pageY;
+      swipeToggled = false; 
+      gestureStartTime = Date.now();
+      gestureDirection = "";
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("touchstart", function(e) {
+      startX = e.touches[0].pageX; startY = e.touches[0].pageY;
+      swipeToggled = false; 
+      gestureStartTime = Date.now();
+      gestureDirection = "";
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("mousemove", function(e) {
+      updateButtonPosition(e.pageX, e.pageY);
+    });
+    voiceButton.addEventListener("touchmove", function(e) {
+      updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
+      e.preventDefault();
+    });
+    function endDrag() {
+      if (navigator.vibrate) { navigator.vibrate(50); }
+      // 重設按鈕位置與顏色
+      voiceButton.style.transform = "translate(-50%, 0)";
+      voiceButton.style.backgroundColor = "red";
+      // 若拖曳方向為 left，則連結至 index.html
+      if (gestureDirection === "left") {
+        window.location.href = "index.html";
+      }
+      // 重置變數
+      gestureDirection = "";
+      swipeToggled = false;
+    }
+    voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
+    voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
   </script>
 </body>
 </html>
