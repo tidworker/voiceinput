@@ -25,6 +25,29 @@
       margin-top: 10px;
       font-weight: bold;
     }
+    /* 完成訂餐按鈕 */
+    #completeOrderButton {
+      background-color: orange;
+      color: black;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+    /* 模態框內按鈕樣式：採用重新點餐按鈕的設計外觀，但使用黑底白字 */
+    .modal-btn {
+      background-color: black;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+    }
     /* 統一內容區：訂單表格與語音輸入區，高度 340px */
     #contentContainer {
       width: 90%;
@@ -40,18 +63,32 @@
       color: white;
       border-collapse: separate;
       border-spacing: 0;
-      border: 1px solid white;
       border-radius: 3px;
+    }
+    table, th, td {
+      border: 0;
     }
     th, td {
       padding: 8px;
       text-align: left;
-      border: 1px solid white;
     }
-    /* 表頭：橘色背景 */
-    thead tr th {
+    /* 表頭：橘色背景，且第一列左右角 3px 圓角 */
+    table th {
       background-color: orange;
       color: black;
+    }
+    thead tr th:first-child {
+      border-top-left-radius: 3px;
+    }
+    thead tr th:last-child {
+      border-top-right-radius: 3px;
+    }
+    /* 語音輸入區 (綠色模式下使用)：文字顏色橘色 */
+    #voiceOutput {
+      margin-top: 10px;
+      text-align: left;
+      color: orange;
+      padding: 10px;
     }
     /* 總金額文字 */
     #totalAmount {
@@ -59,7 +96,10 @@
       font-size: 18px;
       margin-top: 10px;
     }
-    /* 模態框 */
+    @media (max-width: 600px) {
+      button { font-size: 18px; }
+    }
+    /* 模態框：編輯訂單項目 */
     #editModal {
       display: none;
       position: fixed;
@@ -76,39 +116,15 @@
       margin: 10% auto;
       padding: 20px;
       width: 300px;
-      border-radius: 5px;
       position: relative;
+      border-radius: 5px;
     }
-    /* 模態框內按鈕：與重新點餐按鈕設計相似，但黑底白字 */
-    .modal-btn {
-      background-color: black;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 10px;
-      font-weight: bold;
-    }
-    /* 語音備忘錄區 */
-    #voiceOutput {
-      margin-top: 10px;
-      text-align: left;
-      color: orange;
-      padding: 10px;
-      border: 1px solid orange;
-    }
-    /* 圖片 */
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    /* 紅色浮動按鈕（語音訂餐按鈕） */
+    /* 浮動錄音按鈕：初始置中 */
     #voiceButton {
       position: fixed;
       bottom: 50px;
       left: 50%;
-      transform: translate(-50%, 0);
+      transform: translateX(-50%);
       width: 70px;
       height: 70px;
       background-color: red;
@@ -117,7 +133,10 @@
       cursor: pointer;
       z-index: 3000;
     }
-    /* 左右方形按鈕（保留原有設計，未來可調整功能） */
+    #voiceButton:active {
+      background-color: red;
+    }
+    /* 左右方形按鈕：採用黑底白字，尺寸高100px、寬150px */
     #decreaseButton,
     #increaseButton {
       position: fixed;
@@ -132,13 +151,15 @@
       outline: none;
       -webkit-tap-highlight-color: transparent;
     }
+    /* 左側按鈕：用於控制餐點數量 */
     #decreaseButton {
       left: calc(50% - 35px - 150px - 10px);
     }
+    /* 右側按鈕：用於控制備註欄免費（0元）商品數量 */
     #increaseButton {
       left: calc(50% + 35px + 10px);
     }
-    /* 防止按鈕內文字選取 */
+    /* 禁止按鈕上文字選取 */
     #voiceButton, #voiceButton * {
       user-select: none;
     }
@@ -147,8 +168,8 @@
 <body>
   <br />
   <img src="3.png" alt="圖片" />
-  
-  <!-- 訂單與語音備忘錄內容區 -->
+
+  <!-- 統一內容區：訂單表格與語音輸入區 -->
   <div id="contentContainer">
     <table id="orderTable">
       <thead>
@@ -160,17 +181,19 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 訂單項目會動態加入 -->
+        <!-- 訂單項目將動態加入 -->
       </tbody>
     </table>
-    <!-- 語音備忘錄區，可顯示訂單編號與語音備忘內容 -->
+    <!-- 語音輸入區 (綠色模式下用，同一行以逗號分隔) -->
     <div id="voiceOutput"></div>
   </div>
-  
+
   <p id="totalAmount">總金額：0 元</p>
-  
+
+  <!-- 重新點餐與完成訂餐按鈕 -->
   <button id="resetButton" onclick="resetOrder()">重新點餐</button>
-  
+  <button id="completeOrderButton" onclick="completeOrder()">完成訂餐</button>
+
   <!-- 模態框：編輯訂單項目 -->
   <div id="editModal">
     <div id="editModalContent">
@@ -188,161 +211,96 @@
       </div>
     </div>
   </div>
-  
-  <!-- 左右方形按鈕（保留原有功能設定，可未來調整） -->
+
+  <!-- 左側、浮動、右側按鈕 -->
   <button id="decreaseButton"></button>
-  <!-- 紅色浮動按鈕（語音訂餐按鈕） -->
   <button id="voiceButton"></button>
   <button id="increaseButton"></button>
-  
+
   <script>
-    // 全域變數與初始設定
+    // 全域變數與初始模式
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
     let currentRecognition = null;
-    let holdActive = false;  // 控制語音辨識的持續狀態
-    let currentMode = "red"; // 初始模式為語音訂餐
+    let holdActive = false; // 用於錄音按鈕
+    let currentMode = "red"; // 初始模式預設為 "red"
     let startX = 0, startY = 0;
     let swipeToggled = false;
-    let gestureDirection = "";
-    let gestureStartTime = 0;
-    
-    // 模擬菜單資料（實際可從外部檔案載入）
+
+    // 菜單資料 (可外部載入 menu.txt)
     let menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
-      { keywords: ["la"], name: "辣", price: 0 }
+      { keywords: ["la"], name: "辣", price: 0 },
+      { keywords: ["freeDrink"], name: "免費飲料", price: 0 }
     ];
-    
-    // (可加入 loadTranslationDatabase() 與 loadMenu() 函式，如有需要)
-    
-    // 震動功能
-    function vibrateTwice() { if(navigator.vibrate) navigator.vibrate([50,100,50]); }
-    function vibrateOnce() { if(navigator.vibrate) navigator.vibrate(50); }
-    
-    // 重設訂單
-    function resetOrder() {
-      document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
-      document.getElementById("totalAmount").innerText = "總金額：0 元";
-      document.getElementById("voiceOutput").innerHTML = "";
+
+    /* ------------------ 載入外部資料 ------------------ */
+    function loadTranslationDatabase() {
+      fetch("database.txt")
+        .then(response => {
+          if (!response.ok) throw new Error("無法讀取 database.txt");
+          return response.text();
+        })
+        .then(text => {
+          const db = JSON.parse(text);
+          if (db.charMapping) {
+            charMapping = db.charMapping;
+            if (db.groupMapping) {
+              groupMapping = db.groupMapping;
+            }
+          }
+        })
+        .catch(err => {
+          console.error("載入字庫資料失敗：" + err.message);
+        });
     }
-    
-    /* 模態框處理 */
-    function openModal(row) {
-      currentEditRow = row;
-      document.getElementById("modalDishName").innerText = row.cells[0].innerText;
-      document.getElementById("modalQuantity").value = row.cells[1].innerText;
-      document.getElementById("editModal").style.display = "block";
+    loadTranslationDatabase();
+
+    function loadMenu() {
+      fetch("menu.txt")
+        .then(response => {
+          if (!response.ok) throw new Error("無法讀取 menu.txt");
+          return response.text();
+        })
+        .then(text => {
+          menu = JSON.parse(text);
+        })
+        .catch(err => {
+          console.error("載入菜單資料失敗：" + err.message);
+        });
     }
-    function closeModal() {
-      document.getElementById("editModal").style.display = "none";
-      currentEditRow = null;
-    }
-    function saveModal() {
-      if(!currentEditRow) return;
-      let newQuantity = parseInt(document.getElementById("modalQuantity").value);
-      if(isNaN(newQuantity) || newQuantity < 1) return;
-      currentEditRow.cells[1].innerText = newQuantity;
-      closeModal();
-      updateTotalAmount();
-    }
-    function deleteModal() {
-      if(!currentEditRow) return;
-      currentEditRow.parentNode.removeChild(currentEditRow);
-      closeModal();
-      updateTotalAmount();
-    }
-    function modalIncreaseQuantity() {
-      const input = document.getElementById("modalQuantity");
-      input.value = (parseInt(input.value) || 1) + 1;
-    }
-    function modalDecreaseQuantity() {
-      const input = document.getElementById("modalQuantity");
-      let current = parseInt(input.value) || 1;
-      if(current > 1) { input.value = current - 1; }
-    }
-    
-    function updateTotalAmount() {
-      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
-      let total = 0;
-      for(let i=0; i<tbody.rows.length; i++){
-        let qty = parseFloat(tbody.rows[i].cells[1].innerText);
-        let price = parseFloat(tbody.rows[i].cells[3].innerText);
-        if(!isNaN(qty) && !isNaN(price)){
-          total += qty * price;
+    loadMenu();
+
+    // 轉譯：僅取出 database.txt 中對應字元
+    function translateDishName(dishChinese) {
+      let converted = "";
+      for (let i = 0; i < dishChinese.length; i++) {
+        const ch = dishChinese.charAt(i);
+        if (charMapping[ch] !== undefined) {
+          converted += charMapping[ch];
         }
       }
-      document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
+      return converted;
     }
-    
-    /* 語音訂餐相關功能 */
-    // 將語音輸入結果處理為訂單資料（簡易範例）
-    function processMultipleVoiceInput(inputText) {
-      let converted = translateDishName(inputText);
-      let tokens = converted.split("/").filter(token => token.trim() !== "");
-      let numbers = [];
-      let dishes = [];
-      tokens.forEach(token => {
-        let m = token.match(/^(\d+)?([a-zA-Z]+)(\d+)?$/);
-        if(m) {
-          if(m[1]) numbers.push(parseInt(m[1]));
-          dishes.push(m[2]);
-          if(m[3]) numbers.push(parseInt(m[3]));
-        } else {
-          if(/^\d+$/.test(token)) numbers.push(parseInt(token));
-          else if(/^[a-zA-Z]+$/.test(token)) dishes.push(token);
-        }
-      });
-      let orders = [];
-      if(dishes.length === 0) return [];
-      if(numbers.length === 0) {
-        orders = dishes.map(d => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: 1
-        }));
-      } else if(numbers.length === 1) {
-        orders = dishes.map(d => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: numbers[0]
-        }));
-      } else {
-        orders = dishes.map((d, i) => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: i < numbers.length ? numbers[i] : 1
-        }));
+
+    // 震動函式
+    function vibrateTwice() {
+      if (navigator.vibrate) {
+        navigator.vibrate([50, 100, 50]);
       }
-      return orders.filter(o => o.dish);
     }
-    
-    // 將訂單新增至表格並存入 localStorage
-    function addOrderRow(dish, quantity, remark) {
-      if(!dish) return;
-      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
-      const row = tbody.insertRow();
-      const cellDish = row.insertCell();
-      cellDish.innerText = dish.name;
-      cellDish.style.cursor = "pointer";
-      cellDish.onclick = function() { openModal(row); };
-      row.insertCell().innerText = quantity;
-      row.insertCell().innerText = remark;
-      row.insertCell().innerText = dish.price;
-      updateTotalAmount();
-      saveOrder({ dish: dish.name, quantity: quantity, remark: remark, price: dish.price });
+    function vibrateOnce() {
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
     }
-    
-    function saveOrder(newOrder) {
-      let orders = [];
-      let ordersStr = localStorage.getItem("orders");
-      if(ordersStr) { orders = JSON.parse(ordersStr); }
-      orders.push(newOrder);
-      localStorage.setItem("orders", JSON.stringify(orders));
-    }
-    
-    /* 語音辨識 */
+
+    /* ------------------ 語音辨識處理 ------------------ */
     function startVoiceInputSingle() {
       return new Promise((resolve) => {
-        if(!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)){
+        if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
           alert("您的瀏覽器不支援語音輸入功能。");
           resolve(null);
           return;
@@ -359,97 +317,305 @@
         };
         recognition.onerror = function(event) {
           currentRecognition = null;
-          if(holdActive) { resolve("_RESTART_"); }
-          else { resolve(null); }
+          if (holdActive) {
+            resolve("_RESTART_");
+          } else {
+            resolve(null);
+          }
         };
         recognition.start();
       });
     }
-    
+
     function continuousRecognition() {
-      if(!holdActive) return;
+      if (!holdActive) return;
       startVoiceInputSingle().then((transcript) => {
-        if(!holdActive) return;
-        if(transcript === "_RESTART_") { continuousRecognition(); return; }
-        if(transcript && transcript.trim() !== ""){
+        if (!holdActive) return;
+        if (transcript === "_RESTART_") {
+          continuousRecognition();
+          return;
+        }
+        if (transcript && transcript.trim() !== "") {
           let text = transcript.trim();
-          let orders = processMultipleVoiceInput(text);
-          if(orders.length > 0){
-            orders.forEach(order => {
-              addOrderRow(order.dish, order.quantity, "");
-            });
-            updateTotalAmount();
+          switch (currentMode) {
+            case "red":
+              // 紅色模式：直接加入訂單
+              let orders = processMultipleVoiceInput(text);
+              if (orders.length > 0) {
+                orders.forEach((order) => {
+                  addOrderRow(order.dish, order.quantity, "");
+                });
+                updateTotalAmount();
+              }
+              break;
+            case "green":
+              // 綠色模式：將內容加入 #voiceOutput，以逗號分隔
+              let voiceOutputDiv = document.getElementById("voiceOutput");
+              let currentText = voiceOutputDiv.innerText.trim();
+              if (currentText === "") {
+                voiceOutputDiv.innerText = text;
+              } else {
+                voiceOutputDiv.innerText = currentText + "," + text;
+              }
+              break;
+            default:
+              break;
           }
         }
-        if(holdActive) continuousRecognition();
+        if (holdActive) continuousRecognition();
       });
     }
-    
-    /* 紅色浮動按鈕（語音訂餐按鈕）事件 */
-    function initVoiceButton() {
-      const voiceButton = document.getElementById("voiceButton");
-      let startX = 0, startY = 0;
-      let swipeToggled = false;
-      let gestureDirection = "";
-      let gestureStartTime = 0;
-      voiceButton.style.transform = "translate(-50%, 0)";
-      
-      voiceButton.addEventListener("mousedown", function(e) {
-        startX = e.pageX;
-        startY = e.pageY;
-        swipeToggled = false;
-        gestureStartTime = Date.now();
-        gestureDirection = "";
-        holdActive = true;
-        e.preventDefault();
-      });
-      voiceButton.addEventListener("touchstart", function(e) {
-        startX = e.touches[0].pageX;
-        startY = e.touches[0].pageY;
-        swipeToggled = false;
-        gestureStartTime = Date.now();
-        gestureDirection = "";
-        holdActive = true;
-        e.preventDefault();
-      });
-      voiceButton.addEventListener("mousemove", function(e) {
-        updateButtonPosition(e.pageX, e.pageY);
-      });
-      voiceButton.addEventListener("touchmove", function(e) {
-        updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
-        e.preventDefault();
-      }, {passive: false});
-      
-      function updateButtonPosition(currentX, currentY) {
-        let deltaX = currentX - startX;
-        let deltaY = currentY - startY;
-        if(!swipeToggled && Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)){
-          gestureDirection = (deltaX < 0) ? "left" : "right";
-          swipeToggled = true;
+
+    /* ------------------ 滑動方向動作（錄音按鈕） ------------------ */
+    function startOrdering() {
+      currentMode = "red";
+      voiceButton.style.backgroundColor = "darkred";
+      if (navigator.vibrate) navigator.vibrate(50);
+      continuousRecognition();
+    }
+    function deleteLatestOrder() {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      if (tbody.rows.length > 0) {
+        tbody.deleteRow(tbody.rows.length - 1);
+        updateTotalAmount();
+      }
+      vibrateTwice();
+      voiceButton.style.backgroundColor = "darkred";
+    }
+    function deleteCurrentVoiceLine() {
+      const voiceOutputDiv = document.getElementById("voiceOutput");
+      if (voiceOutputDiv.lastChild) {
+        voiceOutputDiv.removeChild(voiceOutputDiv.lastChild);
+      }
+      vibrateTwice();
+      voiceButton.style.backgroundColor = "darkred";
+    }
+    function startGreenMode() {
+      currentMode = "green";
+      voiceButton.style.backgroundColor = "darkred";
+      if (navigator.vibrate) navigator.vibrate(50);
+      continuousRecognition();
+    }
+    function updateButtonPosition(currentX, currentY) {
+      let deltaX = currentX - startX;
+      let deltaY = currentY - startY;
+      if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          if (deltaX < 0) {
+            deleteCurrentVoiceLine();
+          } else {
+            startGreenMode();
+          }
+        } else {
+          if (deltaY < 0) {
+            deleteLatestOrder();
+          } else {
+            startOrdering();
+          }
         }
+        swipeToggled = true;
+      }
+      if (deltaX !== 0 || deltaY !== 0) {
         const angle = Math.atan2(deltaY, deltaX);
         voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
       }
-      
-      function endDrag() {
-        if(navigator.vibrate){ navigator.vibrate(50); }
-        voiceButton.style.transform = "translate(-50%, 0)";
-        voiceButton.style.backgroundColor = "red";
-        // 目前在主頁中，紅色按鈕主要用於語音訂餐，因此不做跳轉
-        // 若有其他拖曳功能需求，可在此處判斷 gestureDirection
-        gestureDirection = "";
-        swipeToggled = false;
-        holdActive = false;
-      }
-      
-      voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
-      voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
-      
-      // 啟動連續語音辨識（當按鈕持續按下時）
-      if(holdActive) { continuousRecognition(); }
     }
-    
-    /* 注意：其他左、右方形按鈕事件處理（例如控制餐點數量等）保持原有設計，此處略 */
+
+    /* ------------------ 錄音按鈕事件監聽 ------------------ */
+    const voiceButton = document.getElementById("voiceButton");
+    voiceButton.addEventListener("mousedown", function(e) {
+      startX = e.pageX;
+      startY = e.pageY;
+      swipeToggled = false;
+      holdActive = true;
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("touchstart", function(e) {
+      startX = e.touches[0].pageX;
+      startY = e.touches[0].pageY;
+      swipeToggled = false;
+      holdActive = true;
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("mousemove", function(e) {
+      if (holdActive) {
+        updateButtonPosition(e.pageX, e.pageY);
+      }
+    });
+    voiceButton.addEventListener("touchmove", function(e) {
+      if (holdActive) {
+        updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
+      }
+      e.preventDefault();
+    });
+    function endDrag() {
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+      holdActive = false;
+      if (currentRecognition) {
+        currentRecognition.stop();
+      }
+      voiceButton.style.transform = "translate(-50%, 0)";
+      currentMode = "red";
+      voiceButton.style.backgroundColor = "red";
+    }
+    voiceButton.addEventListener("mouseup", function(e) {
+      endDrag();
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("touchend", function(e) {
+      endDrag();
+      e.preventDefault();
+    });
+
+    /* ------------------ 訂單處理邏輯 ------------------ */
+    function processMultipleVoiceInput(inputText) {
+      let converted = translateDishName(inputText);
+      let tokens = converted.split("/").filter(token => token.trim() !== "");
+      let numbers = [];
+      let dishes = [];
+      tokens.forEach(token => {
+        let m = token.match(/^(\d+)?([a-zA-Z]+)(\d+)?$/);
+        if (m) {
+          if (m[1]) { numbers.push(parseInt(m[1])); }
+          dishes.push(m[2]);
+          if (m[3]) { numbers.push(parseInt(m[3])); }
+        } else {
+          if (/^\d+$/.test(token)) { numbers.push(parseInt(token)); }
+          else if (/^[a-zA-Z]+$/.test(token)) { dishes.push(token); }
+        }
+      });
+      let orders = [];
+      if (dishes.length === 0) return [];
+      if (numbers.length === 0) {
+        orders = dishes.map(d => ({
+          dish: menu.find(item => item.keywords.includes(d)),
+          quantity: 1
+        }));
+      } else if (numbers.length === 1) {
+        orders = dishes.map(d => ({
+          dish: menu.find(item => item.keywords.includes(d)),
+          quantity: numbers[0]
+        }));
+      } else {
+        orders = dishes.map((d, i) => ({
+          dish: menu.find(item => item.keywords.includes(d)),
+          quantity: i < numbers.length ? numbers[i] : 1
+        }));
+      }
+      return orders.filter(o => o.dish);
+    }
+
+    function updateTotalAmount() {
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      let total = 0;
+      for (let i = 0; i < tbody.rows.length; i++) {
+        let qty = parseFloat(tbody.rows[i].cells[1].innerText);
+        let price = parseFloat(tbody.rows[i].cells[3].innerText);
+        if (!isNaN(qty) && !isNaN(price)) {
+          total += qty * price;
+        }
+      }
+      document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
+    }
+
+    function addOrderRow(dish, quantity, remark) {
+      if (!dish) return;
+      if (dish.price === 0) {
+        const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+        if (tbody.rows.length === 0) return;
+        let found = false;
+        for (let i = tbody.rows.length - 1; i >= 0; i--) {
+          let row = tbody.rows[i];
+          let price = parseFloat(row.cells[3].innerText);
+          if (price > 0) {
+            let mainQty = parseInt(row.cells[1].innerText);
+            let currentRemark = row.cells[2].innerText.trim();
+            let remarksArr = currentRemark === "" ? [] : currentRemark.split(",").map(s => s.trim());
+            let index = remarksArr.findIndex(entry => entry === dish.name || entry.startsWith(dish.name + "×"));
+            let freeQty = 0;
+            if (index >= 0) {
+              let entry = remarksArr[index];
+              if (entry === dish.name) {
+                freeQty = mainQty;
+              } else {
+                let parts = entry.split("×");
+                freeQty = parseInt(parts[1]) || 0;
+              }
+              freeQty += quantity;
+              remarksArr[index] = (freeQty === mainQty) ? dish.name : (dish.name + "×" + freeQty);
+            } else {
+              freeQty = quantity;
+              remarksArr.push((freeQty === mainQty) ? dish.name : (dish.name + "×" + freeQty));
+            }
+            row.cells[2].innerText = remarksArr.join(",");
+            found = true;
+            break;
+          }
+        }
+        if (!found) return;
+        updateTotalAmount();
+        return;
+      }
+      const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
+      const row = tbody.insertRow();
+      const nameCell = row.insertCell();
+      nameCell.innerText = dish.name;
+      nameCell.style.cursor = "pointer";
+      nameCell.onclick = function() { openModal(row); };
+      row.insertCell().innerText = quantity;
+      row.insertCell().innerText = remark;
+      row.insertCell().innerText = dish.price;
+      updateTotalAmount();
+    }
+
+    function resetOrder() {
+      document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
+      document.getElementById("totalAmount").innerText = "總金額：0 元";
+      document.getElementById("voiceOutput").innerHTML = "";
+    }
+
+    function completeOrder() {
+      window.location.href = "orders.html";
+    }
+  </script>
+  <script>
+    /* ------------------ 模態框功能 ------------------ */
+    function openModal(row) {
+      currentEditRow = row;
+      document.getElementById("modalDishName").innerText = row.cells[0].innerText;
+      document.getElementById("modalQuantity").value = row.cells[1].innerText;
+      document.getElementById("editModal").style.display = "block";
+    }
+    function closeModal() {
+      document.getElementById("editModal").style.display = "none";
+      currentEditRow = null;
+    }
+    function saveModal() {
+      if (!currentEditRow) return;
+      let newQuantity = parseInt(document.getElementById("modalQuantity").value);
+      if (isNaN(newQuantity) || newQuantity < 1) return;
+      currentEditRow.cells[1].innerText = newQuantity;
+      closeModal();
+      updateTotalAmount();
+    }
+    function deleteModal() {
+      if (!currentEditRow) return;
+      currentEditRow.parentNode.removeChild(currentEditRow);
+      closeModal();
+      updateTotalAmount();
+    }
+    function modalIncreaseQuantity() {
+      const input = document.getElementById("modalQuantity");
+      let current = parseInt(input.value) || 1;
+      input.value = current + 1;
+    }
+    function modalDecreaseQuantity() {
+      const input = document.getElementById("modalQuantity");
+      let current = parseInt(input.value) || 1;
+      if (current > 1) input.value = current - 1;
+    }
   </script>
 </body>
 </html>
