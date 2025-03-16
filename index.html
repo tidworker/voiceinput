@@ -109,8 +109,7 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 刪除黑色方形按鈕：移除 #decreaseButton 與 #increaseButton 的相關 HTML 與 CSS */
-    /* 浮動錄音按鈕 */
+    /* 只保留紅色浮動錄音按鈕（移除黑色方形按鈕） */
     #voiceButton {
       position: fixed;
       bottom: 50px;
@@ -177,7 +176,7 @@
     </div>
   </div>
 
-  <!-- 只保留紅色浮動錄音按鈕 -->
+  <!-- 僅保留紅色浮動錄音按鈕 -->
   <button id="voiceButton"></button>
 
   <script>
@@ -190,8 +189,8 @@
     let currentMode = "red";
     let startX = 0, startY = 0;
     let swipeToggled = false;
-    // 新增旗標以判斷是否為紅色按鈕觸控
-    let isVoiceButtonTouch = false;
+    // 用於全域手勢切換的觸控起始時間
+    let globalStartTime = null;
 
     // 模擬菜單資料（也可外部載入）
     let menu = [
@@ -329,13 +328,8 @@
       let deltaX = currentX - startX;
       let deltaY = currentY - startY;
       if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
-        // 若touch起點來自 voiceButton（isVoiceButtonTouch 為 true），則不觸發全域換頁
-        if (!isVoiceButtonTouch) {
-          // 判斷為水平左滑：deltaX 小於 -30
-          if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-            window.location.href = "orders.html";
-          }
-        }
+        // 這裡僅處理按住錄音按鈕的部分由 voiceButton 自己處理，
+        // 全域手勢判斷放在下面
         swipeToggled = true;
       }
       if (deltaX !== 0 || deltaY !== 0) {
@@ -344,32 +338,31 @@
       }
     }
 
-    // 設定 voiceButton 的觸控旗標，防止在按住紅色按鈕時觸發全域左滑換頁
-    let isVoiceButtonTouch = false;
+    // 針對 voiceButton 設定觸控事件（不參與全域左滑換頁）
     voiceButton.addEventListener("touchstart", function(e) {
-      isVoiceButtonTouch = true;
+      e.stopPropagation();
       startX = e.touches[0].pageX;
       startY = e.touches[0].pageY;
-      swipeToggled = false;
       holdActive = true;
-      e.stopPropagation(); // 阻止事件冒泡到全域監聽器
+      swipeToggled = false;
+      // 這裡不記錄全域手勢
       e.preventDefault();
     });
     voiceButton.addEventListener("touchend", function(e) {
-      isVoiceButtonTouch = false;
-      endDrag();
       e.stopPropagation();
+      endDrag();
       e.preventDefault();
     });
-    // 其他 voiceButton 事件
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX;
       startY = e.pageY;
-      swipeToggled = false;
       holdActive = true;
+      swipeToggled = false;
       e.preventDefault();
     });
-    voiceButton.addEventListener("mousemove", function(e) { if (holdActive) updateButtonPosition(e.pageX, e.pageY); });
+    voiceButton.addEventListener("mousemove", function(e) {
+      if (holdActive) updateButtonPosition(e.pageX, e.pageY);
+    });
     voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
 
     function endDrag() {
@@ -596,31 +589,36 @@
 
     loadCurrentOrder();
 
-    // ------------------ 主頁面全域左滑切換至 orders.html ------------------
-    let globalStartX = null, globalStartY = null;
+    // ------------------ 主頁全域左滑切換至 orders.html ------------------
+    let globalStartX = null, globalStartY = null, globalStartTime = null;
     document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         // 若觸控目標為 voiceButton，則不記錄全域手勢
         if (e.target.id === "voiceButton") {
           globalStartX = null;
+          globalStartTime = null;
           return;
         }
         globalStartX = e.touches[0].clientX;
         globalStartY = e.touches[0].clientY;
+        globalStartTime = Date.now();
       }
     });
     document.addEventListener("touchend", function(e) {
-      if (globalStartX === null) return;
+      if (globalStartX === null || globalStartTime === null) return;
+      const endTime = Date.now();
+      const duration = endTime - globalStartTime; // 持續時間（毫秒）
       const endX = e.changedTouches[0].clientX;
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 若判斷為水平左滑（deltaX 小於 -30）且觸控起點非來自 voiceButton
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
+      // 只有在持續時間小於或等於500毫秒且判斷為水平左滑（deltaX < -30）時才切換
+      if (duration <= 500 && Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
       }
       globalStartX = null;
       globalStartY = null;
+      globalStartTime = null;
     });
   </script>
 </body>
