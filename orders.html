@@ -81,6 +81,10 @@
   </div>
   <script>
     let orderHistory = [];
+    // 全域記錄目前待交換或待刪除的訂單區塊
+    let globalSwipedOrder = null;
+    let globalSwipedTimer = null;
+    
     // 從 localStorage 讀取訂單記錄（主頁存入）
     function loadOrderHistory() {
       const historyJSON = localStorage.getItem("orderHistory");
@@ -98,6 +102,13 @@
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
+      // 重置全域狀態，避免因重新渲染導致舊狀態影響
+      globalSwipedOrder = null;
+      if (globalSwipedTimer) {
+        clearTimeout(globalSwipedTimer);
+        globalSwipedTimer = null;
+      }
+      
       if (orderHistory.length === 0) {
         container.innerHTML = "<p>沒有訂單資料</p>";
         return;
@@ -167,16 +178,16 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 附加左滑事件：左滑刪除該筆訂單
+        // 附加左滑事件
         attachOrderSwipe(orderBlock);
         
         container.appendChild(orderBlock);
       });
     }
-    // 附加訂單區塊的左滑刪除功能（修改版）
+    
+    // 附加訂單區塊的左滑功能（依需求進行：第一次左滑後，3秒內若左滑另一筆則交換，若同一筆則刪除）
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
-      let swipeTimer = null;
 
       orderBlock.addEventListener("touchstart", function(e) {
         startX = e.touches[0].clientX;
@@ -189,35 +200,55 @@
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 若為水平左滑且滑動距離超過 30px
+        // 檢查是否為水平左滑且距離超過 30px
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          if (orderBlock.dataset.swiped === "true") {
-            // 第二次左滑：直接刪除訂單（清除計時器）
-            const orderIndex = parseInt(orderBlock.dataset.orderIndex);
-            if (swipeTimer) clearTimeout(swipeTimer);
-            deleteOrder(orderIndex);
+          // 若已有全域左滑訂單
+          if (globalSwipedOrder) {
+            if (globalSwipedOrder === orderBlock) {
+              // 同一筆訂單重複左滑，則刪除此筆訂單
+              const orderIndex = parseInt(orderBlock.dataset.orderIndex);
+              clearTimeout(globalSwipedTimer);
+              globalSwipedOrder = null;
+              deleteOrder(orderIndex);
+            } else {
+              // 不同訂單間左滑，則進行順序交換
+              const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
+              const secondIndex = parseInt(orderBlock.dataset.orderIndex);
+              // 交換 orderHistory 陣列中的兩筆資料
+              const temp = orderHistory[firstIndex];
+              orderHistory[firstIndex] = orderHistory[secondIndex];
+              orderHistory[secondIndex] = temp;
+              clearTimeout(globalSwipedTimer);
+              globalSwipedOrder = null;
+              saveOrderHistory();
+              renderOrderHistory();
+              return;
+            }
           } else {
-            // 第一次左滑：移動 10px 並降低透明度，設定狀態與 2 秒倒數恢復
-            orderBlock.style.transform = "translateX(-15px)";
-            orderBlock.style.opacity = "0.5";
-            orderBlock.dataset.swiped = "true";
-            swipeTimer = setTimeout(function() {
-              // 2秒內沒有第二次左滑，則恢復初始狀態
+            // 尚無其他左滑訂單，將此訂單設定為待交換／待刪除狀態
+            orderBlock.style.transform = "translateX(-10px)";
+            orderBlock.style.opacity = "0.6";
+            globalSwipedOrder = orderBlock;
+            globalSwipedTimer = setTimeout(function() {
+              // 3秒內無後續操作則恢復原狀
               orderBlock.style.transform = "";
               orderBlock.style.opacity = "";
-              orderBlock.dataset.swiped = "";
-            }, 2000);
+              globalSwipedOrder = null;
+            }, 3000);
           }
         }
         startX = null;
         startY = null;
       });
     }
+    
+    // 刪除訂單
     function deleteOrder(index) {
       orderHistory.splice(index, 1);
       saveOrderHistory();
       renderOrderHistory();
     }
+    
     // 全域右滑返回主頁（index.html）
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
@@ -239,6 +270,7 @@
       globalStartX = null;
       globalStartY = null;
     });
+    
     // 初始化
     loadOrderHistory();
     renderOrderHistory();
