@@ -29,6 +29,7 @@
       margin-bottom: 15px;
       padding: 10px;
       position: relative;
+      transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單標題容器，左右分佈 */
     .orderHeaderContainer {
@@ -172,22 +173,41 @@
         container.appendChild(orderBlock);
       });
     }
-    // 附加訂單區塊的左滑刪除功能
+    // 附加訂單區塊的左滑刪除功能（修改版）
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
+      let swipeTimer = null;
+
       orderBlock.addEventListener("touchstart", function(e) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
       });
+
       orderBlock.addEventListener("touchend", function(e) {
         if (startX === null) return;
         const endX = e.changedTouches[0].clientX;
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
+        // 若為水平左滑且滑動距離超過 30px
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          const orderIndex = parseInt(orderBlock.dataset.orderIndex);
-          if (confirm("確定刪除這筆訂單？")) { deleteOrder(orderIndex); }
+          if (orderBlock.dataset.swiped === "true") {
+            // 第二次左滑：直接刪除訂單（清除計時器）
+            const orderIndex = parseInt(orderBlock.dataset.orderIndex);
+            if (swipeTimer) clearTimeout(swipeTimer);
+            deleteOrder(orderIndex);
+          } else {
+            // 第一次左滑：移動 10px 並降低透明度，設定狀態與 2 秒倒數恢復
+            orderBlock.style.transform = "translateX(-10px)";
+            orderBlock.style.opacity = "0.6";
+            orderBlock.dataset.swiped = "true";
+            swipeTimer = setTimeout(function() {
+              // 2秒內沒有第二次左滑，則恢復初始狀態
+              orderBlock.style.transform = "";
+              orderBlock.style.opacity = "";
+              orderBlock.dataset.swiped = "";
+            }, 2000);
+          }
         }
         startX = null;
         startY = null;
