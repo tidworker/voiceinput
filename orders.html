@@ -74,7 +74,7 @@
       position: fixed;
       bottom: 50px;
       left: 50%;
-      transform: translateX(-50%);
+      transform: translate(-50%, 0);
       width: 70px;
       height: 70px;
       background-color: red;
@@ -98,11 +98,9 @@
       outline: none;
       -webkit-tap-highlight-color: transparent;
     }
-    /* 左側按鈕位置 */
     #decreaseButton {
       left: calc(50% - 35px - 150px - 10px);
     }
-    /* 右側按鈕位置 */
     #increaseButton {
       left: calc(50% + 35px + 10px);
     }
@@ -185,67 +183,75 @@
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
 
-    window.onload = function() {
+    // 初始化所有紅色按鈕事件監聽
+    function initVoiceButton(){
+      const voiceButton = document.getElementById("voiceButton");
+      let startX = 0, startY = 0;
+      let swipeToggled = false;
+      let gestureDirection = "";
+      let gestureStartTime = 0;
+      voiceButton.style.transform = "translate(-50%, 0)";
+
+      voiceButton.addEventListener("mousedown", function(e) {
+        startX = e.pageX;
+        startY = e.pageY;
+        swipeToggled = false;
+        gestureStartTime = Date.now();
+        gestureDirection = "";
+        e.preventDefault();
+      });
+      voiceButton.addEventListener("touchstart", function(e) {
+        startX = e.touches[0].pageX;
+        startY = e.touches[0].pageY;
+        swipeToggled = false;
+        gestureStartTime = Date.now();
+        gestureDirection = "";
+        e.preventDefault();
+      });
+      voiceButton.addEventListener("mousemove", function(e) {
+        updateButtonPosition(e.pageX, e.pageY);
+      });
+      voiceButton.addEventListener("touchmove", function(e) {
+        updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
+        e.preventDefault();
+      }, {passive: false});
+      voiceButton.addEventListener("mouseup", function(e) {
+        endDrag();
+        e.preventDefault();
+      });
+      voiceButton.addEventListener("touchend", function(e) {
+        endDrag();
+        e.preventDefault();
+      });
+
+      function updateButtonPosition(currentX, currentY) {
+        let deltaX = currentX - startX;
+        let deltaY = currentY - startY;
+        if (!swipeToggled && Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
+          gestureDirection = (deltaX < 0) ? "left" : "right";
+          swipeToggled = true;
+        }
+        const angle = Math.atan2(deltaY, deltaX);
+        voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
+      }
+      function endDrag() {
+        if (navigator.vibrate) { navigator.vibrate(50); }
+        voiceButton.style.transform = "translate(-50%, 0)";
+        voiceButton.style.backgroundColor = "red";
+        if (gestureDirection === "left") {
+          window.location.href = "index.html";
+        }
+        gestureDirection = "";
+        swipeToggled = false;
+      }
+    }
+
+    // 初始化函式，等待 DOM 內容載入後再執行
+    document.addEventListener("DOMContentLoaded", function(){
       showOrderId();
       loadOrders();
-    };
-
-    /* 紅色浮動按鈕手勢控制 */
-    // 若拖曳紅色按鈕向左超過 30px，放開時跳轉至 index.html
-    let startX = 0, startY = 0;
-    let swipeToggled = false;
-    let gestureDirection = "";
-    let gestureStartTime = 0;
-    const voiceButton = document.getElementById("voiceButton");
-    voiceButton.style.transform = "translate(-50%, 0)";
-
-    function updateButtonPosition(currentX, currentY) {
-      let deltaX = currentX - startX;
-      let deltaY = currentY - startY;
-      if (!swipeToggled && Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY)) {
-        gestureDirection = (deltaX < 0) ? "left" : "right";
-        swipeToggled = true;
-      }
-      const angle = Math.atan2(deltaY, deltaX);
-      voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
-    }
-
-    voiceButton.addEventListener("mousedown", function(e) {
-      startX = e.pageX;
-      startY = e.pageY;
-      swipeToggled = false;
-      gestureStartTime = Date.now();
-      gestureDirection = "";
-      e.preventDefault();
+      initVoiceButton();
     });
-    voiceButton.addEventListener("touchstart", function(e) {
-      startX = e.touches[0].pageX;
-      startY = e.touches[0].pageY;
-      swipeToggled = false;
-      gestureStartTime = Date.now();
-      gestureDirection = "";
-      e.preventDefault();
-    });
-    voiceButton.addEventListener("mousemove", function(e) {
-      updateButtonPosition(e.pageX, e.pageY);
-    });
-    // 針對 touchmove 加入 {passive: false} 選項
-    voiceButton.addEventListener("touchmove", function(e) {
-      updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY);
-      e.preventDefault();
-    }, {passive: false});
-    function endDrag() {
-      if (navigator.vibrate) { navigator.vibrate(50); }
-      voiceButton.style.transform = "translate(-50%, 0)";
-      voiceButton.style.backgroundColor = "red";
-      if (gestureDirection === "left") {
-        window.location.href = "index.html";
-      }
-      gestureDirection = "";
-      swipeToggled = false;
-    }
-    voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
-    voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
   </script>
 </body>
 </html>
