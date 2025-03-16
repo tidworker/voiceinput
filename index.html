@@ -19,7 +19,7 @@
     img {
       max-width: 100%;
     }
-    /* 訂單與語音輸入區 */
+    /* 統一內容區：訂單表格與語音輸入區 */
     #contentContainer {
       width: 90%;
       height: 340px;
@@ -53,7 +53,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 語音輸入區 */
+    /* 語音輸入區：文字呈橘色 */
     #voiceOutput {
       margin-top: 10px;
       text-align: left;
@@ -109,7 +109,27 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 移除原有左右方形按鈕，只保留紅色浮動錄音按鈕 */
+    /* 左右方形按鈕 */
+    #decreaseButton,
+    #increaseButton {
+      position: fixed;
+      bottom: 50px;
+      width: 150px;
+      height: 100px;
+      background-color: black;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #decreaseButton {
+      left: calc(50% - 35px - 150px - 10px);
+    }
+    #increaseButton {
+      left: calc(50% + 35px + 10px);
+    }
+    /* 浮動錄音按鈕 */
     #voiceButton {
       position: fixed;
       bottom: 50px;
@@ -135,7 +155,6 @@
 <body>
   <br />
   <img src="3.png" alt="圖片" />
-
   <!-- 訂單與語音輸入區 -->
   <div id="contentContainer">
     <table id="orderTable">
@@ -148,13 +167,12 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 訂單項目動態加入 -->
+        <!-- 訂單項目將動態加入 -->
       </tbody>
     </table>
     <div id="voiceOutput"></div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
-
   <button id="resetButton" onclick="resetOrder()">重新點餐</button>
   <button id="completeOrderButton" onclick="completeOrder()">完成訂餐</button>
 
@@ -175,9 +193,10 @@
       </div>
     </div>
   </div>
-
-  <!-- 紅色浮動錄音按鈕 -->
+  <!-- 左、右、浮動按鈕 -->
+  <button id="decreaseButton"></button>
   <button id="voiceButton"></button>
+  <button id="increaseButton"></button>
 
   <script>
     // 全域變數與初始設定
@@ -189,10 +208,6 @@
     let currentMode = "red";
     let startX = 0, startY = 0;
     let swipeToggled = false;
-    // 記錄紅色按鈕觸控起始時間（用於上滑判定）
-    let voiceStartTime = 0;
-    // 上滑計時器（用於清除備忘錄）
-    let upSwipeTimer = null;
 
     // 模擬菜單資料（也可外部載入）
     let menu = [
@@ -202,7 +217,7 @@
       { keywords: ["freeDrink"], name: "免費飲料", price: 0 }
     ];
 
-    // 載入外部字庫與菜單
+    // 載入外部字庫與菜單（若有）
     function loadTranslationDatabase() {
       fetch("database.txt")
         .then(response => {
@@ -235,9 +250,7 @@
       let converted = "";
       for (let i = 0; i < dishChinese.length; i++) {
         const ch = dishChinese.charAt(i);
-        if (charMapping[ch] !== undefined) {
-          converted += charMapping[ch];
-        }
+        if (charMapping[ch] !== undefined) { converted += charMapping[ch]; }
       }
       return converted;
     }
@@ -279,10 +292,7 @@
       if (!holdActive) return;
       startVoiceInputSingle().then((transcript) => {
         if (!holdActive) return;
-        if (transcript === "_RESTART_") {
-          continuousRecognition();
-          return;
-        }
+        if (transcript === "_RESTART_") { continuousRecognition(); return; }
         if (transcript && transcript.trim() !== "") {
           let text = transcript.trim();
           switch (currentMode) {
@@ -304,7 +314,12 @@
       });
     }
 
-    // 紅色按鈕原有功能保留：上滑處理
+    function startOrdering() {
+      currentMode = "red";
+      voiceButton.style.backgroundColor = "darkred";
+      if (navigator.vibrate) navigator.vibrate(50);
+      continuousRecognition();
+    }
     function deleteLatestOrder() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       if (tbody.rows.length > 0) {
@@ -323,90 +338,56 @@
     function startGreenMode() {
       currentMode = "green";
       voiceButton.style.backgroundColor = "darkred";
-      if (navigator.vibrate) { navigator.vibrate(50); }
+      if (navigator.vibrate) navigator.vibrate(50);
       continuousRecognition();
     }
-
-    // 紅色按鈕事件處理（touch 事件）
-    voiceButton.addEventListener("touchstart", function(e) {
-      startX = e.touches[0].pageX;
-      startY = e.touches[0].pageY;
-      holdActive = true;
-      swipeToggled = false;
-      voiceStartTime = Date.now();
-      // 清除上滑計時器（如果存在）
-      if (upSwipeTimer) { clearTimeout(upSwipeTimer); upSwipeTimer = null; }
-      e.stopPropagation();
-      e.preventDefault();
-    });
-    voiceButton.addEventListener("touchmove", function(e) {
-      if (!holdActive) return;
-      let currentX = e.touches[0].pageX;
-      let currentY = e.touches[0].pageY;
-      updateButtonPosition(currentX, currentY);
-      // 若上滑判定（deltaY < -30且垂直位移大於水平位移），啟動上滑計時器
+    function updateButtonPosition(currentX, currentY) {
+      let deltaX = currentX - startX;
       let deltaY = currentY - startY;
-      let deltaX = e.touches[0].pageX - startX;
-      if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30 && !upSwipeTimer) {
-        upSwipeTimer = setTimeout(function() {
-          // 清除語音備忘錄內容立即生效
-          document.getElementById("voiceOutput").innerHTML = "";
-          vibrateOnce();
-          upSwipeTimer = null;
-        }, 500);
-      }
-      e.preventDefault();
-    });
-    voiceButton.addEventListener("touchend", function(e) {
-      e.stopPropagation();
-      e.preventDefault();
-      let endTime = Date.now();
-      let duration = endTime - voiceStartTime;
-      let endX = e.changedTouches[0].pageX;
-      let endY = e.changedTouches[0].pageY;
-      let deltaX = endX - startX;
-      let deltaY = endY - startY;
-      holdActive = false;
-      // 還原紅色按鈕視覺效果
-      voiceButton.style.transform = "translate(-50%, 0)";
-      voiceButton.style.backgroundColor = "red";
-      // 如果判斷為水平左滑（紅色按鈕自身不執行換頁，留給容器處理），此處不處理換頁
-      // 如果判斷為垂直上滑：
-      if (Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -30) {
-        if (duration < 500) {
-          deleteLatestOrder();
-          vibrateTwice();
+      if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
+        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+          // 修改為全域左滑切換到 orders.html（deltaX 小於 -30）
+          deltaX < 0 ? deleteCurrentVoiceLine() : startGreenMode();
+        } else {
+          deltaY < 0 ? deleteLatestOrder() : startOrdering();
         }
-        // 如果duration >= 500，上滑計時器已處理備忘錄清除
-        if (upSwipeTimer) { clearTimeout(upSwipeTimer); upSwipeTimer = null; }
+        swipeToggled = true;
       }
-      startX = 0; startY = 0; swipeToggled = false;
-    });
-    // 保留 mouse 事件（相容性處理）
+      if (deltaX !== 0 || deltaY !== 0) {
+        const angle = Math.atan2(deltaY, deltaX);
+        voiceButton.style.transform = `translate(-50%, 0) translate(${20 * Math.cos(angle)}px, ${20 * Math.sin(angle)}px)`;
+      }
+    }
+
+    const voiceButton = document.getElementById("voiceButton");
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX;
       startY = e.pageY;
-      holdActive = true;
       swipeToggled = false;
-      voiceStartTime = Date.now();
+      holdActive = true;
       e.preventDefault();
     });
-    voiceButton.addEventListener("mousemove", function(e) {
-      if (holdActive) updateButtonPosition(e.pageX, e.pageY);
-    });
-    voiceButton.addEventListener("mouseup", function(e) {
-      endDrag();
+    voiceButton.addEventListener("touchstart", function(e) {
+      startX = e.touches[0].pageX;
+      startY = e.touches[0].pageY;
+      swipeToggled = false;
+      holdActive = true;
       e.preventDefault();
     });
+    voiceButton.addEventListener("mousemove", function(e) { if (holdActive) updateButtonPosition(e.pageX, e.pageY); });
+    voiceButton.addEventListener("touchmove", function(e) { if (holdActive) updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY); e.preventDefault(); });
     function endDrag() {
       if (navigator.vibrate) { navigator.vibrate(50); }
       holdActive = false;
       if (currentRecognition) { currentRecognition.stop(); }
       voiceButton.style.transform = "translate(-50%, 0)";
+      currentMode = "red";
       voiceButton.style.backgroundColor = "red";
     }
+    voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
+    voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
 
-    // 訂單處理邏輯（保持不變）
+    // 訂單處理邏輯
     function processMultipleVoiceInput(inputText) {
       let converted = translateDishName(inputText);
       let tokens = converted.split("/").filter(token => token.trim() !== "");
@@ -535,6 +516,7 @@
       if (historyJSON) { orderHistory = JSON.parse(historyJSON); }
       orderHistory.push(newOrder);
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
+      // 清除暫存的未完成訂單
       localStorage.removeItem("currentOrderData");
       resetOrder();
       window.location.href = "orders.html";
@@ -576,7 +558,7 @@
       if (current > 1) input.value = current - 1;
     }
 
-    // 以下為暫存當前訂單內容功能
+    // 以下為暫存當前訂單內容之功能
     function saveCurrentOrder() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       let currentOrderItems = [];
@@ -615,32 +597,35 @@
       }
     }
 
+    // 當頁面卸載前保存未完成訂單內容
     window.addEventListener("beforeunload", function(e) {
       saveCurrentOrder();
     });
 
+    // 當頁面載入時讀取未完成訂單內容
     loadCurrentOrder();
 
-    // ------------------ 限制左滑換頁判定區僅在 #contentContainer 內 ------------------
-    let containerStartX = null, containerStartY = null;
-    const container = document.getElementById("contentContainer");
-    container.addEventListener("touchstart", function(e) {
+    // ------------------ 主頁面左滑僅在 #contentContainer 區域觸發換頁至 orders.html ------------------
+    let globalStartX = null, globalStartY = null;
+    const contentContainer = document.getElementById("contentContainer");
+    contentContainer.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
-        containerStartX = e.touches[0].clientX;
-        containerStartY = e.touches[0].clientY;
+        globalStartX = e.touches[0].clientX;
+        globalStartY = e.touches[0].clientY;
       }
     });
-    container.addEventListener("touchend", function(e) {
-      if (containerStartX === null) return;
+    contentContainer.addEventListener("touchend", function(e) {
+      if (globalStartX === null) return;
       const endX = e.changedTouches[0].clientX;
       const endY = e.changedTouches[0].clientY;
-      const deltaX = endX - containerStartX;
-      const deltaY = endY - containerStartY;
+      const deltaX = endX - globalStartX;
+      const deltaY = endY - globalStartY;
+      // 判斷為水平左滑（deltaX 小於 -30）
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
       }
-      containerStartX = null;
-      containerStartY = null;
+      globalStartX = null;
+      globalStartY = null;
     });
   </script>
 </body>
