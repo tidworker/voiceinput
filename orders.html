@@ -13,6 +13,7 @@
       background-color: black;
       color: white;
       text-align: center;
+      user-select: none;
     }
     /* 統一內容區 */
     #contentContainer {
@@ -77,14 +78,34 @@
       <p id="voiceMemoContent"></p>
     </div>
   </div>
+
   <script>
-    // 從 local storage 讀取訂單資料
-    const orderDataJSON = localStorage.getItem("orderData");
-    if (orderDataJSON) {
-      const orderData = JSON.parse(orderDataJSON);
+    // 全域變數：記錄訂單資料（來自 local storage）
+    let orderData = null;
+
+    // 讀取 local storage 中的訂單資料
+    function loadOrderData() {
+      const orderDataJSON = localStorage.getItem("orderData");
+      if (orderDataJSON) {
+        orderData = JSON.parse(orderDataJSON);
+      } else {
+        orderData = { orders: [], voiceMemo: "" };
+      }
+    }
+
+    // 儲存訂單資料至 local storage
+    function saveOrderData() {
+      localStorage.setItem("orderData", JSON.stringify(orderData));
+    }
+
+    // 根據 orderData 渲染訂單表格
+    function renderOrders() {
       const tbody = document.querySelector("#orderSummary tbody");
-      orderData.orders.forEach(order => {
+      tbody.innerHTML = "";
+      orderData.orders.forEach((order, index) => {
         const tr = document.createElement("tr");
+        // 設定資料屬性 index 以便後續辨識
+        tr.dataset.index = index;
 
         const tdDish = document.createElement("td");
         tdDish.innerText = order.dish;
@@ -102,13 +123,76 @@
         tdPrice.innerText = order.price;
         tr.appendChild(tdPrice);
 
+        // 附加 swipe 事件：左滑刪除該筆訂單
+        attachRowSwipe(tr, index);
+
         tbody.appendChild(tr);
       });
-      // 直接顯示備忘錄內容
+
+      // 顯示備忘錄內容（直接呈現內文）
       document.getElementById("voiceMemoContent").innerText = orderData.voiceMemo;
-    } else {
-      document.body.innerHTML = "<h1>沒有訂單資料</h1>";
     }
+
+    // 附加表格列 swipe 事件：左滑刪除
+    function attachRowSwipe(row, index) {
+      let startX = null, startY = null;
+      row.addEventListener("touchstart", function(e) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      });
+      row.addEventListener("touchend", function(e) {
+        if (startX === null) return;
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        // 判斷水平滑動且為左滑 (deltaX 小於 -30 且水平位移大於垂直位移)
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
+          // 刪除該筆訂單
+          deleteOrder(parseInt(row.dataset.index));
+          // 避免事件冒泡
+          e.stopPropagation();
+        }
+        startX = null;
+        startY = null;
+      });
+    }
+
+    // 刪除指定 index 的訂單，更新 orderData 與畫面
+    function deleteOrder(index) {
+      // 從訂單陣列中移除該筆資料
+      orderData.orders.splice(index, 1);
+      saveOrderData();
+      renderOrders();
+    }
+
+    // 初始化：讀取資料並渲染
+    loadOrderData();
+    renderOrders();
+
+    // ------------------ 全域右滑返回主頁 ------------------
+    let globalStartX = null, globalStartY = null;
+    document.body.addEventListener("touchstart", function(e) {
+      // 只記錄單一觸控點
+      if (e.touches.length === 1) {
+        globalStartX = e.touches[0].clientX;
+        globalStartY = e.touches[0].clientY;
+      }
+    });
+    document.body.addEventListener("touchend", function(e) {
+      if (globalStartX === null) return;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const deltaX = endX - globalStartX;
+      const deltaY = endY - globalStartY;
+      // 判斷水平右滑 (deltaX 大於 30 且水平位移大於垂直位移)
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
+        // 返回主頁
+        window.location.href = "index.html";
+      }
+      globalStartX = null;
+      globalStartY = null;
+    });
   </script>
 </body>
 </html>
