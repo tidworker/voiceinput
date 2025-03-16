@@ -109,26 +109,7 @@
       margin-top: 10px;
       font-weight: bold;
     }
-    /* 左右方形按鈕 */
-    #decreaseButton,
-    #increaseButton {
-      position: fixed;
-      bottom: 50px;
-      width: 150px;
-      height: 100px;
-      background-color: black;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-    #decreaseButton {
-      left: calc(50% - 35px - 150px - 10px);
-    }
-    #increaseButton {
-      left: calc(50% + 35px + 10px);
-    }
+    /* 刪除黑色方形按鈕：移除 #decreaseButton 與 #increaseButton 的相關 HTML 與 CSS */
     /* 浮動錄音按鈕 */
     #voiceButton {
       position: fixed;
@@ -154,7 +135,7 @@
 </head>
 <body>
   <br />
-  <img src="3.png" alt="歡迎光臨葉阿姨" />
+  <img src="3.png" alt="圖片" />
 
   <!-- 訂單與語音輸入區 -->
   <div id="contentContainer">
@@ -196,10 +177,8 @@
     </div>
   </div>
 
-  <!-- 左、右、浮動按鈕 -->
-  <button id="decreaseButton"></button>
+  <!-- 只保留紅色浮動錄音按鈕 -->
   <button id="voiceButton"></button>
-  <button id="increaseButton"></button>
 
   <script>
     // 全域變數與初始設定
@@ -211,6 +190,8 @@
     let currentMode = "red";
     let startX = 0, startY = 0;
     let swipeToggled = false;
+    // 新增旗標以判斷是否為紅色按鈕觸控
+    let isVoiceButtonTouch = false;
 
     // 模擬菜單資料（也可外部載入）
     let menu = [
@@ -348,11 +329,12 @@
       let deltaX = currentX - startX;
       let deltaY = currentY - startY;
       if (!swipeToggled && (Math.abs(deltaX) > 30 || Math.abs(deltaY) > 30)) {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          // 修改為全域左滑切換到 orders.html（deltaX 小於 -30）
-          deltaX < 0 ? deleteCurrentVoiceLine() : startGreenMode();
-        } else {
-          deltaY < 0 ? deleteLatestOrder() : startOrdering();
+        // 若touch起點來自 voiceButton（isVoiceButtonTouch 為 true），則不觸發全域換頁
+        if (!isVoiceButtonTouch) {
+          // 判斷為水平左滑：deltaX 小於 -30
+          if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
+            window.location.href = "orders.html";
+          }
         }
         swipeToggled = true;
       }
@@ -362,7 +344,24 @@
       }
     }
 
-    const voiceButton = document.getElementById("voiceButton");
+    // 設定 voiceButton 的觸控旗標，防止在按住紅色按鈕時觸發全域左滑換頁
+    let isVoiceButtonTouch = false;
+    voiceButton.addEventListener("touchstart", function(e) {
+      isVoiceButtonTouch = true;
+      startX = e.touches[0].pageX;
+      startY = e.touches[0].pageY;
+      swipeToggled = false;
+      holdActive = true;
+      e.stopPropagation(); // 阻止事件冒泡到全域監聽器
+      e.preventDefault();
+    });
+    voiceButton.addEventListener("touchend", function(e) {
+      isVoiceButtonTouch = false;
+      endDrag();
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    // 其他 voiceButton 事件
     voiceButton.addEventListener("mousedown", function(e) {
       startX = e.pageX;
       startY = e.pageY;
@@ -370,15 +369,9 @@
       holdActive = true;
       e.preventDefault();
     });
-    voiceButton.addEventListener("touchstart", function(e) {
-      startX = e.touches[0].pageX;
-      startY = e.touches[0].pageY;
-      swipeToggled = false;
-      holdActive = true;
-      e.preventDefault();
-    });
     voiceButton.addEventListener("mousemove", function(e) { if (holdActive) updateButtonPosition(e.pageX, e.pageY); });
-    voiceButton.addEventListener("touchmove", function(e) { if (holdActive) updateButtonPosition(e.touches[0].pageX, e.touches[0].pageY); e.preventDefault(); });
+    voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
+
     function endDrag() {
       if (navigator.vibrate) { navigator.vibrate(50); }
       holdActive = false;
@@ -387,8 +380,6 @@
       currentMode = "red";
       voiceButton.style.backgroundColor = "red";
     }
-    voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
-    voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
 
     // 訂單處理邏輯
     function processMultipleVoiceInput(inputText) {
@@ -519,7 +510,6 @@
       if (historyJSON) { orderHistory = JSON.parse(historyJSON); }
       orderHistory.push(newOrder);
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
-      // 清除暫存的未完成訂單
       localStorage.removeItem("currentOrderData");
       resetOrder();
       window.location.href = "orders.html";
@@ -600,18 +590,21 @@
       }
     }
 
-    // 當頁面卸載前保存未完成訂單內容
     window.addEventListener("beforeunload", function(e) {
       saveCurrentOrder();
     });
 
-    // 當頁面載入時讀取未完成訂單內容
     loadCurrentOrder();
 
     // ------------------ 主頁面全域左滑切換至 orders.html ------------------
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
+        // 若觸控目標為 voiceButton，則不記錄全域手勢
+        if (e.target.id === "voiceButton") {
+          globalStartX = null;
+          return;
+        }
         globalStartX = e.touches[0].clientX;
         globalStartY = e.touches[0].clientY;
       }
@@ -622,7 +615,7 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 判斷為水平左滑（deltaX 小於 -30）
+      // 若判斷為水平左滑（deltaX 小於 -30）且觸控起點非來自 voiceButton
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
         window.location.href = "orders.html";
       }
