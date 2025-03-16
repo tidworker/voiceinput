@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>訂單內容</title>
+  <title>訂單紀錄</title>
   <style>
     /* 與主頁相同的黑底白字風格 */
     body {
@@ -15,14 +15,56 @@
       text-align: center;
       user-select: none;
     }
-    /* 統一內容區 */
+    h1 {
+      margin-bottom: 20px;
+    }
+    /* 新增訂單表單 */
+    #orderForm {
+      margin: 0 auto 20px;
+      max-width: 400px;
+      text-align: left;
+      background-color: #222;
+      padding: 15px;
+      border-radius: 5px;
+    }
+    #orderForm input, #orderForm textarea, #orderForm button {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    #orderForm input, #orderForm textarea {
+      background-color: #333;
+      color: white;
+    }
+    #orderForm button {
+      background-color: orange;
+      color: black;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    /* 統一內容區：訂單區塊 */
     #contentContainer {
       width: 90%;
-      margin: 20px auto;
-      overflow-y: auto;
-      background-color: black;
+      margin: 0 auto 20px;
+      padding-bottom: 20px;
     }
-    /* 訂單表格樣式 */
+    /* 每筆訂單區塊 */
+    .orderBlock {
+      border: 1px solid orange;
+      margin-bottom: 15px;
+      border-radius: 3px;
+      padding: 10px;
+      position: relative;
+    }
+    .orderHeader {
+      text-align: left;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    /* 訂單表格 */
     table {
       width: 100%;
       background-color: black;
@@ -30,6 +72,7 @@
       border-collapse: separate;
       border-spacing: 0;
       border-radius: 3px;
+      margin-bottom: 5px;
     }
     table, th, td {
       border: 0;
@@ -48,149 +91,172 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄區：直接顯示內文 */
-    #voiceMemo {
-      margin-top: 10px;
+    /* 備忘錄直接顯示內文 */
+    .voiceMemo {
       text-align: left;
       color: orange;
-      padding: 10px;
+      padding: 5px;
+      background-color: black;
     }
   </style>
 </head>
 <body>
-  <h1>訂單內容</h1>
-  <div id="contentContainer">
-    <table id="orderSummary">
-      <thead>
-        <tr>
-          <th>品項</th>
-          <th>份數</th>
-          <th>備註</th>
-          <th>單價</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- 訂單資料將由 JavaScript 動態加入 -->
-      </tbody>
-    </table>
-    <!-- 下方直接顯示備忘錄內文 -->
-    <div id="voiceMemo">
-      <p id="voiceMemoContent"></p>
-    </div>
+  <h1>訂單紀錄</h1>
+  
+  <!-- 新增訂單表單 -->
+  <div id="orderForm">
+    <input type="text" id="dishInput" placeholder="品項">
+    <input type="number" id="quantityInput" placeholder="份數" min="1" value="1">
+    <input type="text" id="remarkInput" placeholder="備註">
+    <input type="number" id="priceInput" placeholder="單價" min="0">
+    <textarea id="voiceMemoInput" placeholder="備忘錄"></textarea>
+    <button onclick="addOrder()">新增訂單</button>
   </div>
-
+  
+  <!-- 顯示所有訂單 -->
+  <div id="contentContainer">
+    <!-- 每筆訂單區塊將在此動態加入 -->
+  </div>
+  
   <script>
-    // 全域變數：記錄訂單資料（來自 local storage）
-    let orderData = null;
+    // 全域變數：orderHistory 陣列
+    let orderHistory = [];
 
-    // 讀取 local storage 中的訂單資料
-    function loadOrderData() {
-      const orderDataJSON = localStorage.getItem("orderData");
-      if (orderDataJSON) {
-        orderData = JSON.parse(orderDataJSON);
+    // 讀取 localStorage 中的 orderHistory
+    function loadOrderHistory() {
+      const historyJSON = localStorage.getItem("orderHistory");
+      if (historyJSON) {
+        orderHistory = JSON.parse(historyJSON);
       } else {
-        orderData = { orders: [], voiceMemo: "" };
+        orderHistory = [];
       }
     }
 
-    // 儲存訂單資料至 local storage
-    function saveOrderData() {
-      localStorage.setItem("orderData", JSON.stringify(orderData));
+    // 儲存 orderHistory 至 localStorage
+    function saveOrderHistory() {
+      localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
     }
 
-    // 根據 orderData 渲染訂單表格
-    function renderOrders() {
-      const tbody = document.querySelector("#orderSummary tbody");
-      tbody.innerHTML = "";
-      orderData.orders.forEach((order, index) => {
-        const tr = document.createElement("tr");
-        // 設定資料屬性 index 以便後續辨識
-        tr.dataset.index = index;
-
+    // 渲染所有訂單，依序顯示編號
+    function renderOrderHistory() {
+      const container = document.getElementById("contentContainer");
+      container.innerHTML = "";
+      if (orderHistory.length === 0) {
+        container.innerHTML = "<p>目前沒有訂單資料</p>";
+        return;
+      }
+      orderHistory.forEach((order, index) => {
+        // 建立訂單區塊容器
+        const orderBlock = document.createElement("div");
+        orderBlock.classList.add("orderBlock");
+        orderBlock.dataset.orderIndex = index;
+        
+        // 訂單標題：顯示編號
+        const header = document.createElement("div");
+        header.classList.add("orderHeader");
+        header.innerText = "訂單 #" + (index + 1);
+        orderBlock.appendChild(header);
+        
+        // 建立訂單內容表格（單筆訂單資料）
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        ["品項", "份數", "備註", "單價"].forEach(text => {
+          const th = document.createElement("th");
+          th.innerText = text;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        const row = document.createElement("tr");
         const tdDish = document.createElement("td");
         tdDish.innerText = order.dish;
-        tr.appendChild(tdDish);
-
+        row.appendChild(tdDish);
         const tdQty = document.createElement("td");
         tdQty.innerText = order.quantity;
-        tr.appendChild(tdQty);
-
+        row.appendChild(tdQty);
         const tdRemark = document.createElement("td");
         tdRemark.innerText = order.remark;
-        tr.appendChild(tdRemark);
-
+        row.appendChild(tdRemark);
         const tdPrice = document.createElement("td");
         tdPrice.innerText = order.price;
-        tr.appendChild(tdPrice);
-
-        // 附加左滑事件：滑動刪除該筆訂單
-        attachRowSwipe(tr);
-
-        tbody.appendChild(tr);
+        row.appendChild(tdPrice);
+        tbody.appendChild(row);
+        table.appendChild(tbody);
+        orderBlock.appendChild(table);
+        
+        // 顯示備忘錄內文（直接呈現）
+        const memoDiv = document.createElement("div");
+        memoDiv.classList.add("voiceMemo");
+        memoDiv.innerText = order.voiceMemo;
+        orderBlock.appendChild(memoDiv);
+        
+        // 附加左滑事件：左滑刪除整筆訂單
+        attachOrderSwipe(orderBlock);
+        
+        container.appendChild(orderBlock);
       });
-
-      // 顯示備忘錄內容（直接呈現內文）
-      document.getElementById("voiceMemoContent").innerText = orderData.voiceMemo;
     }
 
-    // 附加表格列 swipe 事件：左滑刪除
-    function attachRowSwipe(row) {
+    // 附加訂單區塊左滑刪除事件
+    function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
-      row.addEventListener("touchstart", function(e) {
+      orderBlock.addEventListener("touchstart", function(e) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
       });
-      row.addEventListener("touchend", function(e) {
+      orderBlock.addEventListener("touchend", function(e) {
         if (startX === null) return;
         const endX = e.changedTouches[0].clientX;
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 判斷水平左滑（deltaX 小於 -30 且主要為水平移動）
+        // 判斷水平左滑：deltaX 小於 -30 且水平位移大於垂直位移
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          // 取得目前該列的 index
-          const index = parseInt(row.dataset.index);
-          deleteOrder(index);
-          e.stopPropagation();
+          const orderIndex = parseInt(orderBlock.dataset.orderIndex);
+          if (confirm("確定刪除這筆訂單？")) {
+            deleteOrder(orderIndex);
+          }
         }
         startX = null;
         startY = null;
       });
     }
 
-    // 刪除指定 index 的訂單，更新 orderData 與畫面
+    // 刪除指定索引的訂單，更新 localStorage 與畫面
     function deleteOrder(index) {
-      orderData.orders.splice(index, 1);
-      saveOrderData();
-      renderOrders();
+      orderHistory.splice(index, 1);
+      saveOrderHistory();
+      renderOrderHistory();
     }
 
-    // 初始化：讀取資料並渲染
-    loadOrderData();
-    renderOrders();
+    // 新增訂單：讀取表單資料，建立新訂單，存入 orderHistory
+    function addOrder() {
+      const dish = document.getElementById("dishInput").value.trim();
+      const quantity = document.getElementById("quantityInput").value.trim();
+      const remark = document.getElementById("remarkInput").value.trim();
+      const price = document.getElementById("priceInput").value.trim();
+      const voiceMemo = document.getElementById("voiceMemoInput").value.trim();
+      if (!dish || !quantity || !price) {
+        alert("品項、份數及單價為必填！");
+        return;
+      }
+      const newOrder = { dish, quantity, remark, price, voiceMemo };
+      orderHistory.push(newOrder);
+      saveOrderHistory();
+      renderOrderHistory();
+      // 清空表單
+      document.getElementById("dishInput").value = "";
+      document.getElementById("quantityInput").value = "1";
+      document.getElementById("remarkInput").value = "";
+      document.getElementById("priceInput").value = "";
+      document.getElementById("voiceMemoInput").value = "";
+    }
 
-    // ------------------ 全域右滑返回主頁 ------------------
-    let globalStartX = null, globalStartY = null;
-    // 改用 document 監聽 touchstart 與 touchend
-    document.addEventListener("touchstart", function(e) {
-      if (e.touches.length === 1) {
-        globalStartX = e.touches[0].clientX;
-        globalStartY = e.touches[0].clientY;
-      }
-    });
-    document.addEventListener("touchend", function(e) {
-      if (globalStartX === null) return;
-      const endX = e.changedTouches[0].clientX;
-      const endY = e.changedTouches[0].clientY;
-      const deltaX = endX - globalStartX;
-      const deltaY = endY - globalStartY;
-      // 若水平位移大於垂直位移，且右滑超過 30px
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
-        window.location.href = "index.html";
-      }
-      globalStartX = null;
-      globalStartY = null;
-    });
+    // 初始化：讀取資料並渲染訂單紀錄
+    loadOrderHistory();
+    renderOrderHistory();
   </script>
 </body>
 </html>
