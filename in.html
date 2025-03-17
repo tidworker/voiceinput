@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <title>訂單管理 - 葉阿姨點餐系統</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 引入 html2canvas 用於下載訂單圖片 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    /* 整體外觀：黑底白字，橙色點綴 */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: black;
+      color: white;
+      text-align: center;
+      user-select: none;
+    }
+    header {
+      background-color: #222;
+      padding: 15px 0;
+      margin-bottom: 20px;
+      border-bottom: 2px solid orange;
+    }
+    header h2 {
+      margin: 0;
+      font-size: 24px;
+      color: white;
+    }
+    #orderContainer {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 10px;
+      background-color: black;
+    }
+    .order-block {
+      background-color: black;
+      border: 1px solid orange;
+      border-radius: 3px;
+      margin-bottom: 20px;
+      padding: 10px;
+      text-align: left;
+      position: relative;
+      transition: transform 0.3s, opacity 0.3s;
+    }
+    .orderHeaderContainer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .orderHeaderContainer h3 {
+      margin: 0;
+      font-size: 20px;
+      color: white;
+    }
+    .orderHeaderContainer .button-group button {
+      margin-left: 5px;
+    }
+    .order-list {
+      width: 100%;
+      background-color: black;
+      color: white;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 3px;
+      margin-top: 10px;
+    }
+    .order-list th, .order-list td {
+      border: 1px solid orange;
+      padding: 8px;
+      font-size: 16px;
+      text-align: center;
+    }
+    .order-list th {
+      background-color: orange;
+      color: black;
+    }
+    .total-price {
+      font-size: 18px;
+      text-align: right;
+      margin-top: 5px;
+      font-weight: bold;
+      color: white;
+    }
+    /* 外帶／內用資訊：依狀態套用不同色彩 */
+    .order-type {
+      margin-top: 10px;
+      font-size: 16px;
+      padding: 8px;
+      text-align: center;
+      border-radius: 3px;
+    }
+    .takeout {
+      background-color: orange;
+      color: black;
+    }
+    .dinein {
+      background-color: #1E90FF;
+      color: black;
+    }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      margin: 20px auto;
+      max-width: 800px;
+    }
+    .menu-button {
+      font-size: 20px;
+      padding: 14px 22px;
+      cursor: pointer;
+      border: none;
+      background-color: orange;
+      color: black;
+      transition: background-color 0.2s;
+      width: 48%;
+      border-radius: 3px;
+    }
+    .menu-button:hover {
+      background-color: darkorange;
+    }
+    /* Modal 編輯訂單 */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 10000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.8);
+      overflow-y: auto;
+    }
+    .modal-content {
+      background-color: #222;
+      margin: 15% auto;
+      padding: 20px;
+      width: 300px;
+      text-align: center;
+      position: relative;
+      border: 1px solid orange;
+      border-radius: 3px;
+      color: white;
+    }
+    .close {
+      position: absolute;
+      right: 10px;
+      top: 5px;
+      font-size: 24px;
+      color: orange;
+      cursor: pointer;
+    }
+    .modal label {
+      font-size: 16px;
+      margin-right: 5px;
+    }
+    .modal input[type="time"],
+    .modal select {
+      font-size: 16px;
+      padding: 4px;
+      margin-bottom: 10px;
+      background-color: #333;
+      color: white;
+      border: 1px solid orange;
+      border-radius: 3px;
+    }
+    .modal button {
+      font-size: 16px;
+      padding: 6px 12px;
+      border: none;
+      background-color: orange;
+      color: black;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-top: 10px;
+      border-radius: 3px;
+    }
+    .modal button:hover {
+      background-color: darkorange;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h2>訂單管理</h2>
+  </header>
+  
+  <div id="orderContainer">
+    <!-- 訂單內容將由 JavaScript 動態產生 -->
+  </div>
+  
+  <div class="actions">
+    <button class="menu-button" onclick="goBackMenu()">返回 Menu</button>
+    <button class="menu-button" onclick="resetOrderNumber()">重置編號</button>
+  </div>
+  
+  <!-- 編輯訂單 Modal (設定外帶取餐時間與內用座位) -->
+  <div id="editNoteModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeEditNoteModal()">&times;</span>
+      <h3>編輯訂單資訊</h3>
+      <div>
+        <input type="radio" id="editTakeout" name="editOrderType" value="外帶" checked onclick="toggleEditOrderType()">
+        <label for="editTakeout">外帶</label>
+        <input type="radio" id="editDinein" name="editOrderType" value="內用" onclick="toggleEditOrderType()">
+        <label for="editDinein">內用</label>
+      </div>
+      <div id="editTakeoutOption">
+        <label for="editPickupTime">取餐時間：</label>
+        <input type="time" id="editPickupTime">
+      </div>
+      <div id="editDineinOption" style="display:none;">
+        <label for="editTableNumber">座位：</label>
+        <select id="editTableNumber">
+          <option value="R1">R1</option>
+          <option value="R2">R2</option>
+          <option value="M1">M1</option>
+          <option value="M2">M2</option>
+          <option value="M3">M3</option>
+          <option value="L1">L1</option>
+        </select>
+      </div>
+      <button onclick="saveEditedOrder()">儲存修改</button>
+    </div>
+  </div>
+  
+  <script>
+    // 全域變數：滑動相關
+    let globalSwipedOrder = null;
+    let globalSwipedTimer = null;
+    let globalSwappedIndices = null;
+    
+    // 返回主選單
+    function goBackMenu(){
+      window.location.href = "index2.html";
+    }
+    // 重置訂單編號
+    function resetOrderNumber(){
+      if(confirm("是否確定重置訂單編號？")){
+        localStorage.setItem("orderNumberCounter", 1);
+        alert("訂單編號已重置。");
+      }
+    }
+    
+    // 載入訂單資料並顯示 (資料存於 localStorage 的 allOrders)
+    function loadOrders(){
+      let ordersStr = localStorage.getItem("allOrders");
+      let orderContainer = document.getElementById("orderContainer");
+      orderContainer.innerHTML = "";
+      if(!ordersStr || JSON.parse(ordersStr).length === 0){
+        orderContainer.innerHTML = "<p>目前沒有訂單</p>";
+        return;
+      }
+      let allOrders = JSON.parse(ordersStr);
+      allOrders.forEach((order, orderIndex) => {
+        // 建立訂單區塊，設定 id 與資料索引
+        let orderBlock = document.createElement("div");
+        orderBlock.className = "order-block";
+        orderBlock.id = "orderBlock-" + orderIndex;
+        orderBlock.dataset.orderIndex = orderIndex;
+        
+        // 訂單標題與操作按鈕
+        let headerDiv = document.createElement("div");
+        headerDiv.className = "orderHeaderContainer";
+        headerDiv.innerHTML = `
+          <h3>訂單編號：${order.orderId}</h3>
+          <div class="button-group">
+            <button onclick="editOrder(${orderIndex})">編輯訂單</button>
+            <button onclick="deleteOrder(${orderIndex})">刪除訂單</button>
+            <button onclick="downloadOrder(${orderIndex})">下載訂單</button>
+          </div>`;
+        orderBlock.appendChild(headerDiv);
+        
+        // 訂單內容表格
+        let table = document.createElement("table");
+        table.className = "order-list";
+        table.innerHTML = `<thead>
+          <tr>
+            <th>品項</th>
+            <th>單價</th>
+            <th>數量</th>
+            <th>備註</th>
+            <th>小計</th>
+          </tr>
+        </thead><tbody></tbody>`;
+        let tbody = table.querySelector("tbody");
+        let orderTotal = 0;
+        for(let itemName in order.items){
+          let item = order.items[itemName];
+          let subTotal = (item.subTotal !== undefined)
+                          ? item.subTotal
+                          : item.price * item.quantity + (item.eggCost || 0);
+          orderTotal += subTotal;
+          let row = document.createElement("tr");
+          row.innerHTML = `<td>${itemName}</td>
+                           <td>$${item.price}</td>
+                           <td>${item.quantity}</td>
+                           <td>${item.remark || "-"}</td>
+                           <td>$${subTotal}</td>`;
+          tbody.appendChild(row);
+        }
+        orderBlock.appendChild(table);
+        
+        // 顯示外帶／內用資訊
+        if(order.orderType) {
+          let infoDiv = document.createElement("div");
+          infoDiv.className = "order-type " + (order.orderType === "外帶" ? "takeout" : "dinein");
+          if(order.orderType === "外帶"){
+            infoDiv.innerText = `外帶，取餐時間：${order.pickupTime || "未設定"}`;
+          } else {
+            infoDiv.innerText = `內用，座位：${order.tableNumber || "未設定"}`;
+          }
+          orderBlock.appendChild(infoDiv);
+        }
+        
+        // 顯示總金額
+        let totalDiv = document.createElement("div");
+        totalDiv.className = "total-price";
+        totalDiv.innerText = "總金額：$" + orderTotal;
+        orderBlock.appendChild(totalDiv);
+        
+        // 套用滑動功能：附加左滑事件
+        attachOrderSwipe(orderBlock);
+        
+        orderContainer.appendChild(orderBlock);
+      });
+    }
+    
+    // 刪除訂單功能
+    function deleteOrder(index){
+      if(confirm("是否確定刪除訂單？")){
+        let allOrders = JSON.parse(localStorage.getItem("allOrders"));
+        allOrders.splice(index, 1);
+        localStorage.setItem("allOrders", JSON.stringify(allOrders));
+        loadOrders();
+      }
+    }
+    
+    // 編輯訂單：開啟 Modal 載入該筆訂單資訊
+    let currentEditOrderIndex = null;
+    function editOrder(index){
+      currentEditOrderIndex = index;
+      let allOrders = JSON.parse(localStorage.getItem("allOrders"));
+      let order = allOrders[index];
+      if(order.orderType === "內用"){
+        document.getElementById("editDinein").checked = true;
+        document.getElementById("editTakeout").checked = false;
+        document.getElementById("editDineinOption").style.display = "block";
+        document.getElementById("editTakeoutOption").style.display = "none";
+        document.getElementById("editTableNumber").value = order.tableNumber || "R1";
+      } else {
+        document.getElementById("editTakeout").checked = true;
+        document.getElementById("editDinein").checked = false;
+        document.getElementById("editTakeoutOption").style.display = "block";
+        document.getElementById("editDineinOption").style.display = "none";
+        document.getElementById("editPickupTime").value = order.pickupTime || "";
+      }
+      document.getElementById("editNoteModal").style.display = "block";
+    }
+    
+    function closeEditNoteModal(){
+      document.getElementById("editNoteModal").style.display = "none";
+    }
+    
+    // 切換 Modal 中外帶／內用顯示
+    function toggleEditOrderType(){
+      let isTakeout = document.getElementById("editTakeout").checked;
+      document.getElementById("editTakeoutOption").style.display = isTakeout ? "block" : "none";
+      document.getElementById("editDineinOption").style.display = isTakeout ? "none" : "block";
+    }
+    
+    // 儲存修改後的訂單資訊
+    function saveEditedOrder(){
+      let allOrders = JSON.parse(localStorage.getItem("allOrders"));
+      if(currentEditOrderIndex === null || !allOrders[currentEditOrderIndex]){
+        alert("找不到該訂單資料");
+        return;
+      }
+      let order = allOrders[currentEditOrderIndex];
+      if(document.getElementById("editTakeout").checked){
+        order.orderType = "外帶";
+        order.pickupTime = document.getElementById("editPickupTime").value;
+        order.tableNumber = "";
+      } else {
+        order.orderType = "內用";
+        order.tableNumber = document.getElementById("editTableNumber").value;
+        order.pickupTime = "";
+      }
+      allOrders[currentEditOrderIndex] = order;
+      localStorage.setItem("allOrders", JSON.stringify(allOrders));
+      closeEditNoteModal();
+      loadOrders();
+    }
+    
+    // 下載訂單功能：使用 html2canvas 將訂單區塊轉成 JPG 圖片下載
+    function downloadOrder(index) {
+      let orderBlock = document.getElementById("orderBlock-" + index);
+      if (!orderBlock) return;
+      html2canvas(orderBlock).then(canvas => {
+        let dataURL = canvas.toDataURL("image/jpeg");
+        let a = document.createElement("a");
+        a.href = dataURL;
+        a.download = "order_" + index + ".jpg";
+        a.click();
+      });
+    }
+    
+    // --- 滑動功能 ---
+    // 附加左滑事件至指定訂單區塊：第一次左滑待命，3秒內重複左滑則刪除；若連續左滑不同訂單則交換順序並執行動畫效果
+    function attachOrderSwipe(orderBlock) {
+      let startX = null, startY = null;
+      orderBlock.addEventListener("touchstart", function(e) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      });
+      orderBlock.addEventListener("touchend", function(e) {
+        if (startX === null) return;
+        let endX = e.changedTouches[0].clientX;
+        let endY = e.changedTouches[0].clientY;
+        let deltaX = endX - startX;
+        let deltaY = endY - startY;
+        // 判斷是否為水平左滑且滑動距離超過 30px
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
+          if (globalSwipedOrder) {
+            if (globalSwipedOrder === orderBlock) {
+              // 同一筆訂單重複左滑，刪除該訂單
+              let orderIndex = parseInt(orderBlock.dataset.orderIndex);
+              clearTimeout(globalSwipedTimer);
+              globalSwipedOrder = null;
+              deleteOrder(orderIndex);
+            } else {
+              // 連續左滑不同訂單：先套用效果，延時後交換訂單順序
+              orderBlock.style.transform = "translateX(-10px)";
+              orderBlock.style.opacity = "0.5";
+              clearTimeout(globalSwipedTimer);
+              globalSwipedTimer = setTimeout(function() {
+                let firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
+                let secondIndex = parseInt(orderBlock.dataset.orderIndex);
+                let orders = JSON.parse(localStorage.getItem("allOrders"));
+                let temp = orders[firstIndex];
+                orders[firstIndex] = orders[secondIndex];
+                orders[secondIndex] = temp;
+                globalSwappedIndices = [firstIndex, secondIndex];
+                globalSwipedOrder = null;
+                localStorage.setItem("allOrders", JSON.stringify(orders));
+                loadOrders();
+                animateSwappedOrders();
+              }, 800);
+            }
+          } else {
+            orderBlock.style.transform = "translateX(-10px)";
+            orderBlock.style.opacity = "0.5";
+            globalSwipedOrder = orderBlock;
+            globalSwipedTimer = setTimeout(function() {
+              orderBlock.style.transform = "";
+              orderBlock.style.opacity = "";
+              globalSwipedOrder = null;
+            }, 3000);
+          }
+        }
+        startX = null;
+        startY = null;
+      });
+    }
+    
+    // 動畫效果：交換後的訂單區塊從半透明、略左移恢復
+    function animateSwappedOrders() {
+      if (!globalSwappedIndices) return;
+      let orderBlocks = document.querySelectorAll(".order-block");
+      globalSwappedIndices.forEach(idx => {
+        let ob = orderBlocks[idx];
+        if (ob) {
+          ob.style.transform = "translateX(-10px)";
+          ob.style.opacity = "0.5";
+          ob.style.transition = "opacity 1s, transform 0.3s";
+          setTimeout(function() {
+            ob.style.opacity = "1";
+            ob.style.transform = "";
+          }, 50);
+        }
+      });
+      globalSwappedIndices = null;
+    }
+    
+    window.onload = loadOrders;
+  </script>
+</body>
+</html>
