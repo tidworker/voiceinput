@@ -146,14 +146,14 @@
       transform: translateX(-50%);
       width: 70px;
       height: 70px;
-      background-color: #8F2B2D;
+      background-color: red;
       border: 5px solid white;
       border-radius: 50%;
       cursor: pointer;
       z-index: 3000;
     }
     #voiceButton:active {
-      background-color: #8F2B2D;
+      background-color: red;
     }
     /* 禁止文字選取 */
     #voiceButton, #voiceButton * {
@@ -334,7 +334,7 @@
     }
 
     function startOrdering() {
-      currentMode = "#8F2B2D";
+      currentMode = "red";
       voiceButton.style.backgroundColor = "darkred";
       if (navigator.vibrate) navigator.vibrate(50);
       continuousRecognition();
