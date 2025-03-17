@@ -112,6 +112,11 @@
       margin-top: 10px;
       font-weight: bold;
     }
+    /* 下拉式選單（僅用於備註編輯時選擇免費品項） */
+    #modalFreeSelectContainer {
+      display: none;
+      margin: 10px 0;
+    }
     /* 左右方形按鈕 */
     #decreaseButton,
     #increaseButton {
@@ -148,7 +153,7 @@
       z-index: 3000;
     }
     #voiceButton:active {
-      background-color: red;
+      background-color: #8FB2D;
     }
     /* 禁止文字選取 */
     #voiceButton, #voiceButton * {
@@ -181,10 +186,15 @@
   <button id="ordersLinkButton" onclick="window.location.href='orders.html'"><img src="list.png" width="50" height="50"></button>
   <button id="completeOrderButton" onclick="completeOrder()"><img src="order.png" width="50" height="50"></button>
 
-  <!-- 編輯訂單模態框 -->
+  <!-- 編輯訂單模態框，新增下拉式選單用來選擇備註中的免費品項 -->
   <div id="editModal">
     <div id="editModalContent">
       <h3 id="modalDishName">編輯品項</h3>
+      <!-- 當備註有多項免費品項時，顯示此下拉選單 -->
+      <div id="modalFreeSelectContainer">
+        <label for="modalFreeSelect">選擇備註項目:</label>
+        <select id="modalFreeSelect"></select>
+      </div>
       <label for="modalQuantity">份數:</label>
       <div style="display: flex; justify-content: center; align-items: center; margin: 10px 0;">
         <button class="modal-btn" onclick="modalDecreaseQuantity()">-</button>
@@ -208,9 +218,9 @@
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
-    // currentEditType 為 "quantity"（編輯主品項份數）或 "remark"（編輯備註中免費品項的數量）
+    // currentEditType 為 "quantity"（編輯主品項份數）或 "remark"（編輯備註中免費品項）
     let currentEditType = "";
-    // 編輯備註時記錄免費品項名稱
+    // 當編輯備註時記錄目前所選的免費品項名稱
     let currentEditFreeDishName = "";
     let currentRecognition = null;
     let holdActive = false;
@@ -396,33 +406,64 @@
     voiceButton.addEventListener("mouseup", function(e) { endDrag(); e.preventDefault(); });
     voiceButton.addEventListener("touchend", function(e) { endDrag(); e.preventDefault(); });
 
-    // ------------------ 編輯訂單列的模態框功能 ------------------
-    // 點擊品項欄編輯主商品數量，點擊備註欄編輯備註中免費品項的數量
+    // ------------------ 模態框編輯功能 ------------------
+    // 點擊品項欄編輯主商品份數，點擊備註欄編輯免費品項數量
     function openModal(row, editType) {
       currentEditRow = row;
       currentEditType = editType;
       if (editType === "quantity") {
         document.getElementById("modalDishName").innerText = row.cells[0].innerText;
         document.getElementById("modalQuantity").value = row.cells[1].innerText;
+        document.getElementById("modalFreeSelectContainer").style.display = "none";
       } else if (editType === "remark") {
         let remarkText = row.cells[2].innerText.trim();
         if (remarkText === "") {
           alert("沒有備註商品可編輯。");
           return;
         }
-        let freeDishName = "";
-        let freeQty = 0;
-        if (remarkText.includes("×")) {
-          let parts = remarkText.split("×");
-          freeDishName = parts[0];
-          freeQty = parseInt(parts[1]);
+        // 以逗號分隔備註中各免費品項
+        let freeItems = remarkText.split(",").map(s => s.trim());
+        if (freeItems.length > 1) {
+          // 若有多項，顯示下拉選單供使用者選擇
+          document.getElementById("modalFreeSelectContainer").style.display = "block";
+          const selectEl = document.getElementById("modalFreeSelect");
+          selectEl.innerHTML = "";
+          freeItems.forEach((item, index) => {
+            let opt = document.createElement("option");
+            opt.value = index;
+            opt.text = item;
+            selectEl.appendChild(opt);
+          });
+          selectEl.onchange = function() {
+            let selectedIndex = selectEl.value;
+            let selectedItem = freeItems[selectedIndex];
+            let parts = selectedItem.split("×");
+            let freeDishName = parts[0];
+            let freeQty = (parts.length > 1) ? parseInt(parts[1]) : parseInt(row.cells[1].innerText);
+            currentEditFreeDishName = freeDishName;
+            document.getElementById("modalDishName").innerText = freeDishName + " (備註)";
+            document.getElementById("modalQuantity").value = freeQty;
+          };
+          // 初始預設第一項
+          selectEl.selectedIndex = 0;
+          let firstItem = freeItems[0];
+          let parts = firstItem.split("×");
+          let freeDishName = parts[0];
+          let freeQty = (parts.length > 1) ? parseInt(parts[1]) : parseInt(row.cells[1].innerText);
+          currentEditFreeDishName = freeDishName;
+          document.getElementById("modalDishName").innerText = freeDishName + " (備註)";
+          document.getElementById("modalQuantity").value = freeQty;
         } else {
-          freeDishName = remarkText;
-          freeQty = parseInt(row.cells[1].innerText);
+          // 只有一項免費品項
+          document.getElementById("modalFreeSelectContainer").style.display = "none";
+          let item = freeItems[0];
+          let parts = item.split("×");
+          let freeDishName = parts[0];
+          let freeQty = (parts.length > 1) ? parseInt(parts[1]) : parseInt(row.cells[1].innerText);
+          currentEditFreeDishName = freeDishName;
+          document.getElementById("modalDishName").innerText = freeDishName + " (備註)";
+          document.getElementById("modalQuantity").value = freeQty;
         }
-        currentEditFreeDishName = freeDishName;
-        document.getElementById("modalDishName").innerText = freeDishName + " (備註)";
-        document.getElementById("modalQuantity").value = freeQty;
       }
       document.getElementById("editModal").style.display = "block";
     }
@@ -440,10 +481,22 @@
         currentEditRow.cells[1].innerText = newQuantity;
       } else if (currentEditType === "remark") {
         let mainQty = parseInt(currentEditRow.cells[1].innerText);
+        let updatedItem = "";
         if (newQuantity === mainQty) {
-          currentEditRow.cells[2].innerText = currentEditFreeDishName;
+          updatedItem = currentEditFreeDishName;
         } else {
-          currentEditRow.cells[2].innerText = currentEditFreeDishName + "×" + newQuantity;
+          updatedItem = currentEditFreeDishName + "×" + newQuantity;
+        }
+        let remarkText = currentEditRow.cells[2].innerText.trim();
+        let freeItems = remarkText.split(",").map(s => s.trim());
+        // 若有下拉選單，僅更新所選項目；否則直接更新整個備註
+        if (document.getElementById("modalFreeSelectContainer").style.display === "block") {
+          let selectEl = document.getElementById("modalFreeSelect");
+          let selectedIndex = selectEl.value;
+          freeItems[selectedIndex] = updatedItem;
+          currentEditRow.cells[2].innerText = freeItems.join(", ");
+        } else {
+          currentEditRow.cells[2].innerText = updatedItem;
         }
       }
       closeModal();
@@ -454,7 +507,16 @@
       if (currentEditType === "quantity") {
         currentEditRow.parentNode.removeChild(currentEditRow);
       } else if (currentEditType === "remark") {
-        currentEditRow.cells[2].innerText = "";
+        let remarkText = currentEditRow.cells[2].innerText.trim();
+        let freeItems = remarkText.split(",").map(s => s.trim());
+        if (document.getElementById("modalFreeSelectContainer").style.display === "block") {
+          let selectEl = document.getElementById("modalFreeSelect");
+          let selectedIndex = selectEl.value;
+          freeItems.splice(selectedIndex, 1);
+          currentEditRow.cells[2].innerText = freeItems.join(", ");
+        } else {
+          currentEditRow.cells[2].innerText = "";
+        }
       }
       closeModal();
       updateTotalAmount();
@@ -519,7 +581,9 @@
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
 
-    // 加入訂單列的函式：品項欄點擊編輯主數量，備註欄點擊編輯免費品項數量
+    // 加入訂單列的函式：
+    // 當主品項（價格大於0）建立新列；免費品項（價格0）會附加於前一筆主品項的備註欄中，
+    // 備註欄點擊時可分別編輯各免費品項的數量
     function addOrderRow(dish, quantity, remark) {
       if (!dish) return;
       if (dish.price === 0) {
@@ -548,7 +612,7 @@
               freeQty = quantity;
               remarksArr.push((freeQty === mainQty) ? dish.name : (dish.name + "×" + freeQty));
             }
-            row.cells[2].innerText = remarksArr.join(",");
+            row.cells[2].innerText = remarksArr.join(", ");
             found = true;
             break;
           }
