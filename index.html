@@ -23,7 +23,7 @@
     img {
       max-width: 100%;
     }
-    /* 統一內容區：訂單表格與語音備忘錄顯示區 */
+    /* 統一內容區：訂單表格 */
     #contentContainer {
       width: 90%;
       height: 370px;
@@ -58,13 +58,14 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 語音備忘錄顯示區：文字呈橘色，點擊時開啟編輯模態框 */
+    /* 語音錄音顯示區（僅在錄音期間顯示） */
     #voiceOutput {
+      display: none;
       margin-top: 10px;
-      text-align: left;
+      text-align: center;
       color: orange;
       padding: 10px;
-      cursor: pointer;
+      font-size: 20px;
     }
     /* 總金額 */
     #totalAmount {
@@ -153,7 +154,8 @@
 <body>
   <br />
   <img src="3.png" width="340" height="170">
-  <!-- 訂單與語音備忘錄顯示區 -->
+  
+  <!-- 訂單顯示區 -->
   <div id="contentContainer">
     <table id="orderTable">
       <thead>
@@ -168,9 +170,11 @@
         <!-- 訂單項目將動態加入 -->
       </tbody>
     </table>
-    <!-- 點擊此區域可開啟手動編輯備忘錄模態框 -->
-    <div id="voiceOutput" onclick="openMemoModal()"></div>
   </div>
+  
+  <!-- 語音錄音狀態顯示（僅錄音時顯示） -->
+  <div id="voiceOutput">聆聽中</div>
+  
   <p id="totalAmount">總金額：0 元</p>
   <button id="resetButton" onclick="resetOrder()"><img src="re.png" width="50" height="50"></button>
   <button id="ordersLinkButton" onclick="window.location.href='orders.html'"><img src="list.png" width="50" height="50"></button>
@@ -213,21 +217,24 @@
   
   <script>
     /********** 手勢與語音輸入相關 **********/
-    // 手勢狀態變數
-    let gestureStartX = null, gestureStartY = null, gestureStartTime = 0;
+    let gestureStartTime = 0;
     let swipeTimer = null;
-    let lastQuickSwipeTime = 0;
+    let longPressTriggered = false;
     
-    // 語音輸入狀態
+    // 語音輸入狀態及識別物件
     let voiceInputActive = false;
     let currentRecognition = null;
     
-    // 模擬語音輸入啟動與結束（可整合實際語音 API）
+    // 語音輸入開始：啟動識別並將「聆聽中」顯示
     function startVoiceInput() {
       if (voiceInputActive) return;
       console.log("語音輸入開始");
-      document.getElementById("voiceOutput").innerText = "聆聽中...";
       voiceInputActive = true;
+      // 顯示「聆聽中」
+      const voiceOutputEl = document.getElementById("voiceOutput");
+      voiceOutputEl.style.display = "block";
+      voiceOutputEl.innerText = "聆聽中";
+      
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition) {
         alert("您的瀏覽器不支援語音輸入功能。");
@@ -238,8 +245,9 @@
       currentRecognition.interimResults = false;
       currentRecognition.maxAlternatives = 1;
       currentRecognition.onresult = function(event) {
+        // 取得識別結果（此範例僅在控制台印出）
         let transcript = event.results[0][0].transcript;
-        document.getElementById("voiceOutput").innerText = transcript;
+        console.log("語音結果：", transcript);
       };
       currentRecognition.onerror = function(event) {
         console.error("語音輸入錯誤: ", event.error);
@@ -248,10 +256,13 @@
       currentRecognition.onend = function() {
         voiceInputActive = false;
         console.log("語音輸入結束 (onend)");
+        // 錄音結束後隱藏「聆聽中」
+        document.getElementById("voiceOutput").style.display = "none";
       };
       currentRecognition.start();
     }
     
+    // 語音輸入結束：停止識別並隱藏「聆聽中」
     function stopVoiceInput() {
       if (!voiceInputActive) return;
       console.log("語音輸入結束");
@@ -260,57 +271,37 @@
         currentRecognition = null;
       }
       voiceInputActive = false;
+      document.getElementById("voiceOutput").style.display = "none";
     }
     
-    // 觸控手勢偵測：
-    // 1. 若在 touchstart 後不到 500ms 放開，判定為快速滑動：
-    //    第一次快速滑動啟動語音；若 500ms 內再快速滑動則結束語音
-    // 2. 若按住超過 500ms（長按），則開始語音輸入，直到手指放開才停止
+    // 觸控手勢判斷
     document.addEventListener("touchstart", function(e) {
-      const touch = e.changedTouches[0];
       gestureStartTime = Date.now();
-      gestureStartY = touch.clientY;
-      
-      // 設定 500ms 計時器：若持續按住超過 0.5 秒則視為長按模式
+      longPressTriggered = false;
+      // 設定 500ms 計時器：若按住超過 0.5 秒則進入長按模式
       swipeTimer = setTimeout(() => {
         if (!voiceInputActive) {
           startVoiceInput();
         }
+        longPressTriggered = true;
         swipeTimer = null;
       }, 500);
     });
     
     document.addEventListener("touchend", function(e) {
-      const touch = e.changedTouches[0];
-      const gestureDuration = Date.now() - gestureStartTime;
-      const deltaY = touch.clientY - gestureStartY;
-      // 設定一個位移門檻（例如 30px）以排除誤觸
-      if (Math.abs(deltaY) < 30) {
-        if (swipeTimer) {
-          clearTimeout(swipeTimer);
-          swipeTimer = null;
-        }
-        return;
-      }
-      
+      // 若 swipeTimer 還存在，表示未達長按（快速滑動）
       if (swipeTimer) {
-        // 快速滑動：在 0.5 秒內放開
         clearTimeout(swipeTimer);
         swipeTimer = null;
+        // 快速滑動：若尚未錄音則啟動；若已在錄音中則停止
         if (!voiceInputActive) {
           startVoiceInput();
-          lastQuickSwipeTime = Date.now();
         } else {
-          const interval = Date.now() - lastQuickSwipeTime;
-          if (interval < 500) {
-            stopVoiceInput();
-          } else {
-            lastQuickSwipeTime = Date.now();
-          }
+          stopVoiceInput();
         }
       } else {
-        // 長按模式：手指放開則停止語音輸入
-        if (voiceInputActive) {
+        // 若已進入長按模式，放開時直接結束錄音
+        if (longPressTriggered && voiceInputActive) {
           stopVoiceInput();
         }
       }
@@ -433,7 +424,6 @@
     function resetOrder() {
       document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
       document.getElementById("totalAmount").innerText = "總金額：0 元";
-      document.getElementById("voiceOutput").innerHTML = "";
       localStorage.removeItem("currentOrderData");
     }
     
@@ -449,11 +439,10 @@
           price: row.cells[3].innerText
         });
       }
-      const voiceMemo = document.getElementById("voiceOutput").innerText;
-      if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
+      if (currentOrderItems.length === 0) {
         return;
       }
-      const newOrder = { orders: currentOrderItems, voiceMemo: voiceMemo };
+      const newOrder = { orders: currentOrderItems };
       let orderHistory = [];
       const historyJSON = localStorage.getItem("orderHistory");
       if (historyJSON) { orderHistory = JSON.parse(historyJSON); }
@@ -476,8 +465,7 @@
           price: row.cells[3].innerText
         });
       }
-      const voiceMemo = document.getElementById("voiceOutput").innerText;
-      const currentOrderData = { orders: currentOrderItems, voiceMemo: voiceMemo };
+      const currentOrderData = { orders: currentOrderItems };
       localStorage.setItem("currentOrderData", JSON.stringify(currentOrderData));
     }
     
@@ -500,7 +488,6 @@
           cellRemark.onclick = function() { openModal(row, "remark"); };
           row.insertCell().innerText = item.price;
         });
-        document.getElementById("voiceOutput").innerText = currentData.voiceMemo;
         updateTotalAmount();
       }
     }
@@ -583,12 +570,7 @@
         currentEditRow.cells[1].innerText = newQuantity;
       } else if (currentEditType === "remark") {
         let mainQty = parseInt(currentEditRow.cells[1].innerText);
-        let updatedItem = "";
-        if (newQuantity === mainQty) {
-          updatedItem = currentEditFreeDishName;
-        } else {
-          updatedItem = currentEditFreeDishName + "×" + newQuantity;
-        }
+        let updatedItem = (newQuantity === mainQty) ? currentEditFreeDishName : (currentEditFreeDishName + "×" + newQuantity);
         let remarkText = currentEditRow.cells[2].innerText.trim();
         let freeItems = remarkText.split(",").map(s => s.trim());
         if (document.getElementById("modalFreeSelectContainer").style.display === "block") {
@@ -647,13 +629,12 @@
     
     function saveMemo() {
       const memoText = document.getElementById("memoInput").value;
-      document.getElementById("voiceOutput").innerText = memoText;
+      // 可將備忘錄存入其他地方，這裡僅示範關閉模態框
       closeMemoModal();
     }
     
     function clearMemo() {
       document.getElementById("memoInput").value = "";
-      document.getElementById("voiceOutput").innerText = "";
       closeMemoModal();
     }
   </script>
