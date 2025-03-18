@@ -373,6 +373,14 @@
       }
       const voiceMemo = document.getElementById("voiceOutput").innerText;
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
+        // 若無訂單內容，先恢復內嵌頁框，再顯示提示
+        document.getElementById("contentContainer").style.transform = "";
+        document.getElementById("contentContainer").style.opacity = "";
+        window.firstRightSwipe = false;
+        if (window.firstRightSwipeTimer) {
+          clearTimeout(window.firstRightSwipeTimer);
+          window.firstRightSwipeTimer = null;
+        }
         alert("目前沒有訂單內容！");
         return;
       }
@@ -717,8 +725,7 @@
           // 左滑：轉頁至 orders.html
           window.location.href = "orders.html";
         } else if (deltaX > 50) {
-          // 右滑：第一次右滑時，將內嵌頁框區（contentContainer）右移10px並變成50%透明
-          // 第二次右滑（在3秒內）則送出訂單
+          // 右滑：針對內嵌頁框 (contentContainer)
           let container = document.getElementById("contentContainer");
           if (!window.firstRightSwipe) {
             container.style.transform = "translateX(10px)";
