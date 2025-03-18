@@ -699,7 +699,7 @@
       }
       
       // 判定水平手勢（門檻調整為 90px）
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 120) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 180) {
         if (!horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
           if (deltaX < 0) { 
             // 左滑長按 1 秒 → 重新點餐
