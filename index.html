@@ -147,6 +147,20 @@
       width: 100%;
       height: 100px;
     }
+    /* 測試按鈕（固定在畫面最下方） */
+    #testButton {
+      position: fixed;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: orange;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 5000;
+    }
   </style>
 </head>
 <body>
@@ -210,7 +224,20 @@
     </div>
   </div>
 
+  <!-- 測試用按鈕 -->
+  <button id="testButton">測試</button>
+
   <script>
+    // ------------------ 延遲啟動全頁手勢檢查 ------------------
+    let gesturesEnabled = false;
+    window.addEventListener("load", function() {
+      setTimeout(() => {
+        gesturesEnabled = true;
+      }, 500);
+      // 載入時強制重置所有手勢狀態
+      resetGestureState();
+    });
+    
     // ------------------ 強制狀態重置 ------------------
     // 定義手勢狀態變數
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
@@ -231,11 +258,6 @@
         verticalSwipeTimer = null;
       }
     }
-    
-    window.addEventListener("load", function() {
-      // 載入時強制重置所有手勢狀態
-      resetGestureState();
-    });
     
     // ------------------ 基本訂單與菜單處理 ------------------
     let charMapping = {};
@@ -667,6 +689,7 @@
     
     // ------------------ 全頁手勢偵測 ------------------
     document.body.addEventListener("touchstart", function(e) {
+      if (!gesturesEnabled) return;
       if (e.touches.length === 1) {
         gestureStartX = e.touches[0].clientX;
         gestureStartY = e.touches[0].clientY;
@@ -679,13 +702,14 @@
     });
     
     document.body.addEventListener("touchmove", function(e) {
+      if (!gesturesEnabled) return;
       if (gestureStartX === null || gestureStartY === null) return;
       let currentX = e.touches[0].clientX;
       let currentY = e.touches[0].clientY;
       let deltaX = currentX - gestureStartX;
       let deltaY = currentY - gestureStartY;
       
-      // 判定垂直手勢（門檻調整為 90px）
+      // 判定垂直手勢（門檻調整為 50px）
       if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
         verticalSwipeDirection = (deltaY > 0) ? "down" : "up";
         verticalSwipeTimer = setTimeout(() => {
@@ -698,7 +722,7 @@
         }, 500);
       }
       
-      // 判定水平手勢（門檻調整為 90px）
+      // 判定水平手勢（門檻調整為 50px）
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
         if (!horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
           if (deltaX < 0) { 
@@ -714,6 +738,7 @@
     });
     
     document.body.addEventListener("touchend", function(e) {
+      if (!gesturesEnabled) return;
       let gestureEndTime = Date.now();
       let duration = gestureEndTime - gestureStartTime;
       if (verticalSwipeTimer) {
@@ -725,7 +750,7 @@
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
       
-      // 若為水平手勢且未觸發長按，且左滑超過 90px 且手勢持續未滿一秒，放開時觸發轉頁
+      // 若為水平手勢且未觸發長按，且左滑超過 50px 且手勢持續未滿一秒，放開時觸發轉頁
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (!horizontalLongTriggered) {
           if (deltaX < -50 && duration < 1000) {
@@ -733,7 +758,7 @@
           }
         }
       }
-      // 處理垂直手勢（門檻調整為 90px）
+      // 處理垂直手勢（門檻調整為 50px）
       else if (Math.abs(deltaY) > 50) {
         if (verticalSwipeDirection === "down") {
           if (!verticalSwipeTriggered && duration < 500) {
@@ -796,6 +821,16 @@
       if (tapCount >= 3) {
         location.reload();
       }
+    });
+    
+    // ------------------ 測試按鈕功能 ------------------
+    document.getElementById("testButton").addEventListener("click", function() {
+      // 以 menu 陣列中的品項為例，加入兩筆測試資料
+      let dish1 = menu.find(item => item.name === "蔥油餅");
+      let dish2 = menu.find(item => item.name === "蔥油餅加蛋");
+      if (dish1) addOrderRow(dish1, 2, "無辣");
+      if (dish2) addOrderRow(dish2, 1, "少油");
+      document.getElementById("voiceOutput").innerText = "測試！測試！";
     });
     
   </script>
