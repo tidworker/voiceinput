@@ -81,7 +81,7 @@
   </div>
   <script>
     let orderHistory = [];
-    // 用來記錄第一筆被選取的訂單
+    // 記錄第一筆被選取的訂單
     let firstSelected = null;
     let firstSelectedIndex = null;
     let selectionTimer = null;
@@ -165,7 +165,7 @@
           orderBlock._touchStartTime = Date.now();
         });
         orderBlock.addEventListener("touchend", function(e) {
-          // 若有滑動過大，則不當作點擊
+          // 若有滑動過大，則不視為點擊
           const endX = e.changedTouches[0].clientX;
           const endY = e.changedTouches[0].clientY;
           const deltaX = endX - orderBlock._startX;
@@ -173,13 +173,13 @@
           if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) return;
           
           const touchEndTime = Date.now();
-          // 若上一次點擊超過 300 毫秒則視為第一次點擊
+          // 判斷雙擊（兩次點擊間隔小於 300 毫秒）
           if (!orderBlock._lastTap || (touchEndTime - orderBlock._lastTap > 300)) {
             orderBlock._lastTap = touchEndTime;
           } else {
             // 雙擊偵測到
-            // 若尚未有選取訂單，則標記此筆訂單為選取狀態
             if (firstSelected === null) {
+              // 第一筆訂單被選取：縮小且淡化
               firstSelected = orderBlock;
               firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
               orderBlock.style.transform = "scale(0.9)";
@@ -192,40 +192,37 @@
                 firstSelectedIndex = null;
               }, 3000);
             } else {
-              // 若第二次點擊的是不同訂單，則進行交換動畫
+              // 若第二次點擊的是不同訂單，進行交換動畫
               const secondSelected = orderBlock;
               const secondIndex = parseInt(orderBlock.dataset.orderIndex);
               if (firstSelected === secondSelected) {
-                // 同一筆訂單重複雙擊，不作處理
                 orderBlock._lastTap = 0;
                 return;
               }
               clearTimeout(selectionTimer);
-              // 讓兩筆訂單同時淡出（0.3秒）
+              // 淡出效果（0.3秒）
               firstSelected.style.transition = "opacity 0.3s";
               secondSelected.style.transition = "opacity 0.3s";
               firstSelected.style.opacity = "0";
               secondSelected.style.opacity = "0";
-              // 0.3秒後交換兩筆訂單在 orderHistory 的位置，並重新渲染
+              // 0.3秒後交換 orderHistory 中的位置，重新渲染，並以淡入效果顯示（0.5秒）
               setTimeout(() => {
                 let temp = orderHistory[firstSelectedIndex];
                 orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
                 orderHistory[secondIndex] = temp;
                 saveOrderHistory();
-                // 記錄交換的兩個索引，用於交換後的淡入動畫
                 const swappedIndices = [firstSelectedIndex, secondIndex];
                 firstSelected = null;
                 firstSelectedIndex = null;
                 renderOrderHistory();
-                // 重新渲染後對交換的訂單以淡入效果顯示
                 setTimeout(() => {
                   const container = document.getElementById("contentContainer");
                   const blocks = container.querySelectorAll(".orderBlock");
                   swappedIndices.forEach(idx => {
                     if (blocks[idx]) {
                       blocks[idx].style.opacity = "0";
-                      blocks[idx].style.transition = "opacity 0.3s";
-                      // 觸發 reflow 後再改為不透明
+                      blocks[idx].style.transition = "opacity 0.5s";
+                      // 觸發 reflow 後淡入
                       void blocks[idx].offsetWidth;
                       blocks[idx].style.opacity = "1";
                     }
@@ -241,13 +238,12 @@
       });
     }
     
-    // ---------------- 全域滑動返回上一頁 ----------------
-    let globalStartX = null, globalStartY = null, globalStartTime = null;
+    // ---------------- 全域左右滑返回上一頁 ----------------
+    let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
       if(e.touches.length === 1){
         globalStartX = e.touches[0].clientX;
         globalStartY = e.touches[0].clientY;
-        globalStartTime = Date.now();
       }
     });
     document.addEventListener("touchend", function(e) {
@@ -256,29 +252,11 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      const duration = Date.now() - globalStartTime;
-      if(Math.abs(deltaX) >= 50 && duration >= 200 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if(Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
         window.history.back();
       }
       globalStartX = null;
       globalStartY = null;
-      globalStartTime = null;
-    });
-    
-    // ---------------- 連點三下重新整理頁面 ----------------
-    let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      let now = Date.now();
-      if (now - lastTapTime < 500) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
     });
     
     // 初始化
