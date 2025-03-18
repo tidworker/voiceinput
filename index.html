@@ -212,46 +212,117 @@
   </div>
   
   <script>
-    /***********************
-     * 手勢與語音輸入部分 *
-     ***********************/
-    // 全域手勢控制變數
-    let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
-    let isHolding = false;    // 是否為長按
-    let holdTimer = null;     // 長按計時器
-    let voiceActive = false;  // 是否正在語音輸入
-    // 注意：此範例僅示意語音輸入狀態切換（實際應搭配 SpeechRecognition API 處理）
+    /********** 手勢與語音輸入相關 **********/
+    // 手勢狀態變數
+    let gestureStartX = null, gestureStartY = null, gestureStartTime = 0;
+    let swipeTimer = null;
+    let lastQuickSwipeTime = 0;
     
-    // 語音輸入控制（上下滑分別代表不同功能，可依需求自行更改）
-    function startVoiceOrdering() {
-      console.log("開始語音點餐");
-      voiceActive = true;
-      // 此處可加入啟動語音輸入程式碼
-    }
-    function endVoiceOrdering() {
-      console.log("結束語音點餐");
-      voiceActive = false;
-      // 此處可加入停止語音輸入程式碼
-    }
-    function startVoiceMemo() {
-      console.log("開始語音備忘錄");
-      voiceActive = true;
-      // 此處可加入啟動語音輸入程式碼
-    }
-    function endVoiceMemo() {
-      console.log("結束語音備忘錄");
-      voiceActive = false;
-      // 此處可加入停止語音輸入程式碼
+    // 語音輸入狀態
+    let voiceInputActive = false;
+    let currentRecognition = null;
+    
+    // 模擬語音輸入啟動與結束（可整合實際語音 API）
+    function startVoiceInput() {
+      if (voiceInputActive) return;
+      console.log("語音輸入開始");
+      document.getElementById("voiceOutput").innerText = "聆聽中...";
+      voiceInputActive = true;
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("您的瀏覽器不支援語音輸入功能。");
+        return;
+      }
+      currentRecognition = new SpeechRecognition();
+      currentRecognition.lang = "zh-TW";
+      currentRecognition.interimResults = false;
+      currentRecognition.maxAlternatives = 1;
+      currentRecognition.onresult = function(event) {
+        let transcript = event.results[0][0].transcript;
+        document.getElementById("voiceOutput").innerText = transcript;
+      };
+      currentRecognition.onerror = function(event) {
+        console.error("語音輸入錯誤: ", event.error);
+        stopVoiceInput();
+      };
+      currentRecognition.onend = function() {
+        voiceInputActive = false;
+        console.log("語音輸入結束 (onend)");
+      };
+      currentRecognition.start();
     }
     
-    /***********************
-     * 其他訂單處理功能  *
-     ***********************/
+    function stopVoiceInput() {
+      if (!voiceInputActive) return;
+      console.log("語音輸入結束");
+      if (currentRecognition) {
+        currentRecognition.stop();
+        currentRecognition = null;
+      }
+      voiceInputActive = false;
+    }
+    
+    // 觸控手勢偵測：
+    // 1. 若在 touchstart 後不到 500ms 放開，判定為快速滑動：
+    //    第一次快速滑動啟動語音；若 500ms 內再快速滑動則結束語音
+    // 2. 若按住超過 500ms（長按），則開始語音輸入，直到手指放開才停止
+    document.addEventListener("touchstart", function(e) {
+      const touch = e.changedTouches[0];
+      gestureStartTime = Date.now();
+      gestureStartY = touch.clientY;
+      
+      // 設定 500ms 計時器：若持續按住超過 0.5 秒則視為長按模式
+      swipeTimer = setTimeout(() => {
+        if (!voiceInputActive) {
+          startVoiceInput();
+        }
+        swipeTimer = null;
+      }, 500);
+    });
+    
+    document.addEventListener("touchend", function(e) {
+      const touch = e.changedTouches[0];
+      const gestureDuration = Date.now() - gestureStartTime;
+      const deltaY = touch.clientY - gestureStartY;
+      // 設定一個位移門檻（例如 30px）以排除誤觸
+      if (Math.abs(deltaY) < 30) {
+        if (swipeTimer) {
+          clearTimeout(swipeTimer);
+          swipeTimer = null;
+        }
+        return;
+      }
+      
+      if (swipeTimer) {
+        // 快速滑動：在 0.5 秒內放開
+        clearTimeout(swipeTimer);
+        swipeTimer = null;
+        if (!voiceInputActive) {
+          startVoiceInput();
+          lastQuickSwipeTime = Date.now();
+        } else {
+          const interval = Date.now() - lastQuickSwipeTime;
+          if (interval < 500) {
+            stopVoiceInput();
+          } else {
+            lastQuickSwipeTime = Date.now();
+          }
+        }
+      } else {
+        // 長按模式：手指放開則停止語音輸入
+        if (voiceInputActive) {
+          stopVoiceInput();
+        }
+      }
+    });
+    
+    /********** 以下為訂單、菜單與備忘錄相關功能 **********/
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
     let currentEditType = ""; // "quantity" 或 "remark"
     let currentEditFreeDishName = "";
+    
     let menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
@@ -437,11 +508,10 @@
     window.addEventListener("beforeunload", function(e) {
       saveCurrentOrder();
     });
+    
     loadCurrentOrder();
     
-    /***********************
-     * 編輯訂單模態框功能 *
-     ***********************/
+    /********** 編輯訂單模態框功能 **********/
     function openModal(row, editType) {
       currentEditRow = row;
       currentEditType = editType;
@@ -566,143 +636,26 @@
       if (current > 1) input.value = current - 1;
     }
     
-    /***********************
-     * 連點三下刷新功能    *
-     ***********************/
-    let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      if (e.clientY < window.innerHeight * 0.75) return;
-      let now = Date.now();
-      if (now - lastTapTime < 1000) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
-    });
+    /********** 手動輸入備忘錄模態框功能 **********/
+    function openMemoModal() {
+      document.getElementById("memoModal").style.display = "block";
+    }
     
-    /***********************
-     * 全頁手勢偵測        *
-     ***********************/
-    // 右滑相關變數（保留原有右滑完成訂單功能）
-    let rightSwipeCount = 0;
-    let rightSwipeTimer = null;
-    let lastRightSwipeTime = 0;
+    function closeMemoModal() {
+      document.getElementById("memoModal").style.display = "none";
+    }
     
-    document.body.addEventListener("touchstart", function(e) {
-      if (e.touches.length === 1) {
-        gestureStartX = e.touches[0].clientX;
-        gestureStartY = e.touches[0].clientY;
-        gestureStartTime = Date.now();
-        isHolding = false;
-        // 設定長按計時器：若持續 0.5 秒，則視為長按，立即啟動語音輸入
-        holdTimer = setTimeout(() => {
-          isHolding = true;
-          // 依滑動方向決定功能：下滑 (deltaY > 0) → 語音點餐；上滑 (deltaY < 0) → 語音備忘錄
-          // 由於此時尚未有 deltaY 計算，採用初始位置判斷：若觸控點較低，視為下滑；較高則上滑
-          if (gestureStartY > window.innerHeight / 2) {
-            startVoiceOrdering();
-          } else {
-            startVoiceMemo();
-          }
-        }, 500);
-      }
-    });
+    function saveMemo() {
+      const memoText = document.getElementById("memoInput").value;
+      document.getElementById("voiceOutput").innerText = memoText;
+      closeMemoModal();
+    }
     
-    document.body.addEventListener("touchmove", function(e) {
-      if (gestureStartX === null || gestureStartY === null) return;
-      let currentX = e.touches[0].clientX;
-      let currentY = e.touches[0].clientY;
-      // 移動時取消長按計時器
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-    });
-    
-    document.body.addEventListener("touchend", function(e) {
-      if (holdTimer) {
-        clearTimeout(holdTimer);
-        holdTimer = null;
-      }
-      let endX = e.changedTouches[0].clientX;
-      let endY = e.changedTouches[0].clientY;
-      let deltaX = endX - gestureStartX;
-      let deltaY = endY - gestureStartY;
-      let duration = Date.now() - gestureStartTime;
-      
-      // 橫向手勢處理（保留原有功能）
-      if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        // 右滑：完成訂單功能
-        if (deltaX > 0) {
-          const container = document.getElementById("contentContainer");
-          const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
-          const voiceMemoText = document.getElementById("voiceOutput").innerText.trim();
-          let hasOrder = (tbody.rows.length > 0 || voiceMemoText !== "");
-          if (hasOrder) {
-            if (rightSwipeCount === 0) {
-              rightSwipeCount = 1;
-              lastRightSwipeTime = Date.now();
-              container.style.transition = "transform 0.2s";
-              container.style.transform = "translateX(10px)";
-              rightSwipeTimer = setTimeout(function() {
-                container.style.transform = "translateX(0)";
-                rightSwipeCount = 0;
-                rightSwipeTimer = null;
-              }, 3000);
-            } else if (rightSwipeCount === 1 && (Date.now() - lastRightSwipeTime < 3000)) {
-              if (rightSwipeTimer) {
-                clearTimeout(rightSwipeTimer);
-                rightSwipeTimer = null;
-              }
-              container.style.transform = "translateX(0)";
-              rightSwipeCount = 0;
-              completeOrder();
-            }
-          } else {
-            // 無訂單時，右滑僅作短暫移動後彈回
-            container.style.transition = "transform 0.2s";
-            container.style.transform = "translateX(10px)";
-            setTimeout(() => { container.style.transform = "translateX(0)"; }, 100);
-          }
-        }
-        // 左滑：快速左滑直接轉到 orders.html
-        else if (deltaX < -90 && duration < 1000) {
-          window.location.href = "orders.html";
-        }
-      }
-      // 垂直手勢處理：以 0.5 秒為界
-      else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 90) {
-        if (!isHolding && duration < 500) {
-          // 短滑：若目前未啟動語音輸入，則啟動；若已啟動則結束
-          if (deltaY > 0) { // 下滑
-            if (!voiceActive) {
-              startVoiceOrdering();
-            } else {
-              endVoiceOrdering();
-            }
-          } else { // 上滑
-            if (!voiceActive) {
-              startVoiceMemo();
-            } else {
-              endVoiceMemo();
-            }
-          }
-        } else {
-          // 長按：在 holdTimer已觸發後，放開即結束語音輸入
-          if (deltaY > 0) {
-            if (voiceActive) { endVoiceOrdering(); }
-          } else {
-            if (voiceActive) { endVoiceMemo(); }
-          }
-        }
-      }
-      resetGestureState();
-    });
+    function clearMemo() {
+      document.getElementById("memoInput").value = "";
+      document.getElementById("voiceOutput").innerText = "";
+      closeMemoModal();
+    }
   </script>
 </body>
 </html>
