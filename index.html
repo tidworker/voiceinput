@@ -358,7 +358,7 @@
         });
       }
       const voiceMemo = document.getElementById("voiceOutput").innerText;
-      // 保留原 alert 供其他觸發來源使用
+      // 其他觸發來源仍保留 alert 提示
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
         alert("目前沒有訂單內容！");
         return;
@@ -659,7 +659,8 @@
     let verticalSwipeDirection = null; // "down" 或 "up"
     let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    let horizontalLongTriggered = false; // 記錄是否已觸發水平長按動作
+    // horizontalLongTriggered 標記：若為 "left" 表示左滑長按，"right" 表示右滑長按
+    let horizontalLongTriggered = false;
     
     document.body.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
@@ -693,31 +694,25 @@
         }, 500);
       }
       
-      // 若為水平手勢（以水平移動為主）
+      // 若為水平手勢
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-          // 對右滑加入動畫：若右滑且 deltaX > 0
+          let contentContainer = document.getElementById("contentContainer");
+          // 右滑動畫（依訂單是否存在，無訂單僅右移最多 20px）
           if (deltaX > 0) {
-              let contentContainer = document.getElementById("contentContainer");
               let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
               let orderExists = tbody.rows.length > 0 || document.getElementById("voiceOutput").innerText.trim() !== "";
               if (!orderExists) {
-                  // 無訂單時僅允許最多右移 20px
                   let clamped = Math.min(deltaX, 20);
                   contentContainer.style.transform = `translateX(${clamped}px)`;
               } else {
                   contentContainer.style.transform = `translateX(${deltaX}px)`;
               }
           }
-          
-          if (Math.abs(deltaX) > 50 && !horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
-            if (deltaX < 0) { 
-              // 左滑長按 1 秒 → 重新點餐
-              resetOrder();
-            } else {
-              // 右滑長按 1 秒 → 完成訂單
-              completeOrder();
-            }
-            horizontalLongTriggered = true;
+          // 左滑長按：當持續超過 1 秒且左滑距離超過 50px，觸發內嵌頁框左滑20px動畫
+          if (deltaX < 0 && Math.abs(deltaX) >= 50 && !horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
+              horizontalLongTriggered = "left";
+              contentContainer.style.transition = "transform 0.2s ease-out";
+              contentContainer.style.transform = "translateX(-20px)";
           }
       }
     });
@@ -733,32 +728,14 @@
       let endY = e.changedTouches[0].clientY;
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
-      
-      // 若已觸發長按，則直接重置手勢與動畫
-      if (horizontalLongTriggered) {
-          let contentContainer = document.getElementById("contentContainer");
-          contentContainer.style.transition = "transform 0.2s ease-out";
-          contentContainer.style.transform = "translateX(0)";
-          setTimeout(() => {
-              contentContainer.style.transition = "";
-              contentContainer.style.transform = "";
-          }, 200);
-          gestureStartX = null;
-          gestureStartY = null;
-          gestureStartTime = null;
-          verticalSwipeDirection = null;
-          verticalSwipeTriggered = false;
-          horizontalLongTriggered = false;
-          return;
-      }
+      let contentContainer = document.getElementById("contentContainer");
       
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-         let contentContainer = document.getElementById("contentContainer");
-         if (deltaX > 0) { // 右滑
+         // 右滑處理（保持原有：快速右滑滿 200px且有訂單則送出，否則復原）
+         if (deltaX > 0) {
              let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
              let orderExists = tbody.rows.length > 0 || document.getElementById("voiceOutput").innerText.trim() !== "";
              if (orderExists && deltaX >= 200) {
-                 // 滑動超過 200px且有訂單，滑出畫面後送出訂單
                  contentContainer.style.transition = "transform 0.3s ease-out";
                  contentContainer.style.transform = "translateX(100%)";
                  setTimeout(() => {
@@ -767,7 +744,6 @@
                      completeOrder();
                  }, 300);
              } else {
-                 // 未達 200px或無訂單，復原動畫
                  contentContainer.style.transition = "transform 0.2s ease-out";
                  contentContainer.style.transform = "translateX(0)";
                  setTimeout(() => {
@@ -775,8 +751,18 @@
                      contentContainer.style.transform = "";
                  }, 200);
              }
-         } else if (deltaX < 0) { // 左滑
-             if (duration < 1000) {
+         } else if (deltaX < 0) { // 左滑處理
+             if (horizontalLongTriggered === "left") {
+                 // 左滑長按：放開後復原動畫並觸發重新點餐
+                 contentContainer.style.transition = "transform 0.2s ease-out";
+                 contentContainer.style.transform = "translateX(0)";
+                 setTimeout(() => {
+                     contentContainer.style.transition = "";
+                     contentContainer.style.transform = "";
+                     resetOrder();
+                 }, 200);
+             } else if (duration < 1000 && Math.abs(deltaX) >= 50) {
+                 // 左滑快速：滿足滑動50px且在1秒內放開，觸發換頁
                  contentContainer.style.transition = "transform 0.2s ease-out";
                  contentContainer.style.transform = "translateX(0)";
                  setTimeout(() => {
@@ -784,9 +770,18 @@
                      contentContainer.style.transform = "";
                      window.location.href = "orders.html";
                  }, 200);
+             } else {
+                 // 不符合條件則復原動畫
+                 contentContainer.style.transition = "transform 0.2s ease-out";
+                 contentContainer.style.transform = "translateX(0)";
+                 setTimeout(() => {
+                     contentContainer.style.transition = "";
+                     contentContainer.style.transform = "";
+                 }, 200);
              }
          }
       } else if (Math.abs(deltaY) > 50) {
+         // 垂直手勢處理（保持原有）
          if (verticalSwipeDirection === "down") {
              if (!verticalSwipeTriggered && duration < 500) {
                  if (!holdActive || currentMode !== "red") {
@@ -809,6 +804,7 @@
              }
          }
       }
+      // 重置手勢相關參數
       gestureStartX = null;
       gestureStartY = null;
       gestureStartTime = null;
@@ -837,21 +833,7 @@
       document.getElementById("voiceOutput").innerText = "";
     }
     
-    // ------------------ 連點三下重新整理頁面 ------------------
-    let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      let now = Date.now();
-      if (now - lastTapTime < 1000) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
-    });
+    // (已移除連點三下重新整理頁面的事件監聽器)
     
   </script>
 </body>
