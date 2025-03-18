@@ -725,14 +725,12 @@
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
       
-      // 若為水平手勢且已觸發長按則不再處理
+      // 若為水平手勢且未觸發長按，且左滑超過 90px 且手勢持續未滿一秒，放開時觸發轉頁
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (!horizontalLongTriggered) {
-          if (deltaX < 0 && duration < 1000) {
-            // 快速左滑：轉頁至 orders.html
+          if (deltaX < -90 && duration < 1000) {
             window.location.href = "orders.html";
           }
-          // 右滑快速不作任何動作
         }
       }
       // 處理垂直手勢（門檻調整為 90px）
@@ -784,21 +782,21 @@
     
     // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
-let lastTapTime = 0;
-document.addEventListener("click", function(e) {
-  // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
-  if (e.clientY < window.innerHeight * 0.75) return;
-  let now = Date.now();
-  if (now - lastTapTime < 1000) {
-    tapCount++;
-  } else {
-    tapCount = 1;
-  }
-  lastTapTime = now;
-  if (tapCount >= 3) {
-    location.reload();
-  }
-});
+    let lastTapTime = 0;
+    document.addEventListener("click", function(e) {
+      // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
+      if (e.clientY < window.innerHeight * 0.75) return;
+      let now = Date.now();
+      if (now - lastTapTime < 1000) {
+        tapCount++;
+      } else {
+        tapCount = 1;
+      }
+      lastTapTime = now;
+      if (tapCount >= 3) {
+        location.reload();
+      }
+    });
     
   </script>
 </body>
