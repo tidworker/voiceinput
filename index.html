@@ -784,19 +784,21 @@
     
     // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      let now = Date.now();
-      if (now - lastTapTime < 1000) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
-    });
+let lastTapTime = 0;
+document.addEventListener("click", function(e) {
+  // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
+  if (e.clientY < window.innerHeight * 0.75) return;
+  let now = Date.now();
+  if (now - lastTapTime < 1000) {
+    tapCount++;
+  } else {
+    tapCount = 1;
+  }
+  lastTapTime = now;
+  if (tapCount >= 3) {
+    location.reload();
+  }
+  });
     
   </script>
 </body>
