@@ -2,13 +2,10 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>中文點餐系統</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>訂單紀錄</title>
   <style>
-    /* 防止下拉刷新 */
-    html, body {
-      overscroll-behavior: none;
-    }
+    /* 與主頁相同的黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -18,17 +15,29 @@
       text-align: center;
       user-select: none;
     }
-    /* 圖片（Logo或標題） */
-    img {
-      max-width: 100%;
-    }
-    /* 主要內容區：訂單表格與語音備忘錄顯示 */
+    /* 內容容器 */
     #contentContainer {
       width: 90%;
-      height: 370px;
-      margin: 20px auto;
-      overflow-y: auto;
+      margin: 0 auto 20px;
+      padding-bottom: 20px;
       background-color: black;
+    }
+    /* 每筆訂單區塊 */
+    .orderBlock {
+      border: 1px solid orange;
+      border-radius: 3px;
+      margin-bottom: 15px;
+      padding: 10px;
+      position: relative;
+      transition: transform 0.3s, opacity 0.3s;
+    }
+    /* 訂單標題容器，左右分佈 */
+    .orderHeaderContainer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: bold;
+      margin-bottom: 5px;
     }
     /* 訂單表格 */
     table {
@@ -38,9 +47,7 @@
       border-collapse: separate;
       border-spacing: 0;
       border-radius: 3px;
-    }
-    table, th, td {
-      border: 0;
+      margin-bottom: 5px;
     }
     th, td {
       padding: 8px;
@@ -56,131 +63,262 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 語音備忘錄顯示區 */
-    #voiceOutput {
-      margin-top: 10px;
+    /* 備忘錄直接顯示內文 */
+    .voiceMemo {
       text-align: left;
       color: orange;
-      padding: 10px;
+      padding: 5px;
       background-color: black;
       cursor: pointer;
-    }
-    /* 總金額 */
-    #totalAmount {
-      color: white;
-      font-size: 18px;
-      margin-top: 10px;
-    }
-    /* 功能按鈕 */
-    button {
-      background-color: black;
-      border: none;
-      cursor: pointer;
-      width: 50px;
-      height: 50px;
-      padding: 0;
-      margin-top: 5px;
-      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <!-- 頁首圖片 -->
   <br>
-  <img src="3.png" width="340" height="170" alt="Logo">
-  <!-- 訂單與備忘錄顯示區 -->
+  <br>
   <div id="contentContainer">
-    <table id="orderTable">
-      <thead>
-        <tr>
-          <th>品項</th>
-          <th>份數</th>
-          <th>備註</th>
-          <th>單價</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- 訂單項目將由程式碼動態插入 -->
-      </tbody>
-    </table>
-    <!-- 語音備忘錄顯示（點擊進入編輯模式，原有功能保留） -->
-    <div id="voiceOutput" onclick="openMemoModal()">語音備忘錄</div>
+    <!-- 訂單區塊將由 JavaScript 動態加入 -->
   </div>
-  <p id="totalAmount">總金額：0 元</p>
-  <!-- 功能按鈕 -->
-  <button id="resetButton" onclick="resetOrder()">
-    <img src="re.png" width="50" height="50" alt="重置">
-  </button>
-  <button id="ordersLinkButton" onclick="window.location.href='orders.html'">
-    <img src="list.png" width="50" height="50" alt="訂單記錄">
-  </button>
-  <button id="completeOrderButton" onclick="completeOrder()">
-    <img src="order.png" width="50" height="50" alt="完成訂單">
-  </button>
-  
-  <!-- 以下為程式碼部分 -->
   <script>
-    /* ------------------ 原有訂單功能（保留原有邏輯） ------------------ */
-    function resetOrder() {
-      document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
-      document.getElementById("totalAmount").innerText = "總金額：0 元";
-      document.getElementById("voiceOutput").innerText = "語音備忘錄";
-      localStorage.removeItem("currentOrderData");
+    let orderHistory = [];
+    let globalSwipedOrder = null;
+    let globalSwipedTimer = null;
+    let globalSwappedIndices = null;
+    
+    // 強制重置全域手勢狀態
+    let globalStartX = null, globalStartY = null;
+    function resetGestureState() {
+      globalStartX = null;
+      globalStartY = null;
     }
-    function completeOrder() {
-      // 此處執行完成訂單的動作（示例以 alert 示意）
-      alert("訂單已完成！");
-      resetOrder();
+    
+    // 讀取與儲存訂單記錄
+    function loadOrderHistory() {
+      const historyJSON = localStorage.getItem("orderHistory");
+      orderHistory = historyJSON ? JSON.parse(historyJSON) : [];
     }
-    // 其他原有訂單與語音處理功能略…
+    function saveOrderHistory() {
+      localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
+    }
+    
+    // 渲染訂單紀錄
+    function renderOrderHistory() {
+      const container = document.getElementById("contentContainer");
+      container.innerHTML = "";
+      globalSwipedOrder = null;
+      if (globalSwipedTimer) {
+        clearTimeout(globalSwipedTimer);
+        globalSwipedTimer = null;
+      }
+      if (orderHistory.length === 0) {
+        container.innerHTML = "<p>沒有訂單資料</p>";
+        return;
+      }
+      orderHistory.forEach((order, index) => {
+        const orderBlock = document.createElement("div");
+        orderBlock.classList.add("orderBlock");
+        orderBlock.dataset.orderIndex = index;
+        
+        const headerContainer = document.createElement("div");
+        headerContainer.classList.add("orderHeaderContainer");
+        const headerLeft = document.createElement("span");
+        headerLeft.innerText = "訂單 #" + (index + 1);
+        let total = 0;
+        order.orders.forEach(item => {
+          const qty = parseFloat(item.quantity);
+          const price = parseFloat(item.price);
+          if (!isNaN(qty) && !isNaN(price)) {
+            total += qty * price;
+          }
+        });
+        const headerRight = document.createElement("span");
+        headerRight.innerText = "總金額：" + total + " 元";
+        headerContainer.appendChild(headerLeft);
+        headerContainer.appendChild(headerRight);
+        orderBlock.appendChild(headerContainer);
+        
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        ["品項", "份數", "備註", "單價"].forEach(text => {
+          const th = document.createElement("th");
+          th.innerText = text;
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        order.orders.forEach(item => {
+          const row = document.createElement("tr");
+          ["dish", "quantity", "remark", "price"].forEach(prop => {
+            const td = document.createElement("td");
+            td.innerText = item[prop];
+            row.appendChild(td);
+          });
+          tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+        orderBlock.appendChild(table);
+        
+        const memoDiv = document.createElement("div");
+        memoDiv.classList.add("voiceMemo");
+        memoDiv.innerText = order.voiceMemo;
+        // 點擊備忘錄內容時可進入編輯模式（此頁只顯示，不再處理手勢）
+        memoDiv.addEventListener("click", openMemoModal);
+        orderBlock.appendChild(memoDiv);
+        
+        attachOrderSwipe(orderBlock);
+        container.appendChild(orderBlock);
+      });
+    }
+    
+    // 交換後動畫
+    function animateSwappedOrders() {
+      if (!globalSwappedIndices) return;
+      const orderBlocks = document.querySelectorAll(".orderBlock");
+      globalSwappedIndices.forEach(idx => {
+        const ob = orderBlocks[idx];
+        if (ob) {
+          ob.style.transform = "translateX(-10px)";
+          ob.style.opacity = "0.5";
+          ob.style.transition = "opacity 1s, transform 0.3s";
+          setTimeout(() => {
+            ob.style.opacity = "1";
+            ob.style.transform = "";
+          }, 50);
+        }
+      });
+      globalSwappedIndices = null;
+    }
+    
+    // 左滑訂單區塊
+    function attachOrderSwipe(orderBlock) {
+      let startX = null, startY = null;
+      orderBlock.addEventListener("touchstart", function(e) {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      });
+      orderBlock.addEventListener("touchend", function(e) {
+        if (startX === null) return;
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        // 判斷水平左滑（閾值 90px）
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -90) {
+          if (globalSwipedOrder) {
+            if (globalSwipedOrder === orderBlock) {
+              const orderIndex = parseInt(orderBlock.dataset.orderIndex);
+              clearTimeout(globalSwipedTimer);
+              globalSwipedOrder = null;
+              deleteOrder(orderIndex);
+            } else {
+              orderBlock.style.transform = "translateX(-10px)";
+              orderBlock.style.opacity = "0.5";
+              clearTimeout(globalSwipedTimer);
+              globalSwipedTimer = setTimeout(function() {
+                const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
+                const secondIndex = parseInt(orderBlock.dataset.orderIndex);
+                const temp = orderHistory[firstIndex];
+                orderHistory[firstIndex] = orderHistory[secondIndex];
+                orderHistory[secondIndex] = temp;
+                globalSwappedIndices = [firstIndex, secondIndex];
+                globalSwipedOrder = null;
+                saveOrderHistory();
+                renderOrderHistory();
+                animateSwappedOrders();
+              }, 800);
+            }
+          } else {
+            orderBlock.style.transform = "translateX(-10px)";
+            orderBlock.style.opacity = "0.5";
+            globalSwipedOrder = orderBlock;
+            globalSwipedTimer = setTimeout(function() {
+              orderBlock.style.transform = "";
+              orderBlock.style.opacity = "";
+              globalSwipedOrder = null;
+            }, 3000);
+          }
+        }
+        startX = null;
+        startY = null;
+      });
+    }
+    
+    function deleteOrder(index) {
+      orderHistory.splice(index, 1);
+      saveOrderHistory();
+      renderOrderHistory();
+    }
+    
+    // 全域右滑返回主頁（調整閾值至 90px）
+    let startX = null;
+let gestureStartTime = null;
 
-    /* ------------------ 備忘錄模態框功能 ------------------ */
+document.addEventListener("touchstart", function(e) {
+  if (e.touches.length === 1) {
+    startX = e.touches[0].clientX;
+    gestureStartTime = Date.now();
+  }
+});
+
+document.addEventListener("touchend", function(e) {
+  if (startX === null) return;
+  const endX = e.changedTouches[0].clientX;
+  const deltaX = endX - startX;
+  const duration = Date.now() - gestureStartTime;
+  
+  // 判斷為左滑：deltaX 為負且絕對值超過 90px，
+  // 並且釋放手指的持續時間小於 1 秒
+  if (deltaX < -90 && duration < 1000) {
+    window.location.href = "orders.html";
+  }
+  
+  startX = null;
+  gestureStartTime = null;
+});
+    
+    // ------------------ 備忘錄模態框功能 ------------------
     function openMemoModal() {
-      const memo = prompt("請輸入備忘錄內容：", document.getElementById("voiceOutput").innerText);
-      if (memo !== null) {
-        document.getElementById("voiceOutput").innerText = memo;
-      }
+      const memoModal = document.getElementById("memoModal");
+      const memoInput = document.getElementById("memoInput");
+      memoInput.value = document.getElementById("voiceOutput").innerText;
+      memoModal.style.display = "block";
+    }
+    function closeMemoModal() {
+      document.getElementById("memoModal").style.display = "none";
+    }
+    function saveMemo() {
+      const newMemo = document.getElementById("memoInput").value;
+      document.getElementById("voiceOutput").innerText = newMemo;
+      closeMemoModal();
+    }
+    function clearMemo() {
+      document.getElementById("memoInput").value = "";
+      document.getElementById("voiceOutput").innerText = "";
     }
     
-    /* ------------------ 連點三下重新整理 ------------------ */
+    // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      // 僅在螢幕下半部 25% 區域內計算連點
-      if (e.clientY < window.innerHeight * 0.75) return;
-      let now = Date.now();
-      if (now - lastTapTime < 1000) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
-    });
+let lastTapTime = 0;
+document.addEventListener("click", function(e) {
+  // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
+  if (e.clientY < window.innerHeight * 0.75) return;
+  let now = Date.now();
+  if (now - lastTapTime < 1000) {
+    tapCount++;
+  } else {
+    tapCount = 1;
+  }
+  lastTapTime = now;
+  if (tapCount >= 3) {
+    location.reload();
+  }
+});
     
-    /* ------------------ 左滑換頁功能 ------------------ */
-    let leftSwipeStartX = null;
-    let leftSwipeStartTime = null;
-    document.addEventListener("touchstart", function(e) {
-      if (e.touches.length === 1) {
-        leftSwipeStartX = e.touches[0].clientX;
-        leftSwipeStartTime = Date.now();
-      }
-    });
-    document.addEventListener("touchend", function(e) {
-      if (leftSwipeStartX === null) return;
-      const endX = e.changedTouches[0].clientX;
-      const deltaX = endX - leftSwipeStartX;
-      const duration = Date.now() - leftSwipeStartTime;
-      // 只有當左滑距離超過 90px 且放開手指的時間在 1 秒內時才觸發
-      if (deltaX < -90 && duration < 1000) {
-        window.location.href = "orders.html";
-      }
-      leftSwipeStartX = null;
-      leftSwipeStartTime = null;
-    });
+    // 初始化
+    loadOrderHistory();
+    renderOrderHistory();
   </script>
 </body>
 </html>
