@@ -147,20 +147,6 @@
       width: 100%;
       height: 100px;
     }
-    /* 測試按鈕（固定在畫面最下方） */
-    #testButton {
-      position: fixed;
-      bottom: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 10px 20px;
-      font-size: 16px;
-      background-color: orange;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      z-index: 5000;
-    }
   </style>
 </head>
 <body>
@@ -224,40 +210,31 @@
     </div>
   </div>
 
-  <!-- 測試用按鈕 -->
-  <button id="testButton">測試</button>
-
   <script>
-    // ------------------ 延遲啟動全頁手勢檢查 ------------------
-    let gesturesEnabled = false;
-    window.addEventListener("load", function() {
-      setTimeout(() => {
-        gesturesEnabled = true;
-      }, 500);
-      // 載入時強制重置所有手勢狀態
-      resetGestureState();
-    });
-    
     // ------------------ 強制狀態重置 ------------------
     // 定義手勢狀態變數
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
     let verticalSwipeDirection = null; // "down" 或 "up"
     let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    let horizontalLongTriggered = false; // 記錄是否已觸發水平長按動作
-
+    // 移除 horizontalLongTriggered 相關設定
+    
     function resetGestureState() {
       gestureStartX = null;
       gestureStartY = null;
       gestureStartTime = null;
       verticalSwipeDirection = null;
       verticalSwipeTriggered = false;
-      horizontalLongTriggered = false;
       if (verticalSwipeTimer) {
         clearTimeout(verticalSwipeTimer);
         verticalSwipeTimer = null;
       }
     }
+    
+    window.addEventListener("load", function() {
+      // 載入時強制重置所有手勢狀態
+      resetGestureState();
+    });
     
     // ------------------ 基本訂單與菜單處理 ------------------
     let charMapping = {};
@@ -689,20 +666,17 @@
     
     // ------------------ 全頁手勢偵測 ------------------
     document.body.addEventListener("touchstart", function(e) {
-      if (!gesturesEnabled) return;
       if (e.touches.length === 1) {
         gestureStartX = e.touches[0].clientX;
         gestureStartY = e.touches[0].clientY;
         gestureStartTime = Date.now();
         verticalSwipeDirection = null;
         verticalSwipeTriggered = false;
-        horizontalLongTriggered = false;
         if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
       }
     });
     
     document.body.addEventListener("touchmove", function(e) {
-      if (!gesturesEnabled) return;
       if (gestureStartX === null || gestureStartY === null) return;
       let currentX = e.touches[0].clientX;
       let currentY = e.touches[0].clientY;
@@ -721,26 +695,11 @@
           verticalSwipeTriggered = true;
         }, 500);
       }
-      
-      // 判定水平手勢（門檻調整為 50px）
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
-        if (!horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
-          if (deltaX < 0) { 
-            // 左滑長按 1 秒 → 重新點餐
-            resetOrder();
-          } else {
-            // 右滑長按 1 秒 → 完成訂單
-            completeOrder();
-          }
-          horizontalLongTriggered = true;
-        }
-      }
+      // 移除 touchmove 中右滑長按的判斷，改由 touchend 處理
     });
     
     document.body.addEventListener("touchend", function(e) {
-      if (!gesturesEnabled) return;
       let gestureEndTime = Date.now();
-      let duration = gestureEndTime - gestureStartTime;
       if (verticalSwipeTimer) {
         clearTimeout(verticalSwipeTimer);
         verticalSwipeTimer = null;
@@ -750,35 +709,31 @@
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
       
-      // 若為水平手勢且未觸發長按，且左滑超過 50px 且手勢持續未滿一秒，放開時觸發轉頁
+      // 若為水平手勢
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        if (!horizontalLongTriggered) {
-          if (deltaX < -50 && duration < 1000) {
-            window.location.href = "orders.html";
-          }
-        }
-      }
-      // 處理垂直手勢（門檻調整為 50px）
-      else if (Math.abs(deltaY) > 50) {
-        if (verticalSwipeDirection === "down") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "red") {
-              startVoiceOrdering();
-            } else {
-              endVoiceOrdering();
+        if (deltaX < -50) {
+          // 左滑：轉頁至 orders.html
+          window.location.href = "orders.html";
+        } else if (deltaX > 50) {
+          // 右滑：分兩次進行
+          if (!window.firstRightSwipe) {
+            // 第一次右滑：訂單表格右移10px並變成50%透明度
+            document.getElementById("orderTable").style.transform = "translateX(10px)";
+            document.getElementById("orderTable").style.opacity = "0.5";
+            window.firstRightSwipe = true;
+            // 設定3秒後重置
+            window.firstRightSwipeTimer = setTimeout(function() {
+              document.getElementById("orderTable").style.transform = "";
+              document.getElementById("orderTable").style.opacity = "";
+              window.firstRightSwipe = false;
+            }, 3000);
+          } else {
+            // 第二次右滑：送出訂單
+            if (window.firstRightSwipeTimer) {
+              clearTimeout(window.firstRightSwipeTimer);
+              window.firstRightSwipeTimer = null;
             }
-          } else if (verticalSwipeTriggered) {
-            endVoiceOrdering();
-          }
-        } else if (verticalSwipeDirection === "up") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "green") {
-              startVoiceMemo();
-            } else {
-              endVoiceMemo();
-            }
-          } else if (verticalSwipeTriggered) {
-            endVoiceMemo();
+            completeOrder();
           }
         }
       }
@@ -821,16 +776,6 @@
       if (tapCount >= 3) {
         location.reload();
       }
-    });
-    
-    // ------------------ 測試按鈕功能 ------------------
-    document.getElementById("testButton").addEventListener("click", function() {
-      // 以 menu 陣列中的品項為例，加入兩筆測試資料
-      let dish1 = menu.find(item => item.name === "蔥油餅");
-      let dish2 = menu.find(item => item.name === "蔥油餅加蛋");
-      if (dish1) addOrderRow(dish1, 2, "無辣");
-      if (dish2) addOrderRow(dish2, 1, "少油");
-      document.getElementById("voiceOutput").innerText = "測試！測試！";
     });
     
   </script>
