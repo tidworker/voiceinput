@@ -81,7 +81,7 @@
   </div>
   <script>
     let orderHistory = [];
-    // 記錄第一筆被選取的訂單
+    // 用來記錄第一筆被選取的訂單及其索引
     let firstSelected = null;
     let firstSelectedIndex = null;
     let selectionTimer = null;
@@ -159,7 +159,7 @@
         
         // 設定訂單的點擊與雙擊（連點）事件
         orderBlock.addEventListener("touchstart", function(e) {
-          // 記錄觸控起始位置與時間（用於判斷是否為點擊而非滑動）
+          // 記錄觸控起始位置與時間，判斷是否為點擊
           orderBlock._startX = e.touches[0].clientX;
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
@@ -179,7 +179,7 @@
           } else {
             // 雙擊偵測到
             if (firstSelected === null) {
-              // 第一筆訂單被選取：縮小且淡化
+              // 第一筆訂單被選取：縮小至 90% 且半透明（opacity 0.5）
               firstSelected = orderBlock;
               firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
               orderBlock.style.transform = "scale(0.9)";
@@ -192,7 +192,7 @@
                 firstSelectedIndex = null;
               }, 3000);
             } else {
-              // 若第二次點擊的是不同訂單，進行交換動畫
+              // 第二筆訂單被選取，且與第一筆不同
               const secondSelected = orderBlock;
               const secondIndex = parseInt(orderBlock.dataset.orderIndex);
               if (firstSelected === secondSelected) {
@@ -200,35 +200,50 @@
                 return;
               }
               clearTimeout(selectionTimer);
-              // 淡出效果（0.3秒）
-              firstSelected.style.transition = "opacity 0.3s";
-              secondSelected.style.transition = "opacity 0.3s";
-              firstSelected.style.opacity = "0";
-              secondSelected.style.opacity = "0";
-              // 0.3秒後交換 orderHistory 中的位置，重新渲染，並以淡入效果顯示（0.5秒）
+              // 第二筆訂單也縮小並變成半透明
+              secondSelected.style.transform = "scale(0.9)";
+              secondSelected.style.opacity = "0.5";
+              
+              // 維持 0.2 秒此狀態
               setTimeout(() => {
-                let temp = orderHistory[firstSelectedIndex];
-                orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
-                orderHistory[secondIndex] = temp;
-                saveOrderHistory();
-                const swappedIndices = [firstSelectedIndex, secondIndex];
-                firstSelected = null;
-                firstSelectedIndex = null;
-                renderOrderHistory();
+                // 接著花 0.3 秒讓兩筆訂單變成全透明
+                firstSelected.style.transition = "opacity 0.3s";
+                secondSelected.style.transition = "opacity 0.3s";
+                firstSelected.style.opacity = "0";
+                secondSelected.style.opacity = "0";
+                
+                // 全透明後維持 0.2 秒
                 setTimeout(() => {
-                  const container = document.getElementById("contentContainer");
-                  const blocks = container.querySelectorAll(".orderBlock");
-                  swappedIndices.forEach(idx => {
-                    if (blocks[idx]) {
-                      blocks[idx].style.opacity = "0";
-                      blocks[idx].style.transition = "opacity 0.5s";
-                      // 觸發 reflow 後淡入
-                      void blocks[idx].offsetWidth;
-                      blocks[idx].style.opacity = "1";
-                    }
-                  });
-                }, 50);
-              }, 300);
+                  // 交換 orderHistory 中的位置
+                  let temp = orderHistory[firstSelectedIndex];
+                  orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
+                  orderHistory[secondIndex] = temp;
+                  saveOrderHistory();
+                  const swappedIndices = [firstSelectedIndex, secondIndex];
+                  firstSelected = null;
+                  firstSelectedIndex = null;
+                  
+                  // 重新渲染訂單
+                  renderOrderHistory();
+                  
+                  // 交換後，對交換的訂單以 0.5 秒淡入動畫還原（從 opacity 0 與 scale 0.9 還原）
+                  setTimeout(() => {
+                    swappedIndices.forEach(idx => {
+                      const block = document.querySelector(`.orderBlock[data-order-index="${idx}"]`);
+                      if (block) {
+                        // 設定初始狀態
+                        block.style.opacity = "0";
+                        block.style.transform = "scale(0.9)";
+                        block.style.transition = "opacity 0.5s, transform 0.5s";
+                        // 觸發 reflow 後改變成正常狀態
+                        void block.offsetWidth;
+                        block.style.opacity = "1";
+                        block.style.transform = "scale(1)";
+                      }
+                    });
+                  }, 50);
+                }, 200);
+              }, 200);
             }
             orderBlock._lastTap = 0;
           }
