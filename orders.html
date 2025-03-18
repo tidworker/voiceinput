@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>訂單紀錄</title>
   <style>
-    /* 與主頁相同的黑底白字風格 */
+    /* 黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
       margin: 10px;
@@ -64,7 +64,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄直接顯示內文，不再具備點擊編輯功能 */
+    /* 備忘錄 */
     .voiceMemo {
       text-align: left;
       color: orange;
@@ -75,14 +75,17 @@
   </style>
 </head>
 <body>
-  <br>
-  <br>
+  <br><br>
   <div id="contentContainer">
     <!-- 訂單區塊將由 JavaScript 動態加入 -->
   </div>
   <script>
     let orderHistory = [];
-
+    // 用來記錄第一筆被選取的訂單
+    let firstSelected = null;
+    let firstSelectedIndex = null;
+    let selectionTimer = null;
+    
     // 讀取與儲存訂單記錄
     function loadOrderHistory() {
       const historyJSON = localStorage.getItem("orderHistory");
@@ -154,31 +157,83 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 新增連點兩下選取/刪除功能
-        orderBlock.lastTap = 0;
+        // 設定訂單的點擊與雙擊（連點）事件
+        orderBlock.addEventListener("touchstart", function(e) {
+          // 記錄觸控起始位置與時間（用於判斷是否為點擊而非滑動）
+          orderBlock._startX = e.touches[0].clientX;
+          orderBlock._startY = e.touches[0].clientY;
+          orderBlock._touchStartTime = Date.now();
+        });
         orderBlock.addEventListener("touchend", function(e) {
-          const now = Date.now();
-          if (!orderBlock.lastTap || now - orderBlock.lastTap > 300) {
-            orderBlock.lastTap = now;
+          // 若有滑動過大，則不當作點擊
+          const endX = e.changedTouches[0].clientX;
+          const endY = e.changedTouches[0].clientY;
+          const deltaX = endX - orderBlock._startX;
+          const deltaY = endY - orderBlock._startY;
+          if (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10) return;
+          
+          const touchEndTime = Date.now();
+          // 若上一次點擊超過 300 毫秒則視為第一次點擊
+          if (!orderBlock._lastTap || (touchEndTime - orderBlock._lastTap > 300)) {
+            orderBlock._lastTap = touchEndTime;
           } else {
             // 雙擊偵測到
-            if (!orderBlock.classList.contains("selected")) {
-              // 選取：變成50%透明且縮小至90%
-              orderBlock.classList.add("selected");
+            // 若尚未有選取訂單，則標記此筆訂單為選取狀態
+            if (firstSelected === null) {
+              firstSelected = orderBlock;
+              firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
               orderBlock.style.transform = "scale(0.9)";
               orderBlock.style.opacity = "0.5";
-              // 3秒內若未再雙點則取消選取
-              orderBlock.selectionTimer = setTimeout(() => {
-                orderBlock.classList.remove("selected");
+              // 3秒後自動取消選取
+              selectionTimer = setTimeout(() => {
                 orderBlock.style.transform = "";
                 orderBlock.style.opacity = "";
+                firstSelected = null;
+                firstSelectedIndex = null;
               }, 3000);
             } else {
-              // 已選取狀態下再連點兩下則刪除訂單
-              clearTimeout(orderBlock.selectionTimer);
-              animateDeletion(orderBlock);
+              // 若第二次點擊的是不同訂單，則進行交換動畫
+              const secondSelected = orderBlock;
+              const secondIndex = parseInt(orderBlock.dataset.orderIndex);
+              if (firstSelected === secondSelected) {
+                // 同一筆訂單重複雙擊，不作處理
+                orderBlock._lastTap = 0;
+                return;
+              }
+              clearTimeout(selectionTimer);
+              // 讓兩筆訂單同時淡出（0.3秒）
+              firstSelected.style.transition = "opacity 0.3s";
+              secondSelected.style.transition = "opacity 0.3s";
+              firstSelected.style.opacity = "0";
+              secondSelected.style.opacity = "0";
+              // 0.3秒後交換兩筆訂單在 orderHistory 的位置，並重新渲染
+              setTimeout(() => {
+                let temp = orderHistory[firstSelectedIndex];
+                orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
+                orderHistory[secondIndex] = temp;
+                saveOrderHistory();
+                // 記錄交換的兩個索引，用於交換後的淡入動畫
+                const swappedIndices = [firstSelectedIndex, secondIndex];
+                firstSelected = null;
+                firstSelectedIndex = null;
+                renderOrderHistory();
+                // 重新渲染後對交換的訂單以淡入效果顯示
+                setTimeout(() => {
+                  const container = document.getElementById("contentContainer");
+                  const blocks = container.querySelectorAll(".orderBlock");
+                  swappedIndices.forEach(idx => {
+                    if (blocks[idx]) {
+                      blocks[idx].style.opacity = "0";
+                      blocks[idx].style.transition = "opacity 0.3s";
+                      // 觸發 reflow 後再改為不透明
+                      void blocks[idx].offsetWidth;
+                      blocks[idx].style.opacity = "1";
+                    }
+                  });
+                }, 50);
+              }, 300);
             }
-            orderBlock.lastTap = 0;
+            orderBlock._lastTap = 0;
           }
         });
         
@@ -186,39 +241,31 @@
       });
     }
     
-    // 動畫：刪除訂單時讓下方訂單上滑補上
-    function animateDeletion(orderBlock) {
-      const index = parseInt(orderBlock.dataset.orderIndex);
-      const height = orderBlock.offsetHeight;
-      
-      // 讓被刪除的訂單淡出
-      orderBlock.style.transition = "opacity 0.3s";
-      orderBlock.style.opacity = "0";
-      
-      // 讓下方訂單上滑
-      const container = document.getElementById("contentContainer");
-      const orderBlocks = container.querySelectorAll(".orderBlock");
-      orderBlocks.forEach(ob => {
-        const obIndex = parseInt(ob.dataset.orderIndex);
-        if (obIndex > index) {
-          ob.style.transition = "transform 0.3s";
-          ob.style.transform = `translateY(-${height}px)`;
-        }
-      });
-      
-      // 0.3秒後更新訂單紀錄
-      setTimeout(() => {
-        deleteOrder(index);
-      }, 300);
-    }
+    // ---------------- 全域滑動返回上一頁 ----------------
+    let globalStartX = null, globalStartY = null, globalStartTime = null;
+    document.addEventListener("touchstart", function(e) {
+      if(e.touches.length === 1){
+        globalStartX = e.touches[0].clientX;
+        globalStartY = e.touches[0].clientY;
+        globalStartTime = Date.now();
+      }
+    });
+    document.addEventListener("touchend", function(e) {
+      if(globalStartX === null) return;
+      const endX = e.changedTouches[0].clientX;
+      const endY = e.changedTouches[0].clientY;
+      const deltaX = endX - globalStartX;
+      const deltaY = endY - globalStartY;
+      const duration = Date.now() - globalStartTime;
+      if(Math.abs(deltaX) >= 50 && duration >= 200 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        window.history.back();
+      }
+      globalStartX = null;
+      globalStartY = null;
+      globalStartTime = null;
+    });
     
-    function deleteOrder(index) {
-      orderHistory.splice(index, 1);
-      saveOrderHistory();
-      renderOrderHistory();
-    }
-    
-    // ------------------ 連點三下重新整理頁面 ------------------
+    // ---------------- 連點三下重新整理頁面 ----------------
     let tapCount = 0;
     let lastTapTime = 0;
     document.addEventListener("click", function(e) {
@@ -232,30 +279,6 @@
       if (tapCount >= 3) {
         location.reload();
       }
-    });
-    
-    // 全域右滑返回主頁（保留此功能）
-    let globalStartX = null, globalStartY = null;
-    function resetGestureState() {
-      globalStartX = null;
-      globalStartY = null;
-    }
-    document.addEventListener("touchstart", function(e) {
-      if (e.touches.length === 1) {
-        globalStartX = e.touches[0].clientX;
-        globalStartY = e.touches[0].clientY;
-      }
-    });
-    document.addEventListener("touchend", function(e) {
-      if (globalStartX === null) return;
-      const endX = e.changedTouches[0].clientX;
-      const endY = e.changedTouches[0].clientY;
-      const deltaX = endX - globalStartX;
-      const deltaY = endY - globalStartY;
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 50) {
-        window.location.href = "index.html";
-      }
-      resetGestureState();
     });
     
     // 初始化
