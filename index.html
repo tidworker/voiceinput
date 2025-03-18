@@ -212,51 +212,41 @@
   </div>
   
   <script>
-    // ------------------ 強制狀態重置 ------------------
-    // 定義手勢狀態變數
+    // ------------------ 手勢狀態變數 ------------------
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
-    let verticalSwipeDirection = null; // "down" 或 "up"
-    let verticalSwipeTriggered = false;
-    let verticalSwipeTimer = null;
-    let horizontalLongTriggered = false; // 用於左滑長按
-
-    // 新增右滑判斷相關變數
+    let horizontalLongTriggered = false;
+    
+    // 右滑相關變數
     let rightSwipeCount = 0;
     let rightSwipeTimer = null;
     let lastRightSwipeTime = 0;
-
+    
+    // ------------------ 重置手勢狀態 ------------------
     function resetGestureState() {
       gestureStartX = null;
       gestureStartY = null;
       gestureStartTime = null;
-      verticalSwipeDirection = null;
-      verticalSwipeTriggered = false;
       horizontalLongTriggered = false;
-      if (verticalSwipeTimer) {
-        clearTimeout(verticalSwipeTimer);
-        verticalSwipeTimer = null;
-      }
     }
-
+    
     window.addEventListener("load", function() {
-      // 載入時強制重置所有手勢狀態
       resetGestureState();
     });
-
+    
     // ------------------ 基本訂單與菜單處理 ------------------
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
     let currentEditType = ""; // "quantity" 或 "remark"
     let currentEditFreeDishName = "";
-
+    
     let menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
       { keywords: ["la"], name: "辣", price: 0 },
       { keywords: ["freeDrink"], name: "免費飲料", price: 0 }
     ];
-
+    
     function loadTranslationDatabase() {
       fetch("database.txt")
         .then(response => {
@@ -273,7 +263,7 @@
         .catch(err => { console.error("載入字庫資料失敗：" + err.message); });
     }
     loadTranslationDatabase();
-
+    
     function loadMenu() {
       fetch("menu.txt")
         .then(response => {
@@ -284,7 +274,7 @@
         .catch(err => { console.error("載入菜單資料失敗：" + err.message); });
     }
     loadMenu();
-
+    
     function translateDishName(dishChinese) {
       let converted = "";
       for (let i = 0; i < dishChinese.length; i++) {
@@ -293,7 +283,7 @@
       }
       return converted;
     }
-
+    
     function updateTotalAmount() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       let total = 0;
@@ -304,7 +294,7 @@
       }
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
-
+    
     function addOrderRow(dish, quantity, remark) {
       if (!dish) return;
       if (dish.price === 0) {
@@ -356,14 +346,14 @@
       row.insertCell().innerText = dish.price;
       updateTotalAmount();
     }
-
+    
     function resetOrder() {
       document.getElementById("orderTable").getElementsByTagName("tbody")[0].innerHTML = "";
       document.getElementById("totalAmount").innerText = "總金額：0 元";
       document.getElementById("voiceOutput").innerHTML = "";
       localStorage.removeItem("currentOrderData");
     }
-
+    
     function completeOrder() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       let currentOrderItems = [];
@@ -377,7 +367,6 @@
         });
       }
       const voiceMemo = document.getElementById("voiceOutput").innerText;
-      // 當有訂單內容時才送出，不跳出額外提醒
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
         return;
       }
@@ -391,7 +380,7 @@
       resetOrder();
       window.location.href = "orders.html";
     }
-
+    
     function saveCurrentOrder() {
       const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
       let currentOrderItems = [];
@@ -408,7 +397,7 @@
       const currentOrderData = { orders: currentOrderItems, voiceMemo: voiceMemo };
       localStorage.setItem("currentOrderData", JSON.stringify(currentOrderData));
     }
-
+    
     function loadCurrentOrder() {
       const currentJSON = localStorage.getItem("currentOrderData");
       if (currentJSON) {
@@ -432,13 +421,13 @@
         updateTotalAmount();
       }
     }
-
+    
     window.addEventListener("beforeunload", function(e) {
       saveCurrentOrder();
     });
-
+    
     loadCurrentOrder();
-
+    
     // ------------------ 編輯訂單模態框功能 ------------------
     function openModal(row, editType) {
       currentEditRow = row;
@@ -558,12 +547,12 @@
       let current = parseInt(input.value) || 1;
       if (current > 1) input.value = current - 1;
     }
-
+    
     // ------------------ 語音點餐 / 語音備忘錄功能 ------------------
     let currentRecognition = null;
     let holdActive = false;
     let currentMode = ""; // "red" 表示語音點餐；"green" 表示語音備忘錄
-
+    
     function startVoiceInputSingle() {
       return new Promise((resolve) => {
         if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
@@ -588,7 +577,7 @@
         recognition.start();
       });
     }
-
+    
     function continuousRecognition() {
       if (!holdActive) return;
       startVoiceInputSingle().then((transcript) => {
@@ -609,7 +598,7 @@
         if (holdActive) continuousRecognition();
       });
     }
-
+    
     function startVoiceOrdering() {
       if (!holdActive) {
         holdActive = true;
@@ -621,7 +610,7 @@
       holdActive = false;
       if (currentRecognition) { currentRecognition.stop(); }
     }
-
+    
     function startVoiceMemo() {
       if (!holdActive) {
         holdActive = true;
@@ -633,7 +622,7 @@
       holdActive = false;
       if (currentRecognition) { currentRecognition.stop(); }
     }
-
+    
     function processMultipleVoiceInput(inputText) {
       let converted = translateDishName(inputText);
       let tokens = converted.split("/").filter(token => token.trim() !== "");
@@ -670,41 +659,26 @@
       }
       return orders.filter(o => o.dish);
     }
-
+    
     // ------------------ 全頁手勢偵測 ------------------
     document.body.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         gestureStartX = e.touches[0].clientX;
         gestureStartY = e.touches[0].clientY;
         gestureStartTime = Date.now();
-        verticalSwipeDirection = null;
-        verticalSwipeTriggered = false;
+        // 水平長按偵測變數在 touchmove 中使用
         horizontalLongTriggered = false;
-        if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
       }
     });
-
+    
     document.body.addEventListener("touchmove", function(e) {
       if (gestureStartX === null || gestureStartY === null) return;
       let currentX = e.touches[0].clientX;
       let currentY = e.touches[0].clientY;
       let deltaX = currentX - gestureStartX;
       let deltaY = currentY - gestureStartY;
-
-      // 判定垂直手勢（門檻調整為 90px）
-      if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 90) {
-        verticalSwipeDirection = (deltaY > 0) ? "down" : "up";
-        verticalSwipeTimer = setTimeout(() => {
-          if (verticalSwipeDirection === "down") {
-            startVoiceOrdering();
-          } else if (verticalSwipeDirection === "up") {
-            startVoiceMemo();
-          }
-          verticalSwipeTriggered = true;
-        }, 500);
-      }
-
-      // 左滑長按保持原有功能（右滑不在 touchmove 中觸發）
+      
+      // 只處理水平長按 (左滑長按)
       if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 90) {
         if (!horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
           if (deltaX < 0) {   
@@ -715,25 +689,20 @@
         }
       }
     });
-
+    
     document.body.addEventListener("touchend", function(e) {
       let gestureEndTime = Date.now();
       let duration = gestureEndTime - gestureStartTime;
-      if (verticalSwipeTimer) {
-        clearTimeout(verticalSwipeTimer);
-        verticalSwipeTimer = null;
-      }
       let endX = e.changedTouches[0].clientX;
       let endY = e.changedTouches[0].clientY;
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
-
-      // 處理水平手勢
+      
+      // 水平手勢處理
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        // 右滑
+        // 右滑：處理訂單完成 (保留原右滑邏輯)
         if (deltaX > 0) {
           const container = document.getElementById("contentContainer");
-          // 檢查是否有訂單內容
           const tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
           const voiceMemoText = document.getElementById("voiceOutput").innerText.trim();
           let hasOrder = (tbody.rows.length > 0 || voiceMemoText !== "");
@@ -741,17 +710,14 @@
             if (rightSwipeCount === 0) {
               rightSwipeCount = 1;
               lastRightSwipeTime = Date.now();
-              // 向右移動 10px
               container.style.transition = "transform 0.2s";
               container.style.transform = "translateX(10px)";
-              // 三秒內若未有第二次右滑則恢復原位
               rightSwipeTimer = setTimeout(function() {
                 container.style.transform = "translateX(0)";
                 rightSwipeCount = 0;
                 rightSwipeTimer = null;
               }, 3000);
             } else if (rightSwipeCount === 1 && (Date.now() - lastRightSwipeTime < 3000)) {
-              // 第二次右滑 → 送出訂單
               if (rightSwipeTimer) {
                 clearTimeout(rightSwipeTimer);
                 rightSwipeTimer = null;
@@ -761,7 +727,7 @@
               completeOrder();
             }
           } else {
-            // 無訂單時，右滑僅右移 10px後立刻彈回
+            // 無訂單時，右滑僅作短暫移動後彈回
             container.style.transition = "transform 0.2s";
             container.style.transform = "translateX(10px)";
             setTimeout(() => {
@@ -769,14 +735,30 @@
             }, 100);
           }
         }
-        // 左滑：快速左滑直接轉到 orders.html
+        // 左滑：快速左滑直接轉頁
         else if (deltaX < -90 && duration < 1000) {
           window.location.href = "orders.html";
         }
       }
+      // 垂直手勢處理（根據 touchend 判斷，每次皆獨立）
+      else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 90) {
+        if (deltaY > 0) { // 下滑
+          if (holdActive && currentMode === "red") {
+            endVoiceOrdering();
+          } else {
+            startVoiceOrdering();
+          }
+        } else { // 上滑
+          if (holdActive && currentMode === "green") {
+            endVoiceMemo();
+          } else {
+            startVoiceMemo();
+          }
+        }
+      }
       resetGestureState();
     });
-
+    
     // ------------------ 備忘錄手動編輯模態框功能 ------------------
     function openMemoModal() {
       const memoModal = document.getElementById("memoModal");
@@ -796,12 +778,11 @@
       document.getElementById("memoInput").value = "";
       document.getElementById("voiceOutput").innerText = "";
     }
-
+    
     // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
     let lastTapTime = 0;
     document.addEventListener("click", function(e) {
-      // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
       if (e.clientY < window.innerHeight * 0.75) return;
       let now = Date.now();
       if (now - lastTapTime < 1000) {
