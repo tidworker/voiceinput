@@ -30,7 +30,6 @@
       margin: 20px auto;
       overflow-y: auto;
       background-color: black;
-      /* 加入過渡效果，使 transform 與 opacity 變化平滑 */
       transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單表格 */
@@ -169,6 +168,7 @@
         <!-- 訂單項目將動態加入 -->
       </tbody>
     </table>
+    <!-- 點擊此區域可開啟備忘錄編輯 -->
     <div id="voiceOutput" onclick="openMemoModal()"></div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
@@ -211,15 +211,15 @@
   </div>
 
   <script>
-    // ------------------ 手勢狀態變數 ------------------
+    /* ------------------ 手勢狀態與旗標 ------------------ */
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
     let verticalSwipeDirection = null; // "down" 或 "up"
     let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    // 右滑旗標與計時器（用於 #contentContainer 的右滑效果）
+    // 右滑旗標與計時器，針對內嵌頁框 (#contentContainer)
     window.firstRightSwipe = false;
     window.firstRightSwipeTimer = null;
-    // 左滑長按旗標（若已觸發則 touchend 不再執行動作）
+    // 左滑長按旗標：當左滑長按達 1 秒後即觸發 resetOrder，不需等待放開
     window.leftSwipeLongTriggered = false;
     
     function resetGestureState() {
@@ -238,7 +238,7 @@
       resetGestureState();
     });
     
-    // ------------------ 基本訂單與菜單處理（略） ------------------
+    /* ------------------ 基本訂單與菜單處理（略，保持原有功能） ------------------ */
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
@@ -357,7 +357,7 @@
       document.getElementById("totalAmount").innerText = "總金額：0 元";
       document.getElementById("voiceOutput").innerHTML = "";
       localStorage.removeItem("currentOrderData");
-      // 當重新點餐時，還原內嵌頁框
+      // 還原內嵌頁框效果
       let container = document.getElementById("contentContainer");
       container.style.transform = "";
       container.style.opacity = "";
@@ -446,7 +446,7 @@
     
     loadCurrentOrder();
     
-    // ------------------ 編輯訂單模態框功能 ------------------
+    /* ------------------ 編輯訂單模態框功能 ------------------ */
     function openModal(row, editType) {
       currentEditRow = row;
       currentEditType = editType;
@@ -502,12 +502,14 @@
       }
       document.getElementById("editModal").style.display = "block";
     }
+    
     function closeModal() {
       document.getElementById("editModal").style.display = "none";
       currentEditRow = null;
       currentEditType = "";
       currentEditFreeDishName = "";
     }
+    
     function saveModal() {
       if (!currentEditRow) return;
       let newQuantity = parseInt(document.getElementById("modalQuantity").value);
@@ -517,11 +519,8 @@
       } else if (currentEditType === "remark") {
         let mainQty = parseInt(currentEditRow.cells[1].innerText);
         let updatedItem = "";
-        if (newQuantity === mainQty) {
-          updatedItem = currentEditFreeDishName;
-        } else {
-          updatedItem = currentEditFreeDishName + "×" + newQuantity;
-        }
+        if (newQuantity === mainQty) updatedItem = currentEditFreeDishName;
+        else updatedItem = currentEditFreeDishName + "×" + newQuantity;
         let remarkText = currentEditRow.cells[2].innerText.trim();
         let freeItems = remarkText.split(",").map(s => s.trim());
         if (document.getElementById("modalFreeSelectContainer").style.display === "block") {
@@ -536,6 +535,7 @@
       closeModal();
       updateTotalAmount();
     }
+    
     function deleteModal() {
       if (!currentEditRow) return;
       if (currentEditType === "quantity") {
@@ -555,18 +555,20 @@
       closeModal();
       updateTotalAmount();
     }
+    
     function modalIncreaseQuantity() {
       const input = document.getElementById("modalQuantity");
       let current = parseInt(input.value) || 1;
       input.value = current + 1;
     }
+    
     function modalDecreaseQuantity() {
       const input = document.getElementById("modalQuantity");
       let current = parseInt(input.value) || 1;
       if (current > 1) input.value = current - 1;
     }
     
-    // ------------------ 語音點餐 / 語音備忘錄功能 ------------------
+    /* ------------------ 語音點餐 / 語音備忘錄功能 ------------------ */
     let currentRecognition = null;
     let holdActive = false;
     let currentMode = ""; // "red" 表示語音點餐；"green" 表示語音備忘錄
@@ -624,6 +626,7 @@
         continuousRecognition();
       }
     }
+    
     function endVoiceOrdering() {
       holdActive = false;
       if (currentRecognition) currentRecognition.stop();
@@ -636,6 +639,7 @@
         continuousRecognition();
       }
     }
+    
     function endVoiceMemo() {
       holdActive = false;
       if (currentRecognition) currentRecognition.stop();
@@ -678,7 +682,7 @@
       return orders.filter(o => o.dish);
     }
     
-    // ------------------ 全頁手勢偵測 ------------------
+    /* ------------------ 全頁手勢偵測 ------------------ */
     document.body.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         gestureStartX = e.touches[0].clientX;
@@ -686,7 +690,6 @@
         gestureStartTime = Date.now();
         verticalSwipeDirection = null;
         verticalSwipeTriggered = false;
-        // 重置左滑長按旗標
         window.leftSwipeLongTriggered = false;
         if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
       }
@@ -709,17 +712,15 @@
         }, 500);
       }
       
-      // 若為水平手勢，且是左滑（deltaX 為負），更新內嵌頁框滑動效果
+      // 若為水平左滑（deltaX 為負），更新內嵌頁框滑動效果
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < 0) {
         let container = document.getElementById("contentContainer");
-        // 設定滑動效果：位移依 deltaX (負值)，透明度根據 deltaX 動態變化（例如：1 + deltaX/200，deltaX = -50 → 0.75）
         container.style.transform = "translateX(" + deltaX + "px)";
-        container.style.opacity = (1 + deltaX / 200).toString();
-        // 若左滑持續 1 秒以上且尚未觸發長按動作，立即觸發重新點餐
+        container.style.opacity = (1 + deltaX/200).toString();
+        // 若左滑持續 1 秒以上且尚未觸發長按，立即觸發重新點餐
         if (!window.leftSwipeLongTriggered && (Date.now() - gestureStartTime >= 1000)) {
           window.leftSwipeLongTriggered = true;
           resetOrder();
-          // 還原內嵌頁框效果
           container.style.transform = "";
           container.style.opacity = "";
         }
@@ -738,24 +739,17 @@
       let deltaY = endY - gestureStartY;
       let duration = gestureEndTime - gestureStartTime;
       
-      // 取得內嵌頁框參考
       let container = document.getElementById("contentContainer");
       
       // 若為水平手勢
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX < -50) { // 左滑
-          // 若尚未長按觸發，則根據持續時間判斷
           if (!window.leftSwipeLongTriggered) {
-            if (duration < 1000) {
-              // 快速左滑 → 換頁
-              window.location.href = "orders.html";
-            }
+            if (duration < 1000) window.location.href = "orders.html";
           }
-          // 無論如何，還原內嵌頁框效果
           container.style.transform = "";
           container.style.opacity = "";
         } else if (deltaX > 50) { // 右滑
-          // 右滑：第一次右滑時，將內嵌頁框右移 10px 並變 50% 透明
           if (!window.firstRightSwipe) {
             container.style.transform = "translateX(10px)";
             container.style.opacity = "0.5";
@@ -777,37 +771,37 @@
       resetGestureState();
     });
     
-    // ------------------ 備忘錄模態框功能 ------------------
+    /* ------------------ 備忘錄模態框功能 ------------------ */
     function openMemoModal() {
       const memoModal = document.getElementById("memoModal");
       const memoInput = document.getElementById("memoInput");
       memoInput.value = document.getElementById("voiceOutput").innerText;
       memoModal.style.display = "block";
     }
+    
     function closeMemoModal() {
       document.getElementById("memoModal").style.display = "none";
     }
+    
     function saveMemo() {
       const newMemo = document.getElementById("memoInput").value;
       document.getElementById("voiceOutput").innerText = newMemo;
       closeMemoModal();
     }
+    
     function clearMemo() {
       document.getElementById("memoInput").value = "";
       document.getElementById("voiceOutput").innerText = "";
     }
     
-    // ------------------ 連點三下重新整理頁面 ------------------
+    /* ------------------ 連點三下重新整理頁面 ------------------ */
     let tapCount = 0;
     let lastTapTime = 0;
     document.addEventListener("click", function(e) {
       if (e.clientY < window.innerHeight * 0.75) return;
       let now = Date.now();
-      if (now - lastTapTime < 500) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
+      if (now - lastTapTime < 500) tapCount++;
+      else tapCount = 1;
       lastTapTime = now;
       if (tapCount >= 3) location.reload();
     });
