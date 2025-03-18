@@ -377,9 +377,8 @@
         });
       }
       const voiceMemo = document.getElementById("voiceOutput").innerText;
-      // 當有訂單內容時才送出，不再跳出提醒
+      // 當有訂單內容時才送出，不跳出額外提醒
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
-        // 若無訂單，執行右滑彈回動作（不送出訂單）
         return;
       }
       const newOrder = { orders: currentOrderItems, voiceMemo: voiceMemo };
