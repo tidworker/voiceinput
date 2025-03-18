@@ -735,7 +735,7 @@
          if (deltaX > 0) {
              let tbody = document.getElementById("orderTable").getElementsByTagName("tbody")[0];
              let orderExists = tbody.rows.length > 0 || document.getElementById("voiceOutput").innerText.trim() !== "";
-             if (orderExists && deltaX >= 200) {
+             if (orderExists && deltaX >= 150) {
                  contentContainer.style.transition = "transform 0.3s ease-out";
                  contentContainer.style.transform = "translateX(100%)";
                  setTimeout(() => {
