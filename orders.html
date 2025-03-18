@@ -32,7 +32,7 @@
       position: relative;
       transition: transform 0.3s, opacity 0.3s;
     }
-    /* 訂單標題容器，左右分佈 */
+    /* 訂單標題容器 */
     .orderHeaderContainer {
       display: flex;
       justify-content: space-between;
@@ -81,7 +81,7 @@
   </div>
   <script>
     let orderHistory = [];
-    // 用來記錄第一筆被選取的訂單及其索引
+    // 記錄第一筆被選取的訂單及其索引
     let firstSelected = null;
     let firstSelectedIndex = null;
     let selectionTimer = null;
@@ -95,7 +95,7 @@
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
     }
     
-    // 渲染訂單紀錄
+    // 渲染訂單紀錄（每次重新產生全部訂單區塊）
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
@@ -157,15 +157,15 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 設定訂單的點擊與雙擊（連點）事件
+        // 設定訂單的點擊/雙擊（連點）事件
         orderBlock.addEventListener("touchstart", function(e) {
-          // 記錄觸控起始位置與時間，判斷是否為點擊
+          // 記錄觸控起始位置與時間（用以判斷點擊而非滑動）
           orderBlock._startX = e.touches[0].clientX;
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
         });
         orderBlock.addEventListener("touchend", function(e) {
-          // 若有滑動過大，則不視為點擊
+          // 若觸控移動過大則不視為點擊
           const endX = e.changedTouches[0].clientX;
           const endY = e.changedTouches[0].clientY;
           const deltaX = endX - orderBlock._startX;
@@ -179,12 +179,12 @@
           } else {
             // 雙擊偵測到
             if (firstSelected === null) {
-              // 第一筆訂單被選取：縮小至 90% 且半透明（opacity 0.5）
+              // 第一筆訂單被選取：縮小至 90% 且變半透明 (opacity 0.5)
               firstSelected = orderBlock;
               firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
               orderBlock.style.transform = "scale(0.9)";
               orderBlock.style.opacity = "0.5";
-              // 3秒後自動取消選取
+              // 3秒後若未有後續動作則自動取消選取
               selectionTimer = setTimeout(() => {
                 orderBlock.style.transform = "";
                 orderBlock.style.opacity = "";
@@ -192,7 +192,7 @@
                 firstSelectedIndex = null;
               }, 3000);
             } else {
-              // 第二筆訂單被選取，且與第一筆不同
+              // 第二筆訂單被雙擊，且與第一筆不同
               const secondSelected = orderBlock;
               const secondIndex = parseInt(orderBlock.dataset.orderIndex);
               if (firstSelected === secondSelected) {
@@ -200,50 +200,75 @@
                 return;
               }
               clearTimeout(selectionTimer);
-              // 第二筆訂單也縮小並變成半透明
+              // 第二筆訂單也縮小且變半透明
               secondSelected.style.transform = "scale(0.9)";
               secondSelected.style.opacity = "0.5";
-              
               // 維持 0.2 秒此狀態
               setTimeout(() => {
-                // 接著花 0.3 秒讓兩筆訂單變成全透明
+                // 用 0.3 秒讓兩筆訂單淡出成全透明
                 firstSelected.style.transition = "opacity 0.3s";
                 secondSelected.style.transition = "opacity 0.3s";
                 firstSelected.style.opacity = "0";
                 secondSelected.style.opacity = "0";
-                
-                // 全透明後維持 0.2 秒
+                // 全透明後再維持 0.2 秒
                 setTimeout(() => {
-                  // 交換 orderHistory 中的位置
+                  // ──【FLIP 動畫準備】────────────────────────────
+                  // 先記錄目前所有訂單區塊的垂直位置（舊位置）
+                  let oldPositions = {};
+                  document.querySelectorAll('.orderBlock').forEach(block => {
+                    const idx = block.dataset.orderIndex;
+                    oldPositions[idx] = block.getBoundingClientRect().top;
+                  });
+                  // 交換 orderHistory 中的兩筆訂單
                   let temp = orderHistory[firstSelectedIndex];
                   orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
                   orderHistory[secondIndex] = temp;
                   saveOrderHistory();
-                  const swappedIndices = [firstSelectedIndex, secondIndex];
+                  // 記錄交換的兩筆索引，後續用來針對性控制動畫
+                  let swappedIndices = [firstSelectedIndex, secondIndex];
+                  // 清空選取狀態
                   firstSelected = null;
                   firstSelectedIndex = null;
-                  
-                  // 重新渲染訂單
+                  // 重新渲染整個列表（此時 DOM 會重建）
                   renderOrderHistory();
-                  
-                  // 交換後，對交換的訂單以 0.5 秒淡入動畫還原（從 opacity 0 與 scale 0.9 還原）
+                  // ──【FLIP 動畫執行】────────────────────────────
+                  // 取得新渲染後所有訂單的垂直位置
+                  let newPositions = {};
+                  document.querySelectorAll('.orderBlock').forEach(block => {
+                    const idx = block.dataset.orderIndex;
+                    newPositions[idx] = block.getBoundingClientRect().top;
+                  });
+                  // 對每個訂單執行 FLIP 效果
+                  document.querySelectorAll('.orderBlock').forEach(block => {
+                    const idx = parseInt(block.dataset.orderIndex);
+                    if (swappedIndices.indexOf(idx) === -1) {
+                      // 非交換的訂單：從舊位置滑動到新位置（0.5秒）
+                      let deltaY = oldPositions[idx] - newPositions[idx];
+                      block.style.transition = "transform 0.5s";
+                      block.style.transform = "translateY(" + deltaY + "px)";
+                      requestAnimationFrame(() => {
+                        block.style.transform = "";
+                      });
+                    } else {
+                      // 交換的訂單先隱藏：保持 opacity 0 與 scale 0.9
+                      block.style.opacity = "0";
+                      block.style.transform = "scale(0.9)";
+                    }
+                  });
+                  // 等待其他訂單滑動到新位置後，再將交換的訂單慢慢淡入顯示（0.5秒）
                   setTimeout(() => {
                     swappedIndices.forEach(idx => {
                       const block = document.querySelector(`.orderBlock[data-order-index="${idx}"]`);
                       if (block) {
-                        // 設定初始狀態
-                        block.style.opacity = "0";
-                        block.style.transform = "scale(0.9)";
                         block.style.transition = "opacity 0.5s, transform 0.5s";
-                        // 觸發 reflow 後改變成正常狀態
-                        void block.offsetWidth;
                         block.style.opacity = "1";
                         block.style.transform = "scale(1)";
                       }
                     });
-                  }, 50);
-                }, 200);
-              }, 200);
+                  }, 550);
+                  // ───────────────────────────────────────────────
+                }, 200); // 全透明後維持 0.2 秒
+              }, 200); // 第二筆訂單顯示半透明狀態 0.2 秒後
             }
             orderBlock._lastTap = 0;
           }
@@ -253,7 +278,7 @@
       });
     }
     
-    // ---------------- 全域左右滑返回上一頁 ----------------
+    // ── 全域左右滑返回上一頁 ──
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
       if(e.touches.length === 1){
@@ -274,7 +299,7 @@
       globalStartY = null;
     });
     
-    // 初始化
+    // 初始化：讀取資料並渲染訂單
     loadOrderHistory();
     renderOrderHistory();
   </script>
