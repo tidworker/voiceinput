@@ -21,6 +21,7 @@
       margin: 0 auto 20px;
       padding-bottom: 20px;
       background-color: black;
+      overflow: hidden;
     }
     /* 每筆訂單區塊 */
     .orderBlock {
@@ -81,17 +82,7 @@
   </div>
   <script>
     let orderHistory = [];
-    let globalSwipedOrder = null;
-    let globalSwipedTimer = null;
-    let globalSwappedIndices = null;
-    
-    // 強制重置全域手勢狀態
-    let globalStartX = null, globalStartY = null;
-    function resetGestureState() {
-      globalStartX = null;
-      globalStartY = null;
-    }
-    
+
     // 讀取與儲存訂單記錄
     function loadOrderHistory() {
       const historyJSON = localStorage.getItem("orderHistory");
@@ -105,11 +96,6 @@
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
-      globalSwipedOrder = null;
-      if (globalSwipedTimer) {
-        clearTimeout(globalSwipedTimer);
-        globalSwipedTimer = null;
-      }
       if (orderHistory.length === 0) {
         container.innerHTML = "<p>沒有訂單資料</p>";
         return;
@@ -119,6 +105,7 @@
         orderBlock.classList.add("orderBlock");
         orderBlock.dataset.orderIndex = index;
         
+        // 訂單標題
         const headerContainer = document.createElement("div");
         headerContainer.classList.add("orderHeaderContainer");
         const headerLeft = document.createElement("span");
@@ -137,6 +124,7 @@
         headerContainer.appendChild(headerRight);
         orderBlock.appendChild(headerContainer);
         
+        // 訂單表格
         const table = document.createElement("table");
         const thead = document.createElement("thead");
         const headerRow = document.createElement("tr");
@@ -160,88 +148,68 @@
         table.appendChild(tbody);
         orderBlock.appendChild(table);
         
+        // 備忘錄
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
         memoDiv.innerText = order.voiceMemo;
-        // 已移除點擊進入編輯備忘錄的功能
         orderBlock.appendChild(memoDiv);
         
-        attachOrderSwipe(orderBlock);
+        // 新增連點兩下選取/刪除功能
+        orderBlock.lastTap = 0;
+        orderBlock.addEventListener("touchend", function(e) {
+          const now = Date.now();
+          if (!orderBlock.lastTap || now - orderBlock.lastTap > 300) {
+            orderBlock.lastTap = now;
+          } else {
+            // 雙擊偵測到
+            if (!orderBlock.classList.contains("selected")) {
+              // 選取：變成50%透明且縮小至90%
+              orderBlock.classList.add("selected");
+              orderBlock.style.transform = "scale(0.9)";
+              orderBlock.style.opacity = "0.5";
+              // 3秒內若未再雙點則取消選取
+              orderBlock.selectionTimer = setTimeout(() => {
+                orderBlock.classList.remove("selected");
+                orderBlock.style.transform = "";
+                orderBlock.style.opacity = "";
+              }, 3000);
+            } else {
+              // 已選取狀態下再連點兩下則刪除訂單
+              clearTimeout(orderBlock.selectionTimer);
+              animateDeletion(orderBlock);
+            }
+            orderBlock.lastTap = 0;
+          }
+        });
+        
         container.appendChild(orderBlock);
       });
     }
     
-    // 交換後動畫
-    function animateSwappedOrders() {
-      if (!globalSwappedIndices) return;
-      const orderBlocks = document.querySelectorAll(".orderBlock");
-      globalSwappedIndices.forEach(idx => {
-        const ob = orderBlocks[idx];
-        if (ob) {
-          ob.style.transform = "translateX(-10px)";
-          ob.style.opacity = "0.5";
-          ob.style.transition = "opacity 1s, transform 0.3s";
-          setTimeout(() => {
-            ob.style.opacity = "1";
-            ob.style.transform = "";
-          }, 50);
+    // 動畫：刪除訂單時讓下方訂單上滑補上
+    function animateDeletion(orderBlock) {
+      const index = parseInt(orderBlock.dataset.orderIndex);
+      const height = orderBlock.offsetHeight;
+      
+      // 讓被刪除的訂單淡出
+      orderBlock.style.transition = "opacity 0.3s";
+      orderBlock.style.opacity = "0";
+      
+      // 讓下方訂單上滑
+      const container = document.getElementById("contentContainer");
+      const orderBlocks = container.querySelectorAll(".orderBlock");
+      orderBlocks.forEach(ob => {
+        const obIndex = parseInt(ob.dataset.orderIndex);
+        if (obIndex > index) {
+          ob.style.transition = "transform 0.3s";
+          ob.style.transform = `translateY(-${height}px)`;
         }
       });
-      globalSwappedIndices = null;
-    }
-    
-    // 左滑訂單區塊
-    function attachOrderSwipe(orderBlock) {
-      let startX = null, startY = null;
-      orderBlock.addEventListener("touchstart", function(e) {
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-      });
-      orderBlock.addEventListener("touchend", function(e) {
-        if (startX === null) return;
-        const endX = e.changedTouches[0].clientX;
-        const endY = e.changedTouches[0].clientY;
-        const deltaX = endX - startX;
-        const deltaY = endY - startY;
-        // 判斷水平左滑（閾值 90px）
-        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -50) {
-          if (globalSwipedOrder) {
-            if (globalSwipedOrder === orderBlock) {
-              const orderIndex = parseInt(orderBlock.dataset.orderIndex);
-              clearTimeout(globalSwipedTimer);
-              globalSwipedOrder = null;
-              deleteOrder(orderIndex);
-            } else {
-              orderBlock.style.transform = "translateX(-10px)";
-              orderBlock.style.opacity = "0.5";
-              clearTimeout(globalSwipedTimer);
-              globalSwipedTimer = setTimeout(function() {
-                const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
-                const secondIndex = parseInt(orderBlock.dataset.orderIndex);
-                const temp = orderHistory[firstIndex];
-                orderHistory[firstIndex] = orderHistory[secondIndex];
-                orderHistory[secondIndex] = temp;
-                globalSwappedIndices = [firstIndex, secondIndex];
-                globalSwipedOrder = null;
-                saveOrderHistory();
-                renderOrderHistory();
-                animateSwappedOrders();
-              }, 800);
-            }
-          } else {
-            orderBlock.style.transform = "translateX(-10px)";
-            orderBlock.style.opacity = "0.5";
-            globalSwipedOrder = orderBlock;
-            globalSwipedTimer = setTimeout(function() {
-              orderBlock.style.transform = "";
-              orderBlock.style.opacity = "";
-              globalSwipedOrder = null;
-            }, 3000);
-          }
-        }
-        startX = null;
-        startY = null;
-      });
+      
+      // 0.3秒後更新訂單紀錄
+      setTimeout(() => {
+        deleteOrder(index);
+      }, 300);
     }
     
     function deleteOrder(index) {
@@ -250,7 +218,28 @@
       renderOrderHistory();
     }
     
-    // 全域右滑返回主頁（調整閾值至 90px）
+    // ------------------ 連點三下重新整理頁面 ------------------
+    let tapCount = 0;
+    let lastTapTime = 0;
+    document.addEventListener("click", function(e) {
+      let now = Date.now();
+      if (now - lastTapTime < 500) {
+        tapCount++;
+      } else {
+        tapCount = 1;
+      }
+      lastTapTime = now;
+      if (tapCount >= 3) {
+        location.reload();
+      }
+    });
+    
+    // 全域右滑返回主頁（保留此功能）
+    let globalStartX = null, globalStartY = null;
+    function resetGestureState() {
+      globalStartX = null;
+      globalStartY = null;
+    }
     document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         globalStartX = e.touches[0].clientX;
@@ -267,22 +256,6 @@
         window.location.href = "index.html";
       }
       resetGestureState();
-    });
-    
-    // ------------------ 連點三下重新整理頁面 ------------------
-    let tapCount = 0;
-    let lastTapTime = 0;
-    document.addEventListener("click", function(e) {
-      let now = Date.now();
-      if (now - lastTapTime < 500) {
-        tapCount++;
-      } else {
-        tapCount = 1;
-      }
-      lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
     });
     
     // 初始化
