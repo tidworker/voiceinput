@@ -29,7 +29,6 @@
       margin-bottom: 15px;
       padding: 10px;
       position: relative;
-      /* 預設轉場效果：與左滑相同 0.3s */
       transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單標題容器，左右分佈 */
@@ -70,48 +69,47 @@
       color: orange;
       padding: 5px;
       background-color: black;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
   <br>
   <br>
-  <!-- 移除原有標題 -->
   <div id="contentContainer">
     <!-- 訂單區塊將由 JavaScript 動態加入 -->
   </div>
   <script>
     let orderHistory = [];
-    // 全域記錄目前待處理（待交換／待刪除）的訂單區塊
     let globalSwipedOrder = null;
     let globalSwipedTimer = null;
-    // 全域記錄交換後需要做動畫的兩筆訂單的索引
     let globalSwappedIndices = null;
     
-    // 從 localStorage 讀取訂單記錄（主頁存入）
+    // 強制重置全域手勢狀態
+    let globalStartX = null, globalStartY = null;
+    function resetGestureState() {
+      globalStartX = null;
+      globalStartY = null;
+    }
+    
+    // 讀取與儲存訂單記錄
     function loadOrderHistory() {
       const historyJSON = localStorage.getItem("orderHistory");
-      if (historyJSON) {
-        orderHistory = JSON.parse(historyJSON);
-      } else {
-        orderHistory = [];
-      }
+      orderHistory = historyJSON ? JSON.parse(historyJSON) : [];
     }
-    // 儲存更新後的訂單記錄
     function saveOrderHistory() {
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
     }
-    // 渲染所有訂單，每筆訂單依編號顯示
+    
+    // 渲染訂單紀錄
     function renderOrderHistory() {
       const container = document.getElementById("contentContainer");
       container.innerHTML = "";
-      // 重置全域待處理狀態，避免重新渲染時遺留
       globalSwipedOrder = null;
       if (globalSwipedTimer) {
         clearTimeout(globalSwipedTimer);
         globalSwipedTimer = null;
       }
-      
       if (orderHistory.length === 0) {
         container.innerHTML = "<p>沒有訂單資料</p>";
         return;
@@ -121,14 +119,10 @@
         orderBlock.classList.add("orderBlock");
         orderBlock.dataset.orderIndex = index;
         
-        // 建立訂單標題容器（訂單編號左側，訂單總金額右側）
         const headerContainer = document.createElement("div");
         headerContainer.classList.add("orderHeaderContainer");
-        
         const headerLeft = document.createElement("span");
         headerLeft.innerText = "訂單 #" + (index + 1);
-        
-        // 計算單筆訂單總金額
         let total = 0;
         order.orders.forEach(item => {
           const qty = parseFloat(item.quantity);
@@ -139,12 +133,10 @@
         });
         const headerRight = document.createElement("span");
         headerRight.innerText = "總金額：" + total + " 元";
-        
         headerContainer.appendChild(headerLeft);
         headerContainer.appendChild(headerRight);
         orderBlock.appendChild(headerContainer);
         
-        // 建立訂單表格
         const table = document.createElement("table");
         const thead = document.createElement("thead");
         const headerRow = document.createElement("tr");
@@ -158,106 +150,78 @@
         const tbody = document.createElement("tbody");
         order.orders.forEach(item => {
           const row = document.createElement("tr");
-          const tdDish = document.createElement("td");
-          tdDish.innerText = item.dish;
-          row.appendChild(tdDish);
-          const tdQty = document.createElement("td");
-          tdQty.innerText = item.quantity;
-          row.appendChild(tdQty);
-          const tdRemark = document.createElement("td");
-          tdRemark.innerText = item.remark;
-          row.appendChild(tdRemark);
-          const tdPrice = document.createElement("td");
-          tdPrice.innerText = item.price;
-          row.appendChild(tdPrice);
+          ["dish", "quantity", "remark", "price"].forEach(prop => {
+            const td = document.createElement("td");
+            td.innerText = item[prop];
+            row.appendChild(td);
+          });
           tbody.appendChild(row);
         });
         table.appendChild(tbody);
         orderBlock.appendChild(table);
         
-        // 顯示備忘錄內文
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
         memoDiv.innerText = order.voiceMemo;
+        // 點擊備忘錄內容時可進入編輯模式（此頁只顯示，不再處理手勢）
+        memoDiv.addEventListener("click", openMemoModal);
         orderBlock.appendChild(memoDiv);
         
-        // 附加左滑事件
         attachOrderSwipe(orderBlock);
-        
         container.appendChild(orderBlock);
       });
     }
     
-    // 動畫：針對交換後的兩筆訂單，
-    // 先保持向左平移 10px 與 50% 透明度，
-    // 然後以 0.3 秒的轉場效果恢復到原始位置與完全不透明
+    // 交換後動畫
     function animateSwappedOrders() {
       if (!globalSwappedIndices) return;
-      // 取得所有訂單區塊
       const orderBlocks = document.querySelectorAll(".orderBlock");
       globalSwappedIndices.forEach(idx => {
         const ob = orderBlocks[idx];
         if (ob) {
-          // 初始狀態：維持 translateX(-10px) 與 50% 透明度
           ob.style.transform = "translateX(-10px)";
           ob.style.opacity = "0.5";
-          // 設定轉場效果為 0.3 秒
           ob.style.transition = "opacity 1s, transform 0.3s";
-          // 利用 setTimeout 讓瀏覽器渲染後再逐漸恢復原狀
           setTimeout(() => {
             ob.style.opacity = "1";
             ob.style.transform = "";
           }, 50);
         }
       });
-      // 重置交換索引
       globalSwappedIndices = null;
     }
     
-    // 附加訂單區塊的左滑功能：
-    // - 第一次左滑後，3秒內若同一筆再次左滑則刪除
-    // - 3秒內若左滑另一筆訂單，則第二筆先套用效果，延遲 0.5 秒後交換兩筆訂單順序，
-    //   交換後維持向左移動與半透明狀態，再以 0.3 秒轉場恢復為原始位置與完全不透明
+    // 左滑訂單區塊
     function attachOrderSwipe(orderBlock) {
       let startX = null, startY = null;
-
       orderBlock.addEventListener("touchstart", function(e) {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
       });
-
       orderBlock.addEventListener("touchend", function(e) {
         if (startX === null) return;
         const endX = e.changedTouches[0].clientX;
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 判斷是否為水平左滑且滑動距離超過 30px
-        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -30) {
-          // 如果已有全域待處理訂單
+        // 判斷水平左滑（閾值 90px）
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -90) {
           if (globalSwipedOrder) {
             if (globalSwipedOrder === orderBlock) {
-              // 同一筆訂單重複左滑，則刪除該筆訂單
               const orderIndex = parseInt(orderBlock.dataset.orderIndex);
               clearTimeout(globalSwipedTimer);
               globalSwipedOrder = null;
               deleteOrder(orderIndex);
             } else {
-              // 不同訂單間左滑：
-              // 先讓第二筆訂單也套用效果
               orderBlock.style.transform = "translateX(-10px)";
               orderBlock.style.opacity = "0.5";
-              // 清除原先的倒數
               clearTimeout(globalSwipedTimer);
-              // 延遲 0.5 秒後交換兩筆訂單順序
               globalSwipedTimer = setTimeout(function() {
                 const firstIndex = parseInt(globalSwipedOrder.dataset.orderIndex);
                 const secondIndex = parseInt(orderBlock.dataset.orderIndex);
-                // 交換 orderHistory 陣列中的兩筆資料
                 const temp = orderHistory[firstIndex];
                 orderHistory[firstIndex] = orderHistory[secondIndex];
                 orderHistory[secondIndex] = temp;
-                // 記錄交換後的索引（以便做動畫效果）
                 globalSwappedIndices = [firstIndex, secondIndex];
                 globalSwipedOrder = null;
                 saveOrderHistory();
@@ -266,12 +230,10 @@
               }, 800);
             }
           } else {
-            // 尚無其他待處理訂單，將此訂單設定為待處理狀態
             orderBlock.style.transform = "translateX(-10px)";
             orderBlock.style.opacity = "0.5";
             globalSwipedOrder = orderBlock;
             globalSwipedTimer = setTimeout(function() {
-              // 3秒內無後續操作則恢復原狀
               orderBlock.style.transform = "";
               orderBlock.style.opacity = "";
               globalSwipedOrder = null;
@@ -283,15 +245,13 @@
       });
     }
     
-    // 刪除訂單
     function deleteOrder(index) {
       orderHistory.splice(index, 1);
       saveOrderHistory();
       renderOrderHistory();
     }
     
-    // 全域右滑返回主頁（index.html）
-    let globalStartX = null, globalStartY = null;
+    // 全域右滑返回主頁（調整閾值至 90px）
     document.addEventListener("touchstart", function(e) {
       if (e.touches.length === 1) {
         globalStartX = e.touches[0].clientX;
@@ -304,12 +264,46 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      // 若判斷為水平右滑（deltaX > 30）則返回 index.html
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 30) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 90) {
         window.location.href = "index.html";
       }
-      globalStartX = null;
-      globalStartY = null;
+      resetGestureState();
+    });
+    
+    // ------------------ 備忘錄模態框功能 ------------------
+    function openMemoModal() {
+      const memoModal = document.getElementById("memoModal");
+      const memoInput = document.getElementById("memoInput");
+      memoInput.value = document.getElementById("voiceOutput").innerText;
+      memoModal.style.display = "block";
+    }
+    function closeMemoModal() {
+      document.getElementById("memoModal").style.display = "none";
+    }
+    function saveMemo() {
+      const newMemo = document.getElementById("memoInput").value;
+      document.getElementById("voiceOutput").innerText = newMemo;
+      closeMemoModal();
+    }
+    function clearMemo() {
+      document.getElementById("memoInput").value = "";
+      document.getElementById("voiceOutput").innerText = "";
+    }
+    
+    // ------------------ 連點三下重新整理頁面 ------------------
+    let tapCount = 0;
+    let lastTapTime = 0;
+    document.addEventListener("click", function(e) {
+      let now = Date.now();
+      if (now - lastTapTime < 1000) {
+        tapCount++;
+      } else {
+        tapCount = 1;
+      }
+      lastTapTime = now;
+      if (tapCount >= 3) {
+        location.reload();
+      }
     });
     
     // 初始化
