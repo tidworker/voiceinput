@@ -686,7 +686,7 @@
       let deltaY = currentY - gestureStartY;
       
       // 判定垂直手勢（門檻調整為 90px）
-      if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 90) {
+      if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
         verticalSwipeDirection = (deltaY > 0) ? "down" : "up";
         verticalSwipeTimer = setTimeout(() => {
           if (verticalSwipeDirection === "down") {
@@ -699,7 +699,7 @@
       }
       
       // 判定水平手勢（門檻調整為 90px）
-      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 90) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
         if (!horizontalLongTriggered && (Date.now() - gestureStartTime) >= 1000) {
           if (deltaX < 0) { 
             // 左滑長按 1 秒 → 重新點餐
@@ -728,13 +728,13 @@
       // 若為水平手勢且未觸發長按，且左滑超過 90px 且手勢持續未滿一秒，放開時觸發轉頁
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (!horizontalLongTriggered) {
-          if (deltaX < -90 && duration < 1000) {
+          if (deltaX < -50 && duration < 1000) {
             window.location.href = "orders.html";
           }
         }
       }
       // 處理垂直手勢（門檻調整為 90px）
-      else if (Math.abs(deltaY) > 90) {
+      else if (Math.abs(deltaY) > 50) {
         if (verticalSwipeDirection === "down") {
           if (!verticalSwipeTriggered && duration < 500) {
             if (!holdActive || currentMode !== "red") {
@@ -787,7 +787,7 @@
       // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
       if (e.clientY < window.innerHeight * 0.75) return;
       let now = Date.now();
-      if (now - lastTapTime < 1000) {
+      if (now - lastTapTime < 500) {
         tapCount++;
       } else {
         tapCount = 1;
