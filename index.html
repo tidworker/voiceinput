@@ -6,155 +6,88 @@
   <title>中文點餐系統</title>
   <style>
     /* 防止下滑刷新頁面 */
-    html, body {
-      overscroll-behavior: none;
-    }
+    html, body { overscroll-behavior: none; }
     /* 黑底白字風格 */
     body {
       font-family: Arial, sans-serif;
-      margin: 10px;
-      padding: 0;
-      background-color: black;
-      color: white;
-      text-align: center;
-      user-select: none;
+      margin: 10px; padding: 0;
+      background-color: black; color: white;
+      text-align: center; user-select: none;
     }
     /* 圖片 */
-    img {
-      max-width: 100%;
-    }
-    /* 統一內容區：訂單表格與語音備忘錄顯示區 */
+    img { max-width: 100%; }
+    /* 訂單與備忘錄區 */
     #contentContainer {
-      width: 90%;
-      height: 370px;
-      margin: 20px auto;
-      overflow-y: auto;
+      width: 90%; height: 370px;
+      margin: 20px auto; overflow-y: auto;
       background-color: black;
-      /* 加入過渡效果，使 transform 與 opacity 變化平滑 */
       transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單表格 */
     table {
       width: 100%;
-      background-color: black;
-      color: white;
-      border-collapse: separate;
-      border-spacing: 0;
+      background-color: black; color: white;
+      border-collapse: separate; border-spacing: 0;
       border-radius: 3px;
     }
-    table, th, td {
-      border: 0;
-    }
-    th, td {
-      padding: 8px;
-      text-align: left;
-    }
-    table th {
-      background-color: orange;
-      color: black;
-    }
-    thead tr th:first-child {
-      border-top-left-radius: 3px;
-    }
-    thead tr th:last-child {
-      border-top-right-radius: 3px;
-    }
-    /* 語音備忘錄顯示區 */
+    table, th, td { border: 0; }
+    th, td { padding: 8px; text-align: left; }
+    table th { background-color: orange; color: black; }
+    thead tr th:first-child { border-top-left-radius: 3px; }
+    thead tr th:last-child { border-top-right-radius: 3px; }
+    /* 備忘錄顯示 */
     #voiceOutput {
-      margin-top: 10px;
-      text-align: left;
-      color: orange;
-      padding: 10px;
-      cursor: pointer;
+      margin-top: 10px; text-align: left;
+      color: orange; padding: 10px; cursor: pointer;
     }
     /* 總金額 */
-    #totalAmount {
-      color: white;
-      font-size: 18px;
-      margin-top: 10px;
-    }
+    #totalAmount { color: white; font-size: 18px; margin-top: 10px; }
     /* 按鈕 */
     button {
-      background-color: black;
-      border: none;
-      cursor: pointer;
-      width: 50px;
-      height: 50px;
-      padding: 0;
-      margin-top: 5px;
+      background-color: black; border: none; cursor: pointer;
+      width: 50px; height: 50px; padding: 0; margin-top: 5px;
       font-weight: bold;
     }
     #resetButton { }
-    #ordersLinkButton {
-      margin-left: 12px;
-    }
-    #completeOrderButton {
-      margin-left: 12px;
-    }
+    #ordersLinkButton { margin-left: 12px; }
+    #completeOrderButton { margin-left: 12px; }
     /* 編輯訂單模態框 */
     #editModal {
-      display: none;
-      position: fixed;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
+      display: none; position: fixed; left: 0; top: 0;
+      width: 100%; height: 100%; background: rgba(0,0,0,0.5);
       z-index: 2000;
     }
     #editModalContent {
-      background: #fff;
-      color: black;
-      margin: 10% auto;
-      padding: 20px;
-      width: 300px;
-      border-radius: 5px;
+      background: #fff; color: black;
+      margin: 10% auto; padding: 20px;
+      width: 300px; border-radius: 5px;
     }
     .modal-btn {
-      background-color: black;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 10px;
-      font-weight: bold;
+      background-color: black; color: white;
+      border: none; padding: 10px 20px;
+      border-radius: 4px; cursor: pointer;
+      margin-top: 10px; font-weight: bold;
     }
-    /* 下拉式選單（備註編輯用） */
-    #modalFreeSelectContainer {
-      display: none;
-      margin: 10px 0;
-    }
-    /* 手動輸入備忘錄模態框 */
+    /* 下拉式選單（備註編輯） */
+    #modalFreeSelectContainer { display: none; margin: 10px 0; }
+    /* 備忘錄模態框 */
     #memoModal {
-      display: none;
-      position: fixed;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
+      display: none; position: fixed; left: 0; top: 0;
+      width: 100%; height: 100%; background: rgba(0,0,0,0.5);
       z-index: 4000;
     }
     #memoModalContent {
-      background: #fff;
-      color: black;
-      margin: 20% auto;
-      padding: 20px;
-      width: 80%;
-      max-width: 400px;
-      border-radius: 5px;
+      background: #fff; color: black;
+      margin: 20% auto; padding: 20px;
+      width: 80%; max-width: 400px; border-radius: 5px;
     }
-    #memoInput {
-      width: 100%;
-      height: 100px;
-    }
+    #memoInput { width: 100%; height: 100px; }
   </style>
 </head>
 <body>
   <br />
   <img src="3.png" width="340" height="170">
-  <!-- 訂單與語音備忘錄顯示區 -->
+  <!-- 訂單與備忘錄區 -->
   <div id="contentContainer">
     <table id="orderTable">
       <thead>
@@ -166,10 +99,10 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 訂單項目將動態加入 -->
+        <!-- 動態加入訂單項目 -->
       </tbody>
     </table>
-    <!-- 點擊此區域可開啟備忘錄編輯 -->
+    <!-- 點擊備忘錄區可開啟編輯模態框 -->
     <div id="voiceOutput" onclick="openMemoModal()"></div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
@@ -199,7 +132,7 @@
     </div>
   </div>
 
-  <!-- 手動輸入備忘錄模態框 -->
+  <!-- 備忘錄模態框 -->
   <div id="memoModal">
     <div id="memoModalContent">
       <h3>編輯備忘錄</h3>
@@ -214,30 +147,21 @@
   <script>
     /* ------------------ 手勢狀態與旗標 ------------------ */
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
-    let verticalSwipeDirection = null;
-    let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    // 右滑旗標與計時器（作用於 #contentContainer 的右滑效果）
+    // 用於右滑效果（#contentContainer）
     window.firstRightSwipe = false;
     window.firstRightSwipeTimer = null;
-    // 左滑長按旗標：當左滑持續達 1 秒後立即觸發 resetOrder()
+    // 左滑長按旗標：持續 1 秒左滑後即觸發 resetOrder
     window.leftSwipeLongTriggered = false;
     
     function resetGestureState() {
       gestureStartX = null;
       gestureStartY = null;
       gestureStartTime = null;
-      verticalSwipeDirection = null;
-      verticalSwipeTriggered = false;
-      if (verticalSwipeTimer) {
-        clearTimeout(verticalSwipeTimer);
-        verticalSwipeTimer = null;
-      }
+      if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
     }
     
-    window.addEventListener("load", function() {
-      resetGestureState();
-    });
+    window.addEventListener("load", function() { resetGestureState(); });
     
     /* ------------------ 基本訂單與菜單處理（保持原有功能） ------------------ */
     let charMapping = {};
@@ -255,16 +179,10 @@
     
     function loadTranslationDatabase() {
       fetch("database.txt")
-        .then(response => {
-          if (!response.ok) throw new Error("無法讀取 database.txt");
-          return response.text();
-        })
+        .then(response => { if (!response.ok) throw new Error("無法讀取 database.txt"); return response.text(); })
         .then(text => {
           const db = JSON.parse(text);
-          if (db.charMapping) {
-            charMapping = db.charMapping;
-            if (db.groupMapping) groupMapping = db.groupMapping;
-          }
+          if (db.charMapping) { charMapping = db.charMapping; if (db.groupMapping) groupMapping = db.groupMapping; }
         })
         .catch(err => { console.error("載入字庫資料失敗：" + err.message); });
     }
@@ -272,10 +190,7 @@
     
     function loadMenu() {
       fetch("menu.txt")
-        .then(response => {
-          if (!response.ok) throw new Error("無法讀取 menu.txt");
-          return response.text();
-        })
+        .then(response => { if (!response.ok) throw new Error("無法讀取 menu.txt"); return response.text(); })
         .then(text => { menu = JSON.parse(text); })
         .catch(err => { console.error("載入菜單資料失敗：" + err.message); });
     }
@@ -319,10 +234,7 @@
             if (index >= 0) {
               let entry = remarksArr[index];
               if (entry === dish.name) freeQty = mainQty;
-              else {
-                let parts = entry.split("×");
-                freeQty = parseInt(parts[1]) || 0;
-              }
+              else { let parts = entry.split("×"); freeQty = parseInt(parts[1]) || 0; }
               freeQty += quantity;
               remarksArr[index] = (freeQty === mainQty) ? dish.name : (dish.name + "×" + freeQty);
             } else {
@@ -358,7 +270,6 @@
       document.getElementById("totalAmount").innerText = "總金額：0 元";
       document.getElementById("voiceOutput").innerHTML = "";
       localStorage.removeItem("currentOrderData");
-      // 還原內嵌頁框效果
       let container = document.getElementById("contentContainer");
       container.style.transform = "";
       container.style.opacity = "";
@@ -440,10 +351,7 @@
       }
     }
     
-    window.addEventListener("beforeunload", function(e) {
-      saveCurrentOrder();
-    });
-    
+    window.addEventListener("beforeunload", function(e) { saveCurrentOrder(); });
     loadCurrentOrder();
     
     /* ------------------ 編輯訂單模態框功能 ------------------ */
@@ -456,10 +364,7 @@
         document.getElementById("modalFreeSelectContainer").style.display = "none";
       } else if (editType === "remark") {
         let remarkText = row.cells[2].innerText.trim();
-        if (remarkText === "") {
-          alert("沒有備註商品可編輯。");
-          return;
-        }
+        if (remarkText === "") { alert("沒有備註商品可編輯。"); return; }
         let freeItems = remarkText.split(",").map(s => s.trim());
         if (freeItems.length > 1) {
           document.getElementById("modalFreeSelectContainer").style.display = "block";
@@ -467,8 +372,7 @@
           selectEl.innerHTML = "";
           freeItems.forEach((item, index) => {
             let opt = document.createElement("option");
-            opt.value = index;
-            opt.text = item;
+            opt.value = index; opt.text = item;
             selectEl.appendChild(opt);
           });
           selectEl.onchange = function() {
@@ -514,9 +418,8 @@
       if (!currentEditRow) return;
       let newQuantity = parseInt(document.getElementById("modalQuantity").value);
       if (isNaN(newQuantity) || newQuantity < 1) return;
-      if (currentEditType === "quantity") {
-        currentEditRow.cells[1].innerText = newQuantity;
-      } else if (currentEditType === "remark") {
+      if (currentEditType === "quantity") currentEditRow.cells[1].innerText = newQuantity;
+      else if (currentEditType === "remark") {
         let mainQty = parseInt(currentEditRow.cells[1].innerText);
         let updatedItem = (newQuantity === mainQty) ? currentEditFreeDishName : currentEditFreeDishName + "×" + newQuantity;
         let remarkText = currentEditRow.cells[2].innerText.trim();
@@ -526,9 +429,7 @@
           let selectedIndex = selectEl.value;
           freeItems[selectedIndex] = updatedItem;
           currentEditRow.cells[2].innerText = freeItems.join(", ");
-        } else {
-          currentEditRow.cells[2].innerText = updatedItem;
-        }
+        } else currentEditRow.cells[2].innerText = updatedItem;
       }
       closeModal();
       updateTotalAmount();
@@ -536,9 +437,8 @@
     
     function deleteModal() {
       if (!currentEditRow) return;
-      if (currentEditType === "quantity") {
-        currentEditRow.parentNode.removeChild(currentEditRow);
-      } else if (currentEditType === "remark") {
+      if (currentEditType === "quantity") currentEditRow.parentNode.removeChild(currentEditRow);
+      else if (currentEditType === "remark") {
         let remarkText = currentEditRow.cells[2].innerText.trim();
         let freeItems = remarkText.split(",").map(s => s.trim());
         if (document.getElementById("modalFreeSelectContainer").style.display === "block") {
@@ -546,9 +446,7 @@
           let selectedIndex = selectEl.value;
           freeItems.splice(selectedIndex, 1);
           currentEditRow.cells[2].innerText = freeItems.join(", ");
-        } else {
-          currentEditRow.cells[2].innerText = "";
-        }
+        } else currentEditRow.cells[2].innerText = "";
       }
       closeModal();
       updateTotalAmount();
@@ -575,8 +473,7 @@
       return new Promise((resolve) => {
         if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
           alert("您的瀏覽器不支援語音輸入功能。");
-          resolve(null);
-          return;
+          resolve(null); return;
         }
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         const recognition = new SpeechRecognition();
@@ -618,29 +515,19 @@
     }
     
     function startVoiceOrdering() {
-      if (!holdActive) {
-        holdActive = true;
-        currentMode = "red";
-        continuousRecognition();
-      }
+      if (!holdActive) { holdActive = true; currentMode = "red"; continuousRecognition(); }
     }
     
     function endVoiceOrdering() {
-      holdActive = false;
-      if (currentRecognition) currentRecognition.stop();
+      holdActive = false; if (currentRecognition) currentRecognition.stop();
     }
     
     function startVoiceMemo() {
-      if (!holdActive) {
-        holdActive = true;
-        currentMode = "green";
-        continuousRecognition();
-      }
+      if (!holdActive) { holdActive = true; currentMode = "green"; continuousRecognition(); }
     }
     
     function endVoiceMemo() {
-      holdActive = false;
-      if (currentRecognition) currentRecognition.stop();
+      holdActive = false; if (currentRecognition) currentRecognition.stop();
     }
     
     function processMultipleVoiceInput(inputText) {
@@ -700,24 +587,24 @@
       let deltaX = currentX - gestureStartX;
       let deltaY = currentY - gestureStartY;
       
-      // 判定垂直手勢（門檻 50px）
-      if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
-        verticalSwipeDirection = (deltaY > 0) ? "down" : "up";
-        verticalSwipeTimer = setTimeout(() => {
-          if (verticalSwipeDirection === "down") startVoiceOrdering();
-          else if (verticalSwipeDirection === "up") startVoiceMemo();
-          verticalSwipeTriggered = true;
-        }, 500);
+      // 判定垂直手勢：若 deltaY > 50 則向下，若 deltaY < -50 則向上，均在 500ms 後觸發對應功能
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
+        if (deltaY > 50) {
+          // 向下滑：點餐
+          verticalSwipeTimer = setTimeout(() => { startVoiceOrdering(); verticalSwipeTriggered = true; }, 500);
+        } else if (deltaY < -50) {
+          // 向上滑：備忘錄
+          verticalSwipeTimer = setTimeout(() => { startVoiceMemo(); verticalSwipeTriggered = true; }, 500);
+        }
       }
       
-      // 若為水平左滑（deltaX 為負），更新內嵌頁框的滑動效果（最大左移 30px）
+      // 若為水平左滑（deltaX 為負），更新 #contentContainer 滑動效果，限制最大左移 30px
       if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < 0) {
         let container = document.getElementById("contentContainer");
-        // 限制左滑動畫效果最多移動 30px
-        let effectiveDeltaX = Math.max(deltaX, -30);
+        let effectiveDeltaX = Math.max(deltaX, -30); // 限制最多左移 30px
         container.style.transform = "translateX(" + effectiveDeltaX + "px)";
         container.style.opacity = (1 + effectiveDeltaX/200).toString();
-        // 若左滑持續超過 1 秒且尚未觸發長按，立即觸發重新點餐
+        // 如果持續左滑超過 1 秒且尚未觸發長按，立即觸發重新點餐
         if (!window.leftSwipeLongTriggered && (Date.now() - gestureStartTime >= 1000)) {
           window.leftSwipeLongTriggered = true;
           resetOrder();
@@ -729,10 +616,7 @@
     
     document.body.addEventListener("touchend", function(e) {
       let gestureEndTime = Date.now();
-      if (verticalSwipeTimer) {
-        clearTimeout(verticalSwipeTimer);
-        verticalSwipeTimer = null;
-      }
+      if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
       let endX = e.changedTouches[0].clientX;
       let endY = e.changedTouches[0].clientY;
       let deltaX = endX - gestureStartX;
@@ -779,24 +663,19 @@
       memoModal.style.display = "block";
     }
     
-    function closeMemoModal() {
-      document.getElementById("memoModal").style.display = "none";
-    }
-    
+    function closeMemoModal() { document.getElementById("memoModal").style.display = "none"; }
     function saveMemo() {
       const newMemo = document.getElementById("memoInput").value;
       document.getElementById("voiceOutput").innerText = newMemo;
       closeMemoModal();
     }
-    
     function clearMemo() {
       document.getElementById("memoInput").value = "";
       document.getElementById("voiceOutput").innerText = "";
     }
     
     /* ------------------ 連點三下重新整理頁面 ------------------ */
-    let tapCount = 0;
-    let lastTapTime = 0;
+    let tapCount = 0, lastTapTime = 0;
     document.addEventListener("click", function(e) {
       if (e.clientY < window.innerHeight * 0.75) return;
       let now = Date.now();
@@ -805,7 +684,6 @@
       lastTapTime = now;
       if (tapCount >= 3) location.reload();
     });
-    
   </script>
 </body>
 </html>
