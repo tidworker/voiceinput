@@ -374,8 +374,9 @@
       const voiceMemo = document.getElementById("voiceOutput").innerText;
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
         // 若無訂單內容，先恢復內嵌頁框，再顯示提示
-        document.getElementById("contentContainer").style.transform = "";
-        document.getElementById("contentContainer").style.opacity = "";
+        let container = document.getElementById("contentContainer");
+        container.style.transform = "";
+        container.style.opacity = "";
         window.firstRightSwipe = false;
         if (window.firstRightSwipeTimer) {
           clearTimeout(window.firstRightSwipeTimer);
@@ -718,14 +719,21 @@
       let endY = e.changedTouches[0].clientY;
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
+      let duration = gestureEndTime - gestureStartTime;
       
       // 若為水平手勢
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (deltaX < -50) {
-          // 左滑：轉頁至 orders.html
-          window.location.href = "orders.html";
+          // 左滑：根據持續時間決定動作
+          if (duration >= 1000) {
+            // 長按左滑 → 重新點餐
+            resetOrder();
+          } else {
+            // 快速左滑 → 換頁至 orders.html
+            window.location.href = "orders.html";
+          }
         } else if (deltaX > 50) {
-          // 右滑：針對內嵌頁框 (contentContainer)
+          // 右滑：作用於內嵌頁框 (contentContainer)
           let container = document.getElementById("contentContainer");
           if (!window.firstRightSwipe) {
             container.style.transform = "translateX(10px)";
