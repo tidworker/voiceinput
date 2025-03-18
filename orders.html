@@ -205,7 +205,7 @@
         const deltaX = endX - startX;
         const deltaY = endY - startY;
         // 判斷水平左滑（閾值 90px）
-        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -90) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -50) {
           if (globalSwipedOrder) {
             if (globalSwipedOrder === orderBlock) {
               const orderIndex = parseInt(orderBlock.dataset.orderIndex);
@@ -264,7 +264,7 @@
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 90) {
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 50) {
         window.location.href = "index.html";
       }
       resetGestureState();
@@ -295,7 +295,7 @@
     let lastTapTime = 0;
     document.addEventListener("click", function(e) {
       let now = Date.now();
-      if (now - lastTapTime < 1000) {
+      if (now - lastTapTime < 500) {
         tapCount++;
       } else {
         tapCount = 1;
