@@ -217,7 +217,7 @@
     let verticalSwipeDirection = null; // "down" 或 "up"
     let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    // 右滑送出訂單的旗標與計時器（作用於整個頁框）
+    // 右滑送出訂單的旗標與計時器，作用於內嵌頁框區（contentContainer）
     window.firstRightSwipe = false;
     window.firstRightSwipeTimer = null;
     
@@ -697,7 +697,7 @@
           verticalSwipeTriggered = true;
         }, 500);
       }
-      // 水平手勢右滑效果將在 touchend 處理
+      // 水平右滑效果將在 touchend 處理
     });
     
     document.body.addEventListener("touchend", function(e) {
@@ -717,15 +717,16 @@
           // 左滑：轉頁至 orders.html
           window.location.href = "orders.html";
         } else if (deltaX > 50) {
-          // 右滑：第一次右滑時，將整個頁框右移10px並變成50%透明
+          // 右滑：第一次右滑時，將內嵌頁框區（contentContainer）右移10px並變成50%透明
           // 第二次右滑（在3秒內）則送出訂單
+          let container = document.getElementById("contentContainer");
           if (!window.firstRightSwipe) {
-            document.body.style.transform = "translateX(10px)";
-            document.body.style.opacity = "0.5";
+            container.style.transform = "translateX(10px)";
+            container.style.opacity = "0.5";
             window.firstRightSwipe = true;
             window.firstRightSwipeTimer = setTimeout(function() {
-              document.body.style.transform = "";
-              document.body.style.opacity = "";
+              container.style.transform = "";
+              container.style.opacity = "";
               window.firstRightSwipe = false;
             }, 3000);
           } else {
