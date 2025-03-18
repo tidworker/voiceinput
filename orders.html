@@ -63,13 +63,13 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄直接顯示內文 */
+    /* 備忘錄直接顯示內文，不再具備點擊編輯功能 */
     .voiceMemo {
       text-align: left;
       color: orange;
       padding: 5px;
       background-color: black;
-      cursor: pointer;
+      cursor: default;
     }
   </style>
 </head>
@@ -163,8 +163,7 @@
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
         memoDiv.innerText = order.voiceMemo;
-        // 點擊備忘錄內容時可進入編輯模式（此頁只顯示，不再處理手勢）
-        memoDiv.addEventListener("click", openMemoModal);
+        // 已移除點擊進入編輯備忘錄的功能
         orderBlock.appendChild(memoDiv);
         
         attachOrderSwipe(orderBlock);
@@ -269,26 +268,6 @@
       }
       resetGestureState();
     });
-    
-    // ------------------ 備忘錄模態框功能 ------------------
-    function openMemoModal() {
-      const memoModal = document.getElementById("memoModal");
-      const memoInput = document.getElementById("memoInput");
-      memoInput.value = document.getElementById("voiceOutput").innerText;
-      memoModal.style.display = "block";
-    }
-    function closeMemoModal() {
-      document.getElementById("memoModal").style.display = "none";
-    }
-    function saveMemo() {
-      const newMemo = document.getElementById("memoInput").value;
-      document.getElementById("voiceOutput").innerText = newMemo;
-      closeMemoModal();
-    }
-    function clearMemo() {
-      document.getElementById("memoInput").value = "";
-      document.getElementById("voiceOutput").innerText = "";
-    }
     
     // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
