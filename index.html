@@ -30,6 +30,8 @@
       margin: 20px auto;
       overflow-y: auto;
       background-color: black;
+      /* 加入過渡效果，使 transform 與 opacity 變化平滑 */
+      transition: transform 0.3s, opacity 0.3s;
     }
     /* 訂單表格 */
     table {
@@ -57,7 +59,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 語音備忘錄顯示區：文字呈橘色，點擊時開啟編輯模態框 */
+    /* 語音備忘錄顯示區 */
     #voiceOutput {
       margin-top: 10px;
       text-align: left;
@@ -167,7 +169,6 @@
         <!-- 訂單項目將動態加入 -->
       </tbody>
     </table>
-    <!-- 點擊此區域可開啟手動編輯備忘錄模態框 -->
     <div id="voiceOutput" onclick="openMemoModal()"></div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
@@ -179,7 +180,6 @@
   <div id="editModal">
     <div id="editModalContent">
       <h3 id="modalDishName">編輯品項</h3>
-      <!-- 備註多項時顯示下拉選單 -->
       <div id="modalFreeSelectContainer">
         <label for="modalFreeSelect">選擇備註項目:</label>
         <select id="modalFreeSelect"></select>
@@ -211,15 +211,16 @@
   </div>
 
   <script>
-    // ------------------ 強制狀態重置 ------------------
-    // 定義手勢狀態變數
+    // ------------------ 手勢狀態變數 ------------------
     let gestureStartX = null, gestureStartY = null, gestureStartTime = null;
     let verticalSwipeDirection = null; // "down" 或 "up"
     let verticalSwipeTriggered = false;
     let verticalSwipeTimer = null;
-    // 右滑送出訂單的旗標與計時器，作用於內嵌頁框區（contentContainer）
+    // 右滑旗標與計時器（用於 #contentContainer 的右滑效果）
     window.firstRightSwipe = false;
     window.firstRightSwipeTimer = null;
+    // 左滑長按旗標（若已觸發則 touchend 不再執行動作）
+    window.leftSwipeLongTriggered = false;
     
     function resetGestureState() {
       gestureStartX = null;
@@ -234,11 +235,10 @@
     }
     
     window.addEventListener("load", function() {
-      // 載入時強制重置所有手勢狀態
       resetGestureState();
     });
     
-    // ------------------ 基本訂單與菜單處理 ------------------
+    // ------------------ 基本訂單與菜單處理（略） ------------------
     let charMapping = {};
     let groupMapping = {};
     let currentEditRow = null;
@@ -262,7 +262,7 @@
           const db = JSON.parse(text);
           if (db.charMapping) {
             charMapping = db.charMapping;
-            if (db.groupMapping) { groupMapping = db.groupMapping; }
+            if (db.groupMapping) groupMapping = db.groupMapping;
           }
         })
         .catch(err => { console.error("載入字庫資料失敗：" + err.message); });
@@ -284,7 +284,7 @@
       let converted = "";
       for (let i = 0; i < dishChinese.length; i++) {
         const ch = dishChinese.charAt(i);
-        if (charMapping[ch] !== undefined) { converted += charMapping[ch]; }
+        if (charMapping[ch] !== undefined) converted += charMapping[ch];
       }
       return converted;
     }
@@ -295,7 +295,7 @@
       for (let i = 0; i < tbody.rows.length; i++) {
         let qty = parseFloat(tbody.rows[i].cells[1].innerText);
         let price = parseFloat(tbody.rows[i].cells[3].innerText);
-        if (!isNaN(qty) && !isNaN(price)) { total += qty * price; }
+        if (!isNaN(qty) && !isNaN(price)) total += qty * price;
       }
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
     }
@@ -317,7 +317,7 @@
             let freeQty = 0;
             if (index >= 0) {
               let entry = remarksArr[index];
-              if (entry === dish.name) { freeQty = mainQty; }
+              if (entry === dish.name) freeQty = mainQty;
               else {
                 let parts = entry.split("×");
                 freeQty = parseInt(parts[1]) || 0;
@@ -357,6 +357,12 @@
       document.getElementById("totalAmount").innerText = "總金額：0 元";
       document.getElementById("voiceOutput").innerHTML = "";
       localStorage.removeItem("currentOrderData");
+      // 當重新點餐時，還原內嵌頁框
+      let container = document.getElementById("contentContainer");
+      container.style.transform = "";
+      container.style.opacity = "";
+      window.firstRightSwipe = false;
+      window.leftSwipeLongTriggered = false;
     }
     
     function completeOrder() {
@@ -373,22 +379,19 @@
       }
       const voiceMemo = document.getElementById("voiceOutput").innerText;
       if (currentOrderItems.length === 0 && voiceMemo.trim() === "") {
-        // 若無訂單內容，先恢復內嵌頁框，再顯示提示
+        // 若無訂單內容，先還原內嵌頁框，再顯示提示
         let container = document.getElementById("contentContainer");
         container.style.transform = "";
         container.style.opacity = "";
         window.firstRightSwipe = false;
-        if (window.firstRightSwipeTimer) {
-          clearTimeout(window.firstRightSwipeTimer);
-          window.firstRightSwipeTimer = null;
-        }
+        window.leftSwipeLongTriggered = false;
         alert("目前沒有訂單內容！");
         return;
       }
       const newOrder = { orders: currentOrderItems, voiceMemo: voiceMemo };
       let orderHistory = [];
       const historyJSON = localStorage.getItem("orderHistory");
-      if (historyJSON) { orderHistory = JSON.parse(historyJSON); }
+      if (historyJSON) orderHistory = JSON.parse(historyJSON);
       orderHistory.push(newOrder);
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
       localStorage.removeItem("currentOrderData");
@@ -623,7 +626,7 @@
     }
     function endVoiceOrdering() {
       holdActive = false;
-      if (currentRecognition) { currentRecognition.stop(); }
+      if (currentRecognition) currentRecognition.stop();
     }
     
     function startVoiceMemo() {
@@ -635,7 +638,7 @@
     }
     function endVoiceMemo() {
       holdActive = false;
-      if (currentRecognition) { currentRecognition.stop(); }
+      if (currentRecognition) currentRecognition.stop();
     }
     
     function processMultipleVoiceInput(inputText) {
@@ -646,12 +649,12 @@
       tokens.forEach(token => {
         let m = token.match(/^(\d+)?([a-zA-Z]+)(\d+)?$/);
         if (m) {
-          if (m[1]) { numbers.push(parseInt(m[1])); }
+          if (m[1]) numbers.push(parseInt(m[1]));
           dishes.push(m[2]);
-          if (m[3]) { numbers.push(parseInt(m[3])); }
+          if (m[3]) numbers.push(parseInt(m[3]));
         } else {
-          if (/^\d+$/.test(token)) { numbers.push(parseInt(token)); }
-          else if (/^[a-zA-Z]+$/.test(token)) { dishes.push(token); }
+          if (/^\d+$/.test(token)) numbers.push(parseInt(token));
+          else if (/^[a-zA-Z]+$/.test(token)) dishes.push(token);
         }
       });
       let orders = [];
@@ -683,6 +686,8 @@
         gestureStartTime = Date.now();
         verticalSwipeDirection = null;
         verticalSwipeTriggered = false;
+        // 重置左滑長按旗標
+        window.leftSwipeLongTriggered = false;
         if (verticalSwipeTimer) { clearTimeout(verticalSwipeTimer); verticalSwipeTimer = null; }
       }
     });
@@ -694,19 +699,31 @@
       let deltaX = currentX - gestureStartX;
       let deltaY = currentY - gestureStartY;
       
-      // 判定垂直手勢（門檻調整為 50px）
+      // 判定垂直手勢（門檻 50px）
       if (!verticalSwipeDirection && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 50) {
         verticalSwipeDirection = (deltaY > 0) ? "down" : "up";
         verticalSwipeTimer = setTimeout(() => {
-          if (verticalSwipeDirection === "down") {
-            startVoiceOrdering();
-          } else if (verticalSwipeDirection === "up") {
-            startVoiceMemo();
-          }
+          if (verticalSwipeDirection === "down") startVoiceOrdering();
+          else if (verticalSwipeDirection === "up") startVoiceMemo();
           verticalSwipeTriggered = true;
         }, 500);
       }
-      // 水平右滑效果將在 touchend 處理
+      
+      // 若為水平手勢，且是左滑（deltaX 為負），更新內嵌頁框滑動效果
+      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < 0) {
+        let container = document.getElementById("contentContainer");
+        // 設定滑動效果：位移依 deltaX (負值)，透明度根據 deltaX 動態變化（例如：1 + deltaX/200，deltaX = -50 → 0.75）
+        container.style.transform = "translateX(" + deltaX + "px)";
+        container.style.opacity = (1 + deltaX / 200).toString();
+        // 若左滑持續 1 秒以上且尚未觸發長按動作，立即觸發重新點餐
+        if (!window.leftSwipeLongTriggered && (Date.now() - gestureStartTime >= 1000)) {
+          window.leftSwipeLongTriggered = true;
+          resetOrder();
+          // 還原內嵌頁框效果
+          container.style.transform = "";
+          container.style.opacity = "";
+        }
+      }
     });
     
     document.body.addEventListener("touchend", function(e) {
@@ -721,20 +738,24 @@
       let deltaY = endY - gestureStartY;
       let duration = gestureEndTime - gestureStartTime;
       
+      // 取得內嵌頁框參考
+      let container = document.getElementById("contentContainer");
+      
       // 若為水平手勢
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        if (deltaX < -50) {
-          // 左滑：根據持續時間決定動作
-          if (duration >= 1000) {
-            // 長按左滑 → 重新點餐
-            resetOrder();
-          } else {
-            // 快速左滑 → 換頁至 orders.html
-            window.location.href = "orders.html";
+        if (deltaX < -50) { // 左滑
+          // 若尚未長按觸發，則根據持續時間判斷
+          if (!window.leftSwipeLongTriggered) {
+            if (duration < 1000) {
+              // 快速左滑 → 換頁
+              window.location.href = "orders.html";
+            }
           }
-        } else if (deltaX > 50) {
-          // 右滑：作用於內嵌頁框 (contentContainer)
-          let container = document.getElementById("contentContainer");
+          // 無論如何，還原內嵌頁框效果
+          container.style.transform = "";
+          container.style.opacity = "";
+        } else if (deltaX > 50) { // 右滑
+          // 右滑：第一次右滑時，將內嵌頁框右移 10px 並變 50% 透明
           if (!window.firstRightSwipe) {
             container.style.transform = "translateX(10px)";
             container.style.opacity = "0.5";
@@ -756,7 +777,7 @@
       resetGestureState();
     });
     
-    // ------------------ 備忘錄手動編輯模態框功能 ------------------
+    // ------------------ 備忘錄模態框功能 ------------------
     function openMemoModal() {
       const memoModal = document.getElementById("memoModal");
       const memoInput = document.getElementById("memoInput");
@@ -780,7 +801,6 @@
     let tapCount = 0;
     let lastTapTime = 0;
     document.addEventListener("click", function(e) {
-      // 只有在螢幕下半部 25% 區域內的點擊才進行連點計數
       if (e.clientY < window.innerHeight * 0.75) return;
       let now = Date.now();
       if (now - lastTapTime < 500) {
@@ -789,9 +809,7 @@
         tapCount = 1;
       }
       lastTapTime = now;
-      if (tapCount >= 3) {
-        location.reload();
-      }
+      if (tapCount >= 3) location.reload();
     });
     
   </script>
