@@ -742,14 +742,14 @@
                      contentContainer.style.transition = "";
                      contentContainer.style.transform = "";
                      completeOrder();
-                 }, 300);
+                 }, 200);
              } else {
                  contentContainer.style.transition = "transform 0.2s ease-out";
                  contentContainer.style.transform = "translateX(0)";
                  setTimeout(() => {
                      contentContainer.style.transition = "";
                      contentContainer.style.transform = "";
-                 }, 200);
+                 }, 150);
              }
          } else if (deltaX < 0) { // 左滑處理
              if (horizontalLongTriggered === "left") {
