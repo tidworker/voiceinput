@@ -760,7 +760,7 @@
                      contentContainer.style.transition = "";
                      contentContainer.style.transform = "";
                      resetOrder();
-                 }, 200);
+                 }, 150);
              } else if (duration < 1000 && Math.abs(deltaX) >= 50) {
                  // 左滑快速：滿足滑動50px且在1秒內放開，觸發換頁
                  contentContainer.style.transition = "transform 0.2s ease-out";
@@ -769,7 +769,7 @@
                      contentContainer.style.transition = "";
                      contentContainer.style.transform = "";
                      window.location.href = "orders.html";
-                 }, 200);
+                 }, 150);
              } else {
                  // 不符合條件則復原動畫
                  contentContainer.style.transition = "transform 0.2s ease-out";
@@ -777,7 +777,7 @@
                  setTimeout(() => {
                      contentContainer.style.transition = "";
                      contentContainer.style.transform = "";
-                 }, 200);
+                 }, 150);
              }
          }
       } else if (Math.abs(deltaY) > 50) {
