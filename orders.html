@@ -63,7 +63,7 @@
     thead tr th:last-child {
       border-top-right-radius: 3px;
     }
-    /* 備忘錄直接顯示內文，不再具備點擊編輯功能 */
+    /* 備忘錄直接顯示內文，不具備點擊編輯功能 */
     .voiceMemo {
       text-align: left;
       color: orange;
@@ -163,7 +163,7 @@
         const memoDiv = document.createElement("div");
         memoDiv.classList.add("voiceMemo");
         memoDiv.innerText = order.voiceMemo;
-        // 已移除點擊進入編輯備忘錄的功能
+        // 移除了點擊編輯備忘錄的事件
         orderBlock.appendChild(memoDiv);
         
         attachOrderSwipe(orderBlock);
@@ -203,7 +203,7 @@
         const endY = e.changedTouches[0].clientY;
         const deltaX = endX - startX;
         const deltaY = endY - startY;
-        // 判斷水平左滑（閾值 90px）
+        // 判斷水平左滑（閾值 50px，根據需求可自行調整）
         if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX < -50) {
           if (globalSwipedOrder) {
             if (globalSwipedOrder === orderBlock) {
@@ -250,24 +250,29 @@
       renderOrderHistory();
     }
     
-    // 全域右滑返回主頁（調整閾值至 90px）
-    document.addEventListener("touchstart", function(e) {
-      if (e.touches.length === 1) {
-        globalStartX = e.touches[0].clientX;
-        globalStartY = e.touches[0].clientY;
-      }
-    });
-    document.addEventListener("touchend", function(e) {
-      if (globalStartX === null) return;
-      const endX = e.changedTouches[0].clientX;
-      const endY = e.changedTouches[0].clientY;
-      const deltaX = endX - globalStartX;
-      const deltaY = endY - globalStartY;
-      if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 50) {
-        window.location.href = "index.html";
-      }
-      resetGestureState();
-    });
+    // 全域右滑返回主頁（調整閾值至 50px）
+    // 為避免換頁後卡死問題，將此手勢檢查延遲 0.5 秒後才啟動
+    function initGlobalGestureDetection() {
+      document.addEventListener("touchstart", function(e) {
+        if (e.touches.length === 1) {
+          globalStartX = e.touches[0].clientX;
+          globalStartY = e.touches[0].clientY;
+        }
+      });
+      document.addEventListener("touchend", function(e) {
+        if (globalStartX === null) return;
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const deltaX = endX - globalStartX;
+        const deltaY = endY - globalStartY;
+        if (Math.abs(deltaX) > Math.abs(deltaY) && deltaX > 50) {
+          window.location.href = "index.html";
+        }
+        resetGestureState();
+      });
+    }
+    // 延遲 0.5 秒後初始化全域手勢檢查
+    setTimeout(initGlobalGestureDetection, 500);
     
     // ------------------ 連點三下重新整理頁面 ------------------
     let tapCount = 0;
