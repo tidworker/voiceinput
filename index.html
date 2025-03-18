@@ -719,14 +719,14 @@
       let deltaX = endX - gestureStartX;
       let deltaY = endY - gestureStartY;
       
-      // 若水平手勢且已觸發長按則不再處理
+      // 若為水平手勢且已觸發長按則不再處理
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
         if (!horizontalLongTriggered) {
           if (deltaX < 0 && duration < 1000) {
+            // 快速左滑：轉頁至 orders.html
             window.location.href = "orders.html";
-          } else if (deltaX > 0 && duration < 1000) {
-            completeOrder();
           }
+          // 右滑短速不做任何動作
         }
       }
       // 處理垂直手勢（距離門檻改為 50px）
