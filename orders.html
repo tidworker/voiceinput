@@ -14,7 +14,8 @@
       color: white;
       text-align: center;
       user-select: none;
-      overflow-x: hidden; /* 鎖定水平方向捲軸 */
+      overflow-x: hidden;
+      overscroll-behavior: none; /* 防止下滑重新整理頁面 */
     }
     /* 內容容器 */
     #contentContainer {
@@ -23,7 +24,7 @@
       padding-bottom: 20px;
       background-color: black;
       overflow: hidden;
-      position: relative; /* 為絕對定位子元素提供參考 */
+      position: relative;
     }
     /* 每筆訂單區塊 */
     .orderBlock {
@@ -35,7 +36,7 @@
       transition: transform 0.3s, opacity 0.3s;
       background-color: black;
     }
-    /* 訂單標題容器，左右分佈 */
+    /* 訂單標題容器 */
     .orderHeaderContainer {
       display: flex;
       justify-content: space-between;
@@ -75,7 +76,7 @@
       background-color: black;
       cursor: default;
     }
-    /* 拖曳用的 placeholder（僅用於保留原位與間隔效果） */
+    /* 拖曳用 placeholder */
     .drag-placeholder {
       background: transparent;
     }
@@ -84,14 +85,10 @@
 <body>
   <br><br>
   <div id="contentContainer">
-    <!-- 訂單區塊將由 JavaScript 動態加入 -->
+    <!-- 訂單區塊由 JavaScript 動態加入 -->
   </div>
   <script>
     let orderHistory = [];
-    // 用來記錄第一筆被選取的訂單及其索引（雙擊交換用）
-    let firstSelected = null;
-    let firstSelectedIndex = null;
-    let selectionTimer = null;
     // 拖曳相關全域變數
     let draggedElement = null;
     let dragOriginalIndex = null;
@@ -118,6 +115,12 @@
         const orderBlock = document.createElement("div");
         orderBlock.classList.add("orderBlock");
         orderBlock.dataset.orderIndex = index;
+        
+        // 初始化連點刪除相關屬性
+        orderBlock._tapCount = 0;       // 連點計數
+        orderBlock._doubleTapTimer = null; // 0.5秒計時器
+        orderBlock._locked = false;      // 是否處於鎖定狀態
+        orderBlock._lockTimer = null;    // 3秒鎖定計時器
         
         // 訂單標題
         const headerContainer = document.createElement("div");
@@ -168,41 +171,40 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 設定觸控事件（包含長按拖曳與雙擊交換）
+        // 觸控事件：包含長按拖曳與連點（0.5秒內雙擊才有效）
         orderBlock.addEventListener("touchstart", function(e) {
-          // 記錄觸控起始位置與時間
           orderBlock._startX = e.touches[0].clientX;
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
           orderBlock._moved = false;
-          // 設置長按計時器（1秒後觸發拖曳功能）
+          // 長按 1 秒後進入拖曳模式
           orderBlock._longPressTimer = setTimeout(() => {
             orderBlock._isDragging = true;
+            // 清除連點狀態（若有）
+            orderBlock._tapCount = 0;
+            if (orderBlock._doubleTapTimer) {
+              clearTimeout(orderBlock._doubleTapTimer);
+              orderBlock._doubleTapTimer = null;
+            }
             draggedElement = orderBlock;
             dragOriginalIndex = parseInt(orderBlock.dataset.orderIndex);
             const container = document.getElementById("contentContainer");
-            // 建立 placeholder 並保留原位空間
             placeholder = document.createElement("div");
             placeholder.className = "drag-placeholder";
             placeholder.style.height = orderBlock.offsetHeight + "px";
             container.insertBefore(placeholder, orderBlock);
-            // 取得原始位置資訊
             let rect = orderBlock.getBoundingClientRect();
             let containerRect = container.getBoundingClientRect();
-            // 將訂單轉為絕對定位
             orderBlock.style.position = "absolute";
             orderBlock.style.left = (rect.left - containerRect.left) + "px";
-            // 計算縮放後高度（scale 0.8）
+            // 計算縮放後高度 (scale 0.8)
             let scaledHeight = 0.8 * rect.height;
-            // 設定固定垂直偏移：讓縮放後訂單上部1/3（即 scaledHeight/3）對齊手指觸碰點
+            // 使縮放後訂單的上半部 1/3 對齊手指觸碰點
             orderBlock._touchOffsetY = scaledHeight / 3;
-            // 水平偏移仍依原始觸碰位置計算（乘以縮放比例）
             orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
-            // 重新定位：手指觸碰點在容器中的位置減去固定偏移
             orderBlock.style.top = (e.touches[0].clientY - containerRect.top - orderBlock._touchOffsetY) + "px";
             orderBlock.style.width = rect.width + "px";
-            orderBlock.style.zIndex = "1000"; // 保證圖層最上層
-            // 固定縮放參考點為左上角
+            orderBlock.style.zIndex = "1000";
             orderBlock.style.transformOrigin = "0 0";
             orderBlock.style.transform = "scale(0.8)";
           }, 1000);
@@ -212,7 +214,6 @@
           let currentX = e.touches[0].clientX;
           let currentY = e.touches[0].clientY;
           if (!orderBlock._isDragging) {
-            // 若移動超過一定距離則取消長按計時器
             if (Math.abs(currentX - orderBlock._startX) > 10 || Math.abs(currentY - orderBlock._startY) > 10) {
               if (orderBlock._longPressTimer) {
                 clearTimeout(orderBlock._longPressTimer);
@@ -220,17 +221,15 @@
               }
             }
           } else {
-            // 拖曳進行中：更新被拖曳訂單的位置
             e.stopPropagation(); // 防止觸發全域左右滑返回
             const container = document.getElementById("contentContainer");
             let containerRect = container.getBoundingClientRect();
             let newLeft = currentX - containerRect.left - orderBlock._touchOffsetX * 0.8;
-            // 垂直位置依照固定偏移更新：手指位置 - (scaledHeight/3)
             let newTop = currentY - containerRect.top - orderBlock._touchOffsetY;
             orderBlock.style.left = newLeft + "px";
             orderBlock.style.top = newTop + "px";
             
-            // 根據拖曳元素中心位置更新 placeholder 位置
+            // 更新 placeholder 位置
             let draggedCenterY = newTop + orderBlock.offsetHeight / 2;
             let items = Array.from(container.children).filter(child => child !== draggedElement);
             let newInsertionIndex = items.length;
@@ -263,6 +262,7 @@
             orderBlock._longPressTimer = null;
           }
           if (orderBlock._isDragging) {
+            // 結束拖曳處理
             orderBlock._isDragging = false;
             const container = document.getElementById("contentContainer");
             let items = Array.from(container.children).filter(child => child !== draggedElement);
@@ -271,15 +271,12 @@
               placeholder.parentNode.removeChild(placeholder);
             }
             placeholder = null;
-            // 還原訂單的樣式
             orderBlock.style.position = "";
             orderBlock.style.left = "";
             orderBlock.style.top = "";
             orderBlock.style.width = "";
             orderBlock.style.zIndex = "";
             orderBlock.style.transform = "";
-            
-            // 調整 orderHistory 的順序
             if (newIndex > dragOriginalIndex) {
               newIndex = newIndex - 1;
             }
@@ -293,63 +290,41 @@
             dragOriginalIndex = null;
             renderOrderHistory();
           } else {
-            // 非拖曳情形下，進行雙擊交換偵測（間隔小於 300 毫秒）
-            const touchEndTime = Date.now();
-            if (!orderBlock._lastTap || (touchEndTime - orderBlock._lastTap > 300)) {
-              orderBlock._lastTap = touchEndTime;
-            } else {
-              if (firstSelected === null) {
-                firstSelected = orderBlock;
-                firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
+            // 非拖曳情況下：處理連點（雙擊）行為
+            // 將單次點擊（touchend）延遲 500 毫秒以等待第二次點擊
+            if (orderBlock._doubleTapTimer) {
+              // 若已有計時器，表示本次為第二次點擊
+              clearTimeout(orderBlock._doubleTapTimer);
+              orderBlock._doubleTapTimer = null;
+              // 若未處於鎖定狀態，則將此雙擊作為第一次雙擊，進入鎖定狀態
+              if (!orderBlock._locked) {
+                orderBlock._locked = true;
                 orderBlock.style.transform = "scale(0.9)";
                 orderBlock.style.opacity = "0.5";
-                selectionTimer = setTimeout(() => {
+                // 啟動 3 秒計時器，期間若無第二次雙擊則恢復原狀
+                orderBlock._lockTimer = setTimeout(() => {
                   orderBlock.style.transform = "";
                   orderBlock.style.opacity = "";
-                  firstSelected = null;
-                  firstSelectedIndex = null;
+                  orderBlock._locked = false;
+                  orderBlock._lockTimer = null;
                 }, 3000);
               } else {
-                const secondSelected = orderBlock;
-                const secondIndex = parseInt(orderBlock.dataset.orderIndex);
-                if (firstSelected === secondSelected) {
-                  orderBlock._lastTap = 0;
-                  return;
-                }
-                clearTimeout(selectionTimer);
-                secondSelected.style.transform = "scale(0.9)";
-                secondSelected.style.opacity = "0.5";
-                setTimeout(() => {
-                  firstSelected.style.transition = "opacity 0.3s";
-                  secondSelected.style.transition = "opacity 0.3s";
-                  firstSelected.style.opacity = "0";
-                  secondSelected.style.opacity = "0";
-                  setTimeout(() => {
-                    let temp = orderHistory[firstSelectedIndex];
-                    orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
-                    orderHistory[secondIndex] = temp;
-                    saveOrderHistory();
-                    const swappedIndices = [firstSelectedIndex, secondIndex];
-                    firstSelected = null;
-                    firstSelectedIndex = null;
-                    renderOrderHistory();
-                    setTimeout(() => {
-                      swappedIndices.forEach(idx => {
-                        const block = document.querySelector(`.orderBlock[data-order-index="${idx}"]`);
-                        if (block) {
-                          block.style.opacity = "0";
-                          block.style.transform = "scale(0.9)";
-                          block.style.transition = "opacity 0.5s, transform 0.5s";
-                          void block.offsetWidth;
-                          block.style.opacity = "1";
-                          block.style.transform = "scale(1)";
-                        }
-                      });
-                    }, 50);
-                  }, 200);
-                }, 200);
+                // 若已鎖定狀態，第二次雙擊在 3 秒內則執行刪除
+                clearTimeout(orderBlock._lockTimer);
+                orderBlock._lockTimer = null;
+                let orderIndex = parseInt(orderBlock.dataset.orderIndex);
+                orderHistory.splice(orderIndex, 1);
+                saveOrderHistory();
+                renderOrderHistory();
               }
-              orderBlock._lastTap = 0;
+              orderBlock._tapCount = 0;
+            } else {
+              // 第一次點擊，設定 500 毫秒計時等待第二次點擊
+              orderBlock._doubleTapTimer = setTimeout(() => {
+                // 500 毫秒後若未有第二次點擊，則不作任何動作（單次點擊忽略）
+                orderBlock._doubleTapTimer = null;
+                orderBlock._tapCount = 0;
+              }, 500);
             }
           }
         });
@@ -366,28 +341,27 @@
       });
     }
     
-    // ---------------- 全域左右滑返回上一頁 ----------------
+    // 防止全域左右滑返回
     let globalStartX = null, globalStartY = null;
     document.addEventListener("touchstart", function(e) {
-      if(e.touches.length === 1){
+      if (e.touches.length === 1) {
         globalStartX = e.touches[0].clientX;
         globalStartY = e.touches[0].clientY;
       }
     });
     document.addEventListener("touchend", function(e) {
-      if(globalStartX === null) return;
+      if (globalStartX === null) return;
       const endX = e.changedTouches[0].clientX;
       const endY = e.changedTouches[0].clientY;
       const deltaX = endX - globalStartX;
       const deltaY = endY - globalStartY;
-      if(Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      if (Math.abs(deltaX) >= 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
         window.history.back();
       }
       globalStartX = null;
       globalStartY = null;
     });
     
-    // 初始化
     loadOrderHistory();
     renderOrderHistory();
   </script>
