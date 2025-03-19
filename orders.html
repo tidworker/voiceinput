@@ -192,17 +192,17 @@
             // 將訂單轉為絕對定位
             orderBlock.style.position = "absolute";
             orderBlock.style.left = (rect.left - containerRect.left) + "px";
-            let initialTop = rect.top - containerRect.top;
-            // 長按後位置上移200px
-            orderBlock.style.top = (initialTop - 200) + "px";
+            // 計算縮放後高度（scale 0.8）
+            let scaledHeight = 0.8 * rect.height;
+            // 設定固定垂直偏移：讓縮放後訂單上部1/3（即 scaledHeight/3）對齊手指觸碰點
+            orderBlock._touchOffsetY = scaledHeight / 3;
+            // 水平偏移仍依原始觸碰位置計算（乘以縮放比例）
+            orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
+            // 重新定位：手指觸碰點在容器中的位置減去固定偏移
+            orderBlock.style.top = (e.touches[0].clientY - containerRect.top - orderBlock._touchOffsetY) + "px";
             orderBlock.style.width = rect.width + "px";
             orderBlock.style.zIndex = "1000"; // 保證圖層最上層
-            // 記錄手指相對於原始元素的偏移量（以原始比例記錄）
-            orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
-            orderBlock._touchOffsetY = e.touches[0].clientY - rect.top;
-            // 記錄上移偏移量
-            orderBlock._shiftY = 100;
-            // 固定縮放參考點為左上角，確保縮放後位置不變
+            // 固定縮放參考點為左上角
             orderBlock.style.transformOrigin = "0 0";
             orderBlock.style.transform = "scale(0.8)";
           }, 1000);
@@ -225,8 +225,8 @@
             const container = document.getElementById("contentContainer");
             let containerRect = container.getBoundingClientRect();
             let newLeft = currentX - containerRect.left - orderBlock._touchOffsetX * 0.8;
-            // 考慮原本上移200px的偏移
-            let newTop = currentY - containerRect.top - orderBlock._touchOffsetY * 0.8 - (orderBlock._shiftY || 0);
+            // 垂直位置依照固定偏移更新：手指位置 - (scaledHeight/3)
+            let newTop = currentY - containerRect.top - orderBlock._touchOffsetY;
             orderBlock.style.left = newLeft + "px";
             orderBlock.style.top = newTop + "px";
             
