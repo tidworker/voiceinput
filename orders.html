@@ -75,6 +75,10 @@
       background-color: black;
       cursor: default;
     }
+    /* 拖曳用的 placeholder（僅用於保留原位與間隔效果） */
+    .drag-placeholder {
+      background: transparent;
+    }
   </style>
 </head>
 <body>
@@ -88,6 +92,10 @@
     let firstSelected = null;
     let firstSelectedIndex = null;
     let selectionTimer = null;
+    // 拖曳相關全域變數
+    let draggedElement = null;
+    let dragOriginalIndex = null;
+    let placeholder = null;
     
     // 讀取與儲存訂單記錄
     function loadOrderHistory() {
@@ -160,29 +168,35 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 為每筆訂單設定觸控事件（長按拖曳與雙擊交換）
+        // 為每筆訂單設定觸控事件（包含長按拖曳與雙擊交換）
         orderBlock.addEventListener("touchstart", function(e) {
           // 記錄觸控起始位置與時間
           orderBlock._startX = e.touches[0].clientX;
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
           orderBlock._moved = false;
-          // 設置長按計時器，1秒後觸發拖曳功能
+          // 設置長按計時器（1秒後觸發拖曳功能）
           orderBlock._longPressTimer = setTimeout(() => {
             orderBlock._isDragging = true;
-            // 放大 5%（取消位移效果）
-            orderBlock.style.transform = "scale(1.05)";
-            // 轉換為絕對定位以便拖曳
+            draggedElement = orderBlock;
+            dragOriginalIndex = parseInt(orderBlock.dataset.orderIndex);
+            const container = document.getElementById("contentContainer");
+            // 建立 placeholder 並保留原位空間
+            placeholder = document.createElement("div");
+            placeholder.className = "drag-placeholder";
+            placeholder.style.height = orderBlock.offsetHeight + "px";
+            // 將 placeholder 插入 orderBlock 原來的位置
+            container.insertBefore(placeholder, orderBlock);
+            // 將 orderBlock 轉為絕對定位，並放大 5%
             let rect = orderBlock.getBoundingClientRect();
             let containerRect = container.getBoundingClientRect();
-            let left = rect.left - containerRect.left;
-            let top = rect.top - containerRect.top;
             orderBlock.style.position = "absolute";
-            orderBlock.style.left = left + "px";
-            orderBlock.style.top = top + "px";
-            orderBlock.style.width = rect.width + "px"; // 固定寬度
-            orderBlock.style.zIndex = "1000";
-            // 記錄觸點與元素左上角的偏移量
+            orderBlock.style.left = (rect.left - containerRect.left) + "px";
+            orderBlock.style.top = (rect.top - containerRect.top) + "px";
+            orderBlock.style.width = rect.width + "px";
+            orderBlock.style.zIndex = "1000"; // 保證圖層最上層
+            orderBlock.style.transform = "scale(1.05)";
+            // 記錄觸控點與元素左上角的偏移量
             orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
             orderBlock._touchOffsetY = e.touches[0].clientY - rect.top;
           }, 1000);
@@ -200,58 +214,87 @@
               }
             }
           } else {
-            // 拖曳進行中，防止觸發全域滑動返回
-            e.stopPropagation();
+            // 拖曳進行中：更新被拖曳訂單的位置
+            e.stopPropagation(); // 防止觸發全域左右滑返回
+            const container = document.getElementById("contentContainer");
             let containerRect = container.getBoundingClientRect();
             let newLeft = currentX - containerRect.left - orderBlock._touchOffsetX;
             let newTop = currentY - containerRect.top - orderBlock._touchOffsetY;
             orderBlock.style.left = newLeft + "px";
             orderBlock.style.top = newTop + "px";
+            
+            // 根據拖曳元素的中心位置，更新 placeholder 的位置
+            let draggedCenterY = newTop + orderBlock.offsetHeight / 2;
+            // 從 container 中取得除了被拖曳元素以外的所有元素（包含 placeholder）
+            let items = Array.from(container.children).filter(child => child !== draggedElement);
+            // 依 DOM 順序計算新的插入索引（預設放在最後）
+            let newInsertionIndex = items.length;
+            for (let i = 0; i < items.length; i++) {
+              let child = items[i];
+              // 只考慮原本的訂單區塊（排除 placeholder），因為 placeholder已存在
+              if (!child.classList.contains("orderBlock")) continue;
+              let childRect = child.getBoundingClientRect();
+              let childCenterY = childRect.top + childRect.height / 2;
+              if (draggedCenterY < childCenterY) {
+                newInsertionIndex = i;
+                break;
+              }
+            }
+            // 重新插入 placeholder到新的位置（利用 items 中的順序）
+            // 由於 container.children 包含 placeholder，因此先排除被拖曳的元素
+            let filtered = Array.from(container.children).filter(child => child !== draggedElement);
+            let currentIndex = filtered.indexOf(placeholder);
+            if (currentIndex !== newInsertionIndex) {
+              if (newInsertionIndex >= filtered.length) {
+                container.appendChild(placeholder);
+              } else {
+                // 找到 filtered[newInsertionIndex] 在 container 中的位置
+                let target = filtered[newInsertionIndex];
+                container.insertBefore(placeholder, target);
+              }
+            }
           }
         });
         
         orderBlock.addEventListener("touchend", function(e) {
-          // 清除長按計時器
           if (orderBlock._longPressTimer) {
             clearTimeout(orderBlock._longPressTimer);
             orderBlock._longPressTimer = null;
           }
-          
           if (orderBlock._isDragging) {
             orderBlock._isDragging = false;
-            // 拖曳結束，判斷拖曳中心是否落在其他訂單區塊上
-            let rect = orderBlock.getBoundingClientRect();
-            let draggedCenterX = rect.left + rect.width / 2;
-            let draggedCenterY = rect.top + rect.height / 2;
-            let dropTarget = null;
-            document.querySelectorAll(".orderBlock").forEach(otherBlock => {
-              if (otherBlock === orderBlock) return;
-              let otherRect = otherBlock.getBoundingClientRect();
-              if (draggedCenterX >= otherRect.left && draggedCenterX <= otherRect.right &&
-                  draggedCenterY >= otherRect.top && draggedCenterY <= otherRect.bottom) {
-                dropTarget = otherBlock;
-              }
-            });
-            
-            // 還原動畫效果（淡化、位移恢復）
-            orderBlock.style.transition = "transform 0.3s, opacity 0.3s, left 0.3s, top 0.3s";
+            const container = document.getElementById("contentContainer");
+            // 從 container 中取得除了被拖曳元素外的項目，並計算 placeholder 的索引
+            let items = Array.from(container.children).filter(child => child !== draggedElement);
+            let newIndex = items.indexOf(placeholder);
+            // 刪除 placeholder
+            if (placeholder && placeholder.parentNode) {
+              placeholder.parentNode.removeChild(placeholder);
+            }
+            placeholder = null;
+            // 還原 orderBlock 的樣式
+            orderBlock.style.position = "";
+            orderBlock.style.left = "";
+            orderBlock.style.top = "";
+            orderBlock.style.width = "";
+            orderBlock.style.zIndex = "";
             orderBlock.style.transform = "";
             
-            // 如果有放置目標且不是自己，則交換訂單資料
-            if (dropTarget) {
-              let firstIndex = parseInt(orderBlock.dataset.orderIndex);
-              let secondIndex = parseInt(dropTarget.dataset.orderIndex);
-              if (firstIndex !== secondIndex) {
-                let temp = orderHistory[firstIndex];
-                orderHistory[firstIndex] = orderHistory[secondIndex];
-                orderHistory[secondIndex] = temp;
-                saveOrderHistory();
-              }
+            // 根據拖曳前的原始索引（dragOriginalIndex）與新索引來調整 orderHistory 順序
+            // 注意：若 newIndex 大於原來位置，因移除元素會導致索引下移，故 newIndex 要減 1
+            if (newIndex > dragOriginalIndex) {
+              newIndex = newIndex - 1;
             }
-            // 0.3 秒後重新渲染，恢復原始版面
-            setTimeout(() => {
-              renderOrderHistory();
-            }, 300);
+            if (newIndex < 0) newIndex = 0;
+            if (newIndex !== dragOriginalIndex) {
+              let moved = orderHistory.splice(dragOriginalIndex, 1)[0];
+              orderHistory.splice(newIndex, 0, moved);
+            }
+            saveOrderHistory();
+            // 重置拖曳相關變數
+            draggedElement = null;
+            dragOriginalIndex = null;
+            renderOrderHistory();
           } else {
             // 若非拖曳，則進行雙擊檢測（兩次點擊間隔小於 300 毫秒）
             const touchEndTime = Date.now();
