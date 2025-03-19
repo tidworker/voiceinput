@@ -215,7 +215,7 @@
           let currentX = e.touches[0].clientX;
           let currentY = e.touches[0].clientY;
           if (!orderBlock._isDragging) {
-            if (Math.abs(currentX - orderBlock._startX) > 20 || Math.abs(currentY - orderBlock._startY) > 30) {
+            if (Math.abs(currentX - orderBlock._startX) > -10 || Math.abs(currentY - orderBlock._startY) > -30) {
               if (orderBlock._longPressTimer) {
                 clearTimeout(orderBlock._longPressTimer);
                 orderBlock._longPressTimer = null;
