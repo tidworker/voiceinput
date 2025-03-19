@@ -35,7 +35,7 @@
       transition: transform 0.3s, opacity 0.3s;
       background-color: black;
     }
-    /* 訂單標題容器，左右分佈 */
+    /* 訂單標題容器 */
     .orderHeaderContainer {
       display: flex;
       justify-content: space-between;
@@ -75,9 +75,18 @@
       background-color: black;
       cursor: default;
     }
-    /* 拖曳用的 placeholder */
-    .drag-placeholder {
-      background: transparent;
+    /* 全螢幕 overlay（用於長按選取時呈現） */
+    #orderOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.9); /* 遮蓋底下訂單區 */
+      z-index: 1000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
   </style>
 </head>
@@ -88,14 +97,12 @@
   </div>
   <script>
     let orderHistory = [];
-    // 用來記錄第一筆被選取的訂單及其索引（雙擊交換用）
+    // 用來記錄雙擊交換用的變數
     let firstSelected = null;
     let firstSelectedIndex = null;
     let selectionTimer = null;
-    // 拖曳相關全域變數
-    let draggedElement = null;
-    let dragOriginalIndex = null;
-    let placeholder = null;
+    // 用於判斷 overlay 是否已經顯示
+    let overlayActive = false;
     
     // 讀取與儲存訂單記錄
     function loadOrderHistory() {
@@ -104,6 +111,28 @@
     }
     function saveOrderHistory() {
       localStorage.setItem("orderHistory", JSON.stringify(orderHistory));
+    }
+    
+    // 顯示全螢幕 overlay，呈現該筆訂單
+    function showOverlay(orderBlock) {
+      overlayActive = true;
+      let overlay = document.createElement("div");
+      overlay.id = "orderOverlay";
+      // 將 orderBlock 複製後置於 overlay 中
+      let clone = orderBlock.cloneNode(true);
+      // 移除原本的事件（避免重覆觸發）
+      clone.style.transform = "none";
+      // 可依需求調整呈現尺寸，這裡以 90% 寬度呈現
+      clone.style.width = "90%";
+      overlay.appendChild(clone);
+      document.body.appendChild(overlay);
+      // 點擊或觸控 overlay 任一處，即關閉 overlay
+      overlay.addEventListener("touchend", function(e) {
+        if (overlay && overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+          overlayActive = false;
+        }
+      });
     }
     
     // 渲染訂單紀錄
@@ -168,191 +197,99 @@
         memoDiv.innerText = order.voiceMemo;
         orderBlock.appendChild(memoDiv);
         
-        // 觸控事件（包含長按拖曳與雙擊交換）
+        // 觸控事件：長按 1 秒後顯示 overlay，否則檢測雙擊交換
         orderBlock.addEventListener("touchstart", function(e) {
           orderBlock._startX = e.touches[0].clientX;
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
-          orderBlock._moved = false;
-          // 設置長按計時器（1秒後觸發拖曳功能）
+          // 設置長按計時器
           orderBlock._longPressTimer = setTimeout(() => {
-            orderBlock._isDragging = true;
-            draggedElement = orderBlock;
-            dragOriginalIndex = parseInt(orderBlock.dataset.orderIndex);
-            const container = document.getElementById("contentContainer");
-            // 在原位置插入 placeholder 以保留空間
-            placeholder = document.createElement("div");
-            placeholder.className = "drag-placeholder";
-            placeholder.style.height = orderBlock.offsetHeight + "px";
-            container.insertBefore(placeholder, orderBlock);
-            // 將 orderBlock 從 container 轉移到 document.body，使其能全域顯示
-            let rect = orderBlock.getBoundingClientRect();
-            document.body.appendChild(orderBlock);
-            orderBlock.style.position = "absolute";
-            orderBlock.style.left = rect.left + "px";
-            orderBlock.style.top = rect.top + "px";
-            orderBlock.style.width = rect.width + "px";
-            orderBlock.style.zIndex = "1000";
-            orderBlock.style.transform = "scale(1.05)";
-            orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
-            orderBlock._touchOffsetY = e.touches[0].clientY - rect.top;
+            showOverlay(orderBlock);
           }, 1000);
         });
-        
         orderBlock.addEventListener("touchmove", function(e) {
           let currentX = e.touches[0].clientX;
           let currentY = e.touches[0].clientY;
-          if (!orderBlock._isDragging) {
-            if (Math.abs(currentX - orderBlock._startX) > 10 || Math.abs(currentY - orderBlock._startY) > 10) {
-              if (orderBlock._longPressTimer) {
-                clearTimeout(orderBlock._longPressTimer);
-                orderBlock._longPressTimer = null;
-              }
-            }
-          } else {
-            e.stopPropagation();
-            // 更新 orderBlock 在 document.body 中的位置
-            let newLeft = e.touches[0].clientX - orderBlock._touchOffsetX;
-            let newTop = e.touches[0].clientY - orderBlock._touchOffsetY;
-            orderBlock.style.left = newLeft + "px";
-            orderBlock.style.top = newTop + "px";
-            
-            // 依據拖曳元素中心點更新 placeholder 在 container 中的位置
-            const container = document.getElementById("contentContainer");
-            let containerRect = container.getBoundingClientRect();
-            let draggedCenterY = newTop + orderBlock.offsetHeight / 2;
-            let relativeCenterY = draggedCenterY - containerRect.top;
-            
-            let items = Array.from(container.children).filter(child => child !== placeholder);
-            let newInsertionIndex = items.length;
-            for (let i = 0; i < items.length; i++) {
-              let child = items[i];
-              if (!child.classList.contains("orderBlock")) continue;
-              let childRect = child.getBoundingClientRect();
-              let childCenterY = childRect.top + childRect.height / 2 - containerRect.top;
-              if (relativeCenterY < childCenterY) {
-                newInsertionIndex = i;
-                break;
-              }
-            }
-            let filtered = Array.from(container.children).filter(child => child !== draggedElement);
-            let currentIndex = filtered.indexOf(placeholder);
-            if (currentIndex !== newInsertionIndex) {
-              if (newInsertionIndex >= filtered.length) {
-                container.appendChild(placeholder);
-              } else {
-                let target = filtered[newInsertionIndex];
-                container.insertBefore(placeholder, target);
-              }
+          // 若移動超過 10px 則視為非長按，取消計時器
+          if (Math.abs(currentX - orderBlock._startX) > 10 ||
+              Math.abs(currentY - orderBlock._startY) > 10) {
+            if (orderBlock._longPressTimer) {
+              clearTimeout(orderBlock._longPressTimer);
+              orderBlock._longPressTimer = null;
             }
           }
         });
-        
         orderBlock.addEventListener("touchend", function(e) {
           if (orderBlock._longPressTimer) {
             clearTimeout(orderBlock._longPressTimer);
             orderBlock._longPressTimer = null;
           }
-          if (orderBlock._isDragging) {
-            orderBlock._isDragging = false;
-            const container = document.getElementById("contentContainer");
-            let items = Array.from(container.children).filter(child => child !== draggedElement);
-            let newIndex = items.indexOf(placeholder);
-            if (placeholder && placeholder.parentNode) {
-              placeholder.parentNode.removeChild(placeholder);
-            }
-            placeholder = null;
-            
-            // 還原 orderBlock 樣式，並重新插回 container 中
-            orderBlock.style.position = "";
-            orderBlock.style.left = "";
-            orderBlock.style.top = "";
-            orderBlock.style.width = "";
-            orderBlock.style.zIndex = "";
-            orderBlock.style.transform = "";
-            container.insertBefore(orderBlock, container.children[newIndex] || null);
-            
-            // 調整 orderHistory 順序（若新索引大於原索引，因為刪除後索引需修正）
-            if (newIndex > dragOriginalIndex) {
-              newIndex = newIndex - 1;
-            }
-            if (newIndex < 0) newIndex = 0;
-            if (newIndex !== dragOriginalIndex) {
-              let moved = orderHistory.splice(dragOriginalIndex, 1)[0];
-              orderHistory.splice(newIndex, 0, moved);
-            }
-            saveOrderHistory();
-            draggedElement = null;
-            dragOriginalIndex = null;
-            renderOrderHistory();
+          // 若 overlay 已顯示則不處理雙擊交換
+          if (overlayActive) return;
+          // 雙擊檢測（兩次觸控間隔小於 300 毫秒）
+          const touchEndTime = Date.now();
+          if (!orderBlock._lastTap || (touchEndTime - orderBlock._lastTap > 300)) {
+            orderBlock._lastTap = touchEndTime;
           } else {
-            // 非拖曳狀態：執行雙擊交換訂單邏輯
-            const touchEndTime = Date.now();
-            if (!orderBlock._lastTap || (touchEndTime - orderBlock._lastTap > 300)) {
-              orderBlock._lastTap = touchEndTime;
+            if (firstSelected === null) {
+              firstSelected = orderBlock;
+              firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
+              orderBlock.style.transform = "scale(0.9)";
+              orderBlock.style.opacity = "0.5";
+              selectionTimer = setTimeout(() => {
+                orderBlock.style.transform = "";
+                orderBlock.style.opacity = "";
+                firstSelected = null;
+                firstSelectedIndex = null;
+              }, 3000);
             } else {
-              if (firstSelected === null) {
-                firstSelected = orderBlock;
-                firstSelectedIndex = parseInt(orderBlock.dataset.orderIndex);
-                orderBlock.style.transform = "scale(0.9)";
-                orderBlock.style.opacity = "0.5";
-                selectionTimer = setTimeout(() => {
-                  orderBlock.style.transform = "";
-                  orderBlock.style.opacity = "";
+              const secondSelected = orderBlock;
+              const secondIndex = parseInt(orderBlock.dataset.orderIndex);
+              if (firstSelected === secondSelected) {
+                orderBlock._lastTap = 0;
+                return;
+              }
+              clearTimeout(selectionTimer);
+              secondSelected.style.transform = "scale(0.9)";
+              secondSelected.style.opacity = "0.5";
+              setTimeout(() => {
+                firstSelected.style.transition = "opacity 0.3s";
+                secondSelected.style.transition = "opacity 0.3s";
+                firstSelected.style.opacity = "0";
+                secondSelected.style.opacity = "0";
+                setTimeout(() => {
+                  let temp = orderHistory[firstSelectedIndex];
+                  orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
+                  orderHistory[secondIndex] = temp;
+                  saveOrderHistory();
+                  const swappedIndices = [firstSelectedIndex, secondIndex];
                   firstSelected = null;
                   firstSelectedIndex = null;
-                }, 3000);
-              } else {
-                const secondSelected = orderBlock;
-                const secondIndex = parseInt(orderBlock.dataset.orderIndex);
-                if (firstSelected === secondSelected) {
-                  orderBlock._lastTap = 0;
-                  return;
-                }
-                clearTimeout(selectionTimer);
-                secondSelected.style.transform = "scale(0.9)";
-                secondSelected.style.opacity = "0.5";
-                setTimeout(() => {
-                  firstSelected.style.transition = "opacity 0.3s";
-                  secondSelected.style.transition = "opacity 0.3s";
-                  firstSelected.style.opacity = "0";
-                  secondSelected.style.opacity = "0";
+                  renderOrderHistory();
                   setTimeout(() => {
-                    let temp = orderHistory[firstSelectedIndex];
-                    orderHistory[firstSelectedIndex] = orderHistory[secondIndex];
-                    orderHistory[secondIndex] = temp;
-                    saveOrderHistory();
-                    const swappedIndices = [firstSelectedIndex, secondIndex];
-                    firstSelected = null;
-                    firstSelectedIndex = null;
-                    renderOrderHistory();
-                    setTimeout(() => {
-                      swappedIndices.forEach(idx => {
-                        const block = document.querySelector(`.orderBlock[data-order-index="${idx}"]`);
-                        if (block) {
-                          block.style.opacity = "0";
-                          block.style.transform = "scale(0.9)";
-                          block.style.transition = "opacity 0.5s, transform 0.5s";
-                          void block.offsetWidth;
-                          block.style.opacity = "1";
-                          block.style.transform = "scale(1)";
-                        }
-                      });
-                    }, 50);
-                  }, 200);
+                    swappedIndices.forEach(idx => {
+                      const block = document.querySelector(`.orderBlock[data-order-index="${idx}"]`);
+                      if (block) {
+                        block.style.opacity = "0";
+                        block.style.transform = "scale(0.9)";
+                        block.style.transition = "opacity 0.5s, transform 0.5s";
+                        void block.offsetWidth;
+                        block.style.opacity = "1";
+                        block.style.transform = "scale(1)";
+                      }
+                    });
+                  }, 50);
                 }, 200);
-              }
-              orderBlock._lastTap = 0;
+              }, 200);
             }
+            orderBlock._lastTap = 0;
           }
         });
-        
         orderBlock.addEventListener("touchcancel", function(e) {
           if (orderBlock._longPressTimer) {
             clearTimeout(orderBlock._longPressTimer);
             orderBlock._longPressTimer = null;
           }
-          orderBlock._isDragging = false;
         });
         
         container.appendChild(orderBlock);
