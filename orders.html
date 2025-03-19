@@ -199,7 +199,7 @@
             orderBlock.style.position = "absolute";
             orderBlock.style.left = (rect.left - containerRect.left) + "px";
             // 計算縮放後高度 (scale 0.8)
-            let scaledHeight = 0.8 * rect.height;
+            let scaledHeight = 0.9 * rect.height;
             // 使縮放後訂單的上半部 1/3 對齊手指觸碰點
             orderBlock._touchOffsetY = scaledHeight / 3;
             orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
