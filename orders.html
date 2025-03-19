@@ -187,7 +187,7 @@
             placeholder.style.height = orderBlock.offsetHeight + "px";
             // 將 placeholder 插入 orderBlock 原來的位置
             container.insertBefore(placeholder, orderBlock);
-            // 將 orderBlock 轉為絕對定位，並放大 5%
+            // 將 orderBlock 轉為絕對定位，並縮小至80%
             let rect = orderBlock.getBoundingClientRect();
             let containerRect = container.getBoundingClientRect();
             orderBlock.style.position = "absolute";
@@ -195,7 +195,7 @@
             orderBlock.style.top = (rect.top - containerRect.top) + "px";
             orderBlock.style.width = rect.width + "px";
             orderBlock.style.zIndex = "1000"; // 保證圖層最上層
-            orderBlock.style.transform = "scale(1.05)";
+            orderBlock.style.transform = "scale(0.8)";
             // 記錄觸控點與元素左上角的偏移量
             orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
             orderBlock._touchOffsetY = e.touches[0].clientY - rect.top;
