@@ -185,7 +185,6 @@
             placeholder = document.createElement("div");
             placeholder.className = "drag-placeholder";
             placeholder.style.height = orderBlock.offsetHeight + "px";
-            // 將 placeholder 插入 orderBlock 原來的位置
             container.insertBefore(placeholder, orderBlock);
             // 取得原始位置資訊
             let rect = orderBlock.getBoundingClientRect();
@@ -193,14 +192,18 @@
             // 將訂單轉為絕對定位
             orderBlock.style.position = "absolute";
             orderBlock.style.left = (rect.left - containerRect.left) + "px";
-            orderBlock.style.top = (rect.top - containerRect.top) + "px";
+            let initialTop = rect.top - containerRect.top;
+            // 長按後位置上移200px
+            orderBlock.style.top = (initialTop - 200) + "px";
             orderBlock.style.width = rect.width + "px";
             orderBlock.style.zIndex = "1000"; // 保證圖層最上層
-            // 記錄觸控點與元素左上角的偏移量
+            // 記錄手指相對於原始元素的偏移量（以原始比例記錄）
             orderBlock._touchOffsetX = e.touches[0].clientX - rect.left;
             orderBlock._touchOffsetY = e.touches[0].clientY - rect.top;
-            // 設定縮放參考點為手指觸碰處，確保縮小後訂單位於手指位置
-            orderBlock.style.transformOrigin = orderBlock._touchOffsetX + "px " + orderBlock._touchOffsetY + "px";
+            // 記錄上移偏移量
+            orderBlock._shiftY = 100;
+            // 固定縮放參考點為左上角，確保縮放後位置不變
+            orderBlock.style.transformOrigin = "0 0";
             orderBlock.style.transform = "scale(0.8)";
           }, 1000);
         });
@@ -221,12 +224,13 @@
             e.stopPropagation(); // 防止觸發全域左右滑返回
             const container = document.getElementById("contentContainer");
             let containerRect = container.getBoundingClientRect();
-            let newLeft = currentX - containerRect.left - orderBlock._touchOffsetX;
-            let newTop = currentY - containerRect.top - orderBlock._touchOffsetY;
+            let newLeft = currentX - containerRect.left - orderBlock._touchOffsetX * 0.8;
+            // 考慮原本上移200px的偏移
+            let newTop = currentY - containerRect.top - orderBlock._touchOffsetY * 0.8 - (orderBlock._shiftY || 0);
             orderBlock.style.left = newLeft + "px";
             orderBlock.style.top = newTop + "px";
             
-            // 根據拖曳元素的中心位置，更新 placeholder 的位置
+            // 根據拖曳元素中心位置更新 placeholder 位置
             let draggedCenterY = newTop + orderBlock.offsetHeight / 2;
             let items = Array.from(container.children).filter(child => child !== draggedElement);
             let newInsertionIndex = items.length;
