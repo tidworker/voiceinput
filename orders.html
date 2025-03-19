@@ -178,7 +178,7 @@
           orderBlock._startY = e.touches[0].clientY;
           orderBlock._touchStartTime = Date.now();
           orderBlock._moved = false;
-          // 長按 1 秒後進入拖曳模式
+          // 長按 0.5 秒後進入拖曳模式
           orderBlock._longPressTimer = setTimeout(() => {
             orderBlock._isDragging = true;
             // 清除連點狀態（若有）
@@ -198,7 +198,7 @@
             let containerRect = container.getBoundingClientRect();
             orderBlock.style.position = "absolute";
             orderBlock.style.left = (rect.left - containerRect.left) + "px";
-            // 計算縮放後高度 (scale 0.8)
+            // 計算縮放後高度 (scale 0.9)
             let scaledHeight = 0.9 * rect.height;
             // 使縮放後訂單的上半部 1/3 對齊手指觸碰點
             orderBlock._touchOffsetY = scaledHeight / 3;
@@ -278,10 +278,8 @@
             orderBlock.style.width = "";
             orderBlock.style.zIndex = "";
             orderBlock.style.transform = "";
-            if (newIndex > dragOriginalIndex) {
-              newIndex = newIndex - 1;
-            }
             if (newIndex < 0) newIndex = 0;
+            // 直接使用 newIndex 作為拖曳後的新位置
             if (newIndex !== dragOriginalIndex) {
               let moved = orderHistory.splice(dragOriginalIndex, 1)[0];
               orderHistory.splice(newIndex, 0, moved);
@@ -292,17 +290,13 @@
             renderOrderHistory();
           } else {
             // 非拖曳情況下：處理連點（雙擊）行為
-            // 將單次點擊（touchend）延遲 500 毫秒以等待第二次點擊
             if (orderBlock._doubleTapTimer) {
-              // 若已有計時器，表示本次為第二次點擊
               clearTimeout(orderBlock._doubleTapTimer);
               orderBlock._doubleTapTimer = null;
-              // 若未處於鎖定狀態，則將此雙擊作為第一次雙擊，進入鎖定狀態
               if (!orderBlock._locked) {
                 orderBlock._locked = true;
                 orderBlock.style.transform = "scale(0.9)";
                 orderBlock.style.opacity = "0.5";
-                // 啟動 3 秒計時器，期間若無第二次雙擊則恢復原狀
                 orderBlock._lockTimer = setTimeout(() => {
                   orderBlock.style.transform = "";
                   orderBlock.style.opacity = "";
@@ -310,7 +304,6 @@
                   orderBlock._lockTimer = null;
                 }, 3000);
               } else {
-                // 若已鎖定狀態，第二次雙擊在 3 秒內則執行刪除
                 clearTimeout(orderBlock._lockTimer);
                 orderBlock._lockTimer = null;
                 let orderIndex = parseInt(orderBlock.dataset.orderIndex);
@@ -320,9 +313,7 @@
               }
               orderBlock._tapCount = 0;
             } else {
-              // 第一次點擊，設定 500 毫秒計時等待第二次點擊
               orderBlock._doubleTapTimer = setTimeout(() => {
-                // 500 毫秒後若未有第二次點擊，則不作任何動作（單次點擊忽略）
                 orderBlock._doubleTapTimer = null;
                 orderBlock._tapCount = 0;
               }, 500);
