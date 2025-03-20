@@ -50,9 +50,14 @@
       "busiangcai",
       "bujiasiangcai",
       "buyaosiangcai",
-      "buyaojiasiangcai"
+      "buyaojiasiangcai",
+      "budouya",
+      "buyaodouya",
+      "buyaodouyacai",
+      "bujiadouya",
+      "buyaojiadouya"
     ],
-    "name": "不香菜",
+    "name": "不菜",
     "price": 0
   },
   {
@@ -305,5 +310,46 @@
     ],
     "name": "蚵仔煎",
     "price": 99
+  },
+  {
+    "keywords": [
+      "bucubusuan",
+      "busuanbucu"
+    ],
+    "name": "不醋不蒜",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "bucubusiangcai",
+      "buyaosiangcaibuyaocu"
+    ],
+    "name": "不醋不香菜",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "yogao",
+      "jiayogao"
+    ],
+    "name": "油膏",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "jiahujiao",
+      "hujiao"
+    ],
+    "name": "胡椒粉",
+    "price": 0
+  },
+  {
+    "keywords": [
+      "buyaohujiao",
+      "buhujiao",
+      "bujiahujiao"
+    ],
+    "name": "不胡椒",
+    "price": 0
   }
 ]
