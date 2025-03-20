@@ -597,6 +597,8 @@
     let currentRecognition = null;
     let holdActive = false;
     let currentMode = ""; // "red" 表示語音點餐；"green" 表示語音備忘錄
+    // 新增全域計時器變數，用以延遲顯示 rec.png
+    let recTimer = null;
     
     function startVoiceInputSingle() {
       return new Promise((resolve) => {
@@ -661,12 +663,16 @@
         currentMode = "red";
         // 開始點餐後隱藏 logo.png
         document.getElementById("logoContainer").style.display = "none";
-        showRecordingIndicator();  // 開始錄音時顯示
+        // 延遲 1 秒後顯示 rec.png (若 holdActive 仍為 true)
+        recTimer = setTimeout(() => {
+          if (holdActive) { showRecordingIndicator(); }
+        }, 1000);
         continuousRecognition();
       }
     }
     function endVoiceOrdering() {
       holdActive = false;
+      clearTimeout(recTimer);
       hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
     }
@@ -675,12 +681,16 @@
       if (!holdActive) {
         holdActive = true;
         currentMode = "green";
-        showRecordingIndicator();  // 開始錄音時顯示
+        // 同樣延遲 1 秒後顯示 rec.png
+        recTimer = setTimeout(() => {
+          if (holdActive) { showRecordingIndicator(); }
+        }, 1000);
         continuousRecognition();
       }
     }
     function endVoiceMemo() {
       holdActive = false;
+      clearTimeout(recTimer);
       hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
     }
