@@ -24,6 +24,15 @@
     img {
       max-width: 100%;
     }
+    /* 錄音指示器：初始隱藏，置中顯示 rec.png */
+    #recordingIndicator {
+      display: none;
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 3000;
+    }
     /* 統一內容區：訂單表格與語音備忘錄顯示區 */
     #contentContainer {
       width: 90%;
@@ -156,6 +165,12 @@
 <body>
   <br>
   <img src="3.png" width="340" height="170">
+
+  <!-- 錄音指示器：顯示 rec.png -->
+  <div id="recordingIndicator">
+    <img src="rec.png" width="100" height="100">
+  </div>
+  
   <!-- 訂單與語音備忘錄顯示區 -->
   <div id="contentContainer">
     <table id="orderTable">
@@ -226,7 +241,7 @@
   
   <!-- 新增幫助視窗（全螢幕 70% 黑色遮罩，中央顯示 help.png；點擊圖片關閉） -->
   <div id="helpModal" style="display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 5000;">
-    <img src="help.png" width="300" height="215" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); cursor: pointer;" onclick="closeHelpModal()">
+    <img src="help.png" width="300" height="225" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); cursor: pointer;" onclick="closeHelpModal()">
   </div>
   
   <script>
@@ -235,7 +250,7 @@
     let groupMapping = {};
     let currentEditRow = null;
     let currentEditType = ""; // "quantity" 或 "remark"
-    let currentEditFreeDishName = "";    // 模擬菜單資料（也可外部載入）
+    let currentEditFreeDishName = "";
     let menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
@@ -608,15 +623,26 @@
       });
     }
     
+    // ------------------ 顯示/隱藏錄音指示器功能 ------------------
+    function showRecordingIndicator() {
+      document.getElementById("recordingIndicator").style.display = "block";
+    }
+    
+    function hideRecordingIndicator() {
+      document.getElementById("recordingIndicator").style.display = "none";
+    }
+    
     function startVoiceOrdering() {
       if (!holdActive) {
         holdActive = true;
         currentMode = "red";
+        showRecordingIndicator();  // 開始錄音時顯示
         continuousRecognition();
       }
     }
     function endVoiceOrdering() {
       holdActive = false;
+      hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
     }
     
@@ -624,49 +650,14 @@
       if (!holdActive) {
         holdActive = true;
         currentMode = "green";
+        showRecordingIndicator();  // 開始錄音時顯示
         continuousRecognition();
       }
     }
     function endVoiceMemo() {
       holdActive = false;
+      hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
-    }
-    
-    function processMultipleVoiceInput(inputText) {
-      let converted = translateDishName(inputText);
-      let tokens = converted.split("/").filter(token => token.trim() !== "");
-      let numbers = [];
-      let dishes = [];
-      tokens.forEach(token => {
-        let m = token.match(/^(\d+)?([a-zA-Z]+)(\d+)?$/);
-        if (m) {
-          if (m[1]) { numbers.push(parseInt(m[1])); }
-          dishes.push(m[2]);
-          if (m[3]) { numbers.push(parseInt(m[3])); }
-        } else {
-          if (/^\d+$/.test(token)) { numbers.push(parseInt(token)); }
-          else if (/^[a-zA-Z]+$/.test(token)) { dishes.push(token); }
-        }
-      });
-      let orders = [];
-      if (dishes.length === 0) return [];
-      if (numbers.length === 0) {
-        orders = dishes.map(d => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: 1
-        }));
-      } else if (numbers.length === 1) {
-        orders = dishes.map(d => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: numbers[0]
-        }));
-      } else {
-        orders = dishes.map((d, i) => ({
-          dish: menu.find(item => item.keywords.includes(d)),
-          quantity: i < numbers.length ? numbers[i] : 1
-        }));
-      }
-      return orders.filter(o => o.dish);
     }
     
     // ------------------ 全頁手勢偵測 ------------------
