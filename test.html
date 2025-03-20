@@ -46,7 +46,7 @@
     /* 內嵌頁框中 logo 區塊：置中顯示 */
     #logoContainer {
       position: absolute;
-      top: 50%;
+      top: 60%;
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 2;
@@ -180,7 +180,7 @@
 
   <!-- 錄音指示器：顯示 rec.png -->
   <div id="recordingIndicator">
-    <img src="rec.png" width="100" height="100">
+    <img src="rec.png" width="200" height="60">
   </div>
   
   <!-- 訂單與語音備忘錄顯示區 -->
@@ -202,7 +202,7 @@
     <div id="voiceOutput" onclick="openMemoModal()"></div>
     <!-- 內嵌頁框中新增 logo 區塊，置中顯示 logo.png -->
     <div id="logoContainer">
-      <img src="logo.png" alt="Logo" style="max-width: 100px;">
+      <img src="logo.png" alt="Logo" style="max-width:210px;">
     </div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
@@ -257,7 +257,7 @@
   
   <!-- 新增幫助視窗（全螢幕 70% 黑色遮罩，中央顯示 help.png；點擊圖片關閉） -->
   <div id="helpModal" style="display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 5000;">
-    <img src="help.png" width="300" height="215" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); cursor: pointer;" onclick="closeHelpModal()">
+    <img src="help.png" width="300" height="275" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); cursor: pointer;" onclick="closeHelpModal()">
   </div>
   
   <script>
