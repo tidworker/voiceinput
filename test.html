@@ -9,6 +9,8 @@
     html, body {
       overscroll-behavior: none;
       overflow-x: hidden; /* 禁止水平捲軸 */
+      height: 100%;
+      margin: 0; /* 移除預設邊距 */
     }
     /* 黑底白字風格 */
     body {
@@ -19,6 +21,10 @@
       color: white;
       text-align: center;
       user-select: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* 垂直置中 */
+      align-items: center;     /* 水平置中 */
     }
     /* 圖片 */
     img {
