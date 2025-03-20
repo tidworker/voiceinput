@@ -9,6 +9,8 @@
     html, body {
       overscroll-behavior: none;
       overflow-x: hidden; /* 禁止水平捲軸 */
+      height: 100%;
+      margin: 0; /* 移除預設邊距 */
     }
     /* 黑底白字風格 */
     body {
@@ -19,6 +21,10 @@
       color: white;
       text-align: center;
       user-select: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: center; /* 垂直置中 */
+      align-items: center;     /* 水平置中 */
     }
     /* 圖片 */
     img {
@@ -34,12 +40,22 @@
       z-index: 3000;
     }
     /* 統一內容區：訂單表格與語音備忘錄顯示區 */
+    /* 加入 position: relative 方便內部絕對定位 */
     #contentContainer {
+      position: relative;
       width: 90%;
-      height: 360px;
+      height: 280px;
       margin: 20px auto;
       overflow-y: auto;
       background-color: black;
+    }
+    /* 內嵌頁框中 logo 區塊：置中顯示 */
+    #logoContainer {
+      position: absolute;
+      top: 60%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
     }
     /* 訂單表格 */
     table {
@@ -49,6 +65,8 @@
       border-collapse: separate;
       border-spacing: 0;
       border-radius: 3px;
+      z-index: 1;
+      position: relative;
     }
     table, th, td {
       border: 0;
@@ -92,15 +110,11 @@
       margin-top: 5px;
       font-weight: bold;
     }
-    #resetButton { }
-    #ordersLinkButton {
-      margin-left: 12px;
-    }
-    #completeOrderButton {
-      margin-left: 12px;
-    }
-    #helpButton {
-      margin-left: 12px;
+    #buttonContainer {
+     display: flex;
+     justify-content: center; /* 水平置中 */
+     align-items: center;
+     gap: 10px; /* 按鈕間的間距，可自行調整 */
     }
     /* 編輯訂單模態框 */
     #editModal {
@@ -168,7 +182,7 @@
 
   <!-- 錄音指示器：顯示 rec.png -->
   <div id="recordingIndicator">
-    <img src="rec.png" width="200" height="60">
+    <img src="rec.png" width="100" height="30">
   </div>
   
   <!-- 訂單與語音備忘錄顯示區 -->
@@ -178,7 +192,7 @@
         <tr>
           <th>品項</th>
           <th>份數</th>
-          <th>客製</th>
+          <th>備註</th>
           <th>單價</th>
         </tr>
       </thead>
@@ -188,9 +202,15 @@
     </table>
     <!-- 點擊此區域可開啟手動編輯備忘錄模態框 -->
     <div id="voiceOutput" onclick="openMemoModal()"></div>
+    <!-- 內嵌頁框中新增 logo 區塊，置中顯示 logo.png -->
+    <div id="logoContainer">
+      <img src="logo.png" alt="Logo" style="max-width:150px;">
+    </div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
   <!-- 按鈕區：重置、幫助、訂單列表、完成訂單 -->
+  
+<div id="buttonContainer">
   <button id="resetButton" onclick="resetOrder()">
     <img src="re.png" width="50" height="50">
   </button>
@@ -203,6 +223,7 @@
   <button id="completeOrderButton" onclick="completeOrder()">
     <img src="order.png" width="50" height="50">
   </button>
+</div>
   
   <!-- 編輯訂單模態框 -->
   <div id="editModal">
@@ -293,7 +314,7 @@
         if (charMapping[ch] !== undefined) { 
           converted += charMapping[ch]; 
         } else {
-          // 若無對應則保留原字元（或自行決定忽略）
+          // 若無對應則保留原字元
           converted += ch;
         }
       }
@@ -581,6 +602,8 @@
     let currentRecognition = null;
     let holdActive = false;
     let currentMode = ""; // "red" 表示語音點餐；"green" 表示語音備忘錄
+    // 新增全域計時器變數，用以延遲顯示 rec.png
+    let recTimer = null;
     
     function startVoiceInputSingle() {
       return new Promise((resolve) => {
@@ -643,12 +666,18 @@
       if (!holdActive) {
         holdActive = true;
         currentMode = "red";
-        showRecordingIndicator();  // 開始錄音時顯示
+        // 開始點餐後隱藏 logo.png
+        document.getElementById("logoContainer").style.display = "none";
+        // 延遲 1 秒後顯示 rec.png (若 holdActive 仍為 true)
+        recTimer = setTimeout(() => {
+          if (holdActive) { showRecordingIndicator(); }
+        }, 500);
         continuousRecognition();
       }
     }
     function endVoiceOrdering() {
       holdActive = false;
+      clearTimeout(recTimer);
       hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
     }
@@ -657,12 +686,16 @@
       if (!holdActive) {
         holdActive = true;
         currentMode = "green";
-        showRecordingIndicator();  // 開始錄音時顯示
+        // 同樣延遲 1 秒後顯示 rec.png
+        recTimer = setTimeout(() => {
+          if (holdActive) { showRecordingIndicator(); }
+        }, 1000);
         continuousRecognition();
       }
     }
     function endVoiceMemo() {
       holdActive = false;
+      clearTimeout(recTimer);
       hideRecordingIndicator();  // 錄音結束時隱藏
       if (currentRecognition) { currentRecognition.stop(); }
     }
