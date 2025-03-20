@@ -46,7 +46,7 @@
     /* 內嵌頁框中 logo 區塊：置中顯示 */
     #logoContainer {
       position: absolute;
-      top: 60%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 2;
@@ -202,7 +202,7 @@
     <div id="voiceOutput" onclick="openMemoModal()"></div>
     <!-- 內嵌頁框中新增 logo 區塊，置中顯示 logo.png -->
     <div id="logoContainer">
-      <img src="logo.png" alt="Logo" style="max-width: 190px;">
+      <img src="logo.png" alt="Logo" style="max-width: 100px;">
     </div>
   </div>
   <p id="totalAmount">總金額：0 元</p>
@@ -659,6 +659,8 @@
       if (!holdActive) {
         holdActive = true;
         currentMode = "red";
+        // 開始點餐後隱藏 logo.png
+        document.getElementById("logoContainer").style.display = "none";
         showRecordingIndicator();  // 開始錄音時顯示
         continuousRecognition();
       }
