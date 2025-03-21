@@ -629,6 +629,55 @@
         recognition.start();
       });
     }
+
+// 全域變數用來儲存長按計時器
+let longPressTimer = null;
+
+document.body.addEventListener("touchstart", function(e) {
+  if (e.touches.length === 1) {  // 只處理單指觸控
+    const touch = e.touches[0];
+    // 設定 1 秒後執行的動作
+    longPressTimer = setTimeout(() => {
+      // 若瀏覽器支援震動，則震動 200 毫秒
+      if (navigator.vibrate) {
+        navigator.vibrate(200);
+      }
+      // 建立一個 img 元素來顯示 touch.png
+      const touchImg = document.createElement("img");
+      touchImg.src = "touch.png";
+      touchImg.style.position = "absolute";
+      touchImg.style.width = "50px";
+      touchImg.style.height = "50px";
+      // 讓圖片置中顯示於觸碰位置 (依需求調整偏移值)
+      touchImg.style.left = (touch.clientX - 25) + "px";
+      touchImg.style.top = (touch.clientY - 25) + "px";
+      touchImg.style.zIndex = "6000";
+      document.body.appendChild(touchImg);
+      // 設定 1 秒後自動移除該圖片
+      setTimeout(() => {
+        if (touchImg && touchImg.parentNode) {
+          touchImg.parentNode.removeChild(touchImg);
+        }
+      }, 1000);
+    }, 1000);  // 1000 毫秒 (1 秒) 判斷為長按
+  }
+});
+
+document.body.addEventListener("touchend", function(e) {
+  // 觸碰結束時，若計時器尚未執行，則清除計時器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+});
+
+document.body.addEventListener("touchmove", function(e) {
+  // 若使用者移動手指，也清除計時器 (避免誤觸)
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+});
     
     function continuousRecognition() {
       if (!holdActive) return;
