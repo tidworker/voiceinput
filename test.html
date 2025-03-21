@@ -9,6 +9,7 @@
     html, body {
       overscroll-behavior: none;
       overflow-x: hidden; /* 禁止水平捲軸 */
+      overflow-y: hidden; /* 禁止垂直捲軸 */
       height: 100%;
       margin: 0; /* 移除預設邊距 */
     }
@@ -35,7 +36,7 @@
       display: none;
       position: fixed;
       left: 50%;
-      top: 50%;
+      top: 55%;
       transform: translate(-50%, -50%);
       z-index: 3000;
     }
@@ -110,15 +111,11 @@
       margin-top: 5px;
       font-weight: bold;
     }
-    #resetButton { }
-    #ordersLinkButton {
-      margin-left: 12px;
-    }
-    #completeOrderButton {
-      margin-left: 12px;
-    }
-    #helpButton {
-      margin-left: 12px;
+    #buttonContainer {
+     display: flex;
+     justify-content: center; /* 水平置中 */
+     align-items: center;
+     gap: 10px; /* 按鈕間的間距，可自行調整 */
     }
     /* 編輯訂單模態框 */
     #editModal {
@@ -181,7 +178,6 @@
   </style>
 </head>
 <body>
-  <br>
   <img src="3.png" width="340" height="170">
 
   <!-- 錄音指示器：顯示 rec.png -->
@@ -213,6 +209,8 @@
   </div>
   <p id="totalAmount">總金額：0 元</p>
   <!-- 按鈕區：重置、幫助、訂單列表、完成訂單 -->
+  
+<div id="buttonContainer">
   <button id="resetButton" onclick="resetOrder()">
     <img src="re.png" width="50" height="50">
   </button>
@@ -225,6 +223,7 @@
   <button id="completeOrderButton" onclick="completeOrder()">
     <img src="order.png" width="50" height="50">
   </button>
+</div>
   
   <!-- 編輯訂單模態框 -->
   <div id="editModal">
@@ -866,24 +865,11 @@
           }
         }
       } else if (Math.abs(deltaY) > 50) {
-        if (verticalSwipeDirection === "down") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "red") {
-              startVoiceOrdering();
-            } else {
-              endVoiceOrdering();
-            }
-          } else if (verticalSwipeTriggered) {
+        // 僅處理長按（verticalSwipeTriggered 為 true）的狀況
+        if (verticalSwipeTriggered) {
+          if (verticalSwipeDirection === "down") {
             endVoiceOrdering();
-          }
-        } else if (verticalSwipeDirection === "up") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "green") {
-              startVoiceMemo();
-            } else {
-              endVoiceMemo();
-            }
-          } else if (verticalSwipeTriggered) {
+          } else if (verticalSwipeDirection === "up") {
             endVoiceMemo();
           }
         }
