@@ -36,7 +36,7 @@
       display: none;
       position: fixed;
       left: 50%;
-      top: 55%;
+      top: 60%;
       transform: translate(-50%, -50%);
       z-index: 3000;
     }
@@ -53,7 +53,7 @@
     /* 內嵌頁框中 logo 區塊：置中顯示 */
     #logoContainer {
       position: absolute;
-      top: 50%;
+      top: 60%;
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 2;
@@ -79,7 +79,6 @@
     table th {
       background-color: orange;
       color: black;
-      display: none;
     }
     thead tr th:first-child {
       border-top-left-radius: 3px;
@@ -100,7 +99,6 @@
       color: white;
       font-size: 18px;
       margin-top: 10px;
-      display: none;
     }
     /* 按鈕 */
     button {
@@ -192,10 +190,10 @@
     <table id="orderTable">
       <thead>
         <tr>
-          <th></th>
-          <th></th>
-          <th></th>
-          <th></th>
+          <th>品項</th>
+          <th>份數</th>
+          <th>備註</th>
+          <th>單價</th>
         </tr>
       </thead>
       <tbody>
@@ -631,6 +629,62 @@
         recognition.start();
       });
     }
+
+// 全域變數用來儲存長按計時器
+// 新增全域變數紀錄 timer
+let longPressTimer = null;
+
+function triggerTouchEffect(touch) {
+  // 若瀏覽器支援，震動 200 毫秒
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
+  }
+  // 建立並顯示 touch.png，圖片中心對準觸碰點
+  const img = document.createElement("img");
+  img.src = "touch.png";
+  img.style.position = "absolute";
+  img.style.width = "50px";
+  img.style.height = "50px";
+  img.style.left = (touch.clientX - 25) + "px";
+  img.style.top = (touch.clientY - 25) + "px";
+  img.style.zIndex = "6000";
+  document.body.appendChild(img);
+  // 1 秒後自動移除
+  setTimeout(() => {
+    if (img.parentNode) { img.parentNode.removeChild(img); }
+  }, 1000);
+}
+
+document.body.addEventListener("touchstart", function(e) {
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    // 開始計時 1 秒
+    longPressTimer = setTimeout(() => {
+      triggerTouchEffect(touch);
+    }, 1000);
+  }
+});
+
+document.body.addEventListener("touchmove", function(e) {
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    // 每次移動就重設計時器
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+    }
+    longPressTimer = setTimeout(() => {
+      triggerTouchEffect(touch);
+    }, 1000);
+  }
+});
+
+document.body.addEventListener("touchend", function(e) {
+  // 手指離開時，清除計時器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+});
     
     function continuousRecognition() {
       if (!holdActive) return;
@@ -911,6 +965,19 @@
     function closeHelpModal() {
       document.getElementById("helpModal").style.display = "none";
     }
+   function startVoiceMemo() {
+     if (!holdActive) {
+       holdActive = true;
+       currentMode = "green";
+       // 隱藏 logo.png
+          document.getElementById("logoContainer").style.display = "none";
+    // 同樣延遲 0.5 秒後顯示 rec.png
+    recTimer = setTimeout(() => {
+      if (holdActive) { showRecordingIndicator(); }
+    }, 500);
+    continuousRecognition();
+    }
+}
   </script>
 </body>
 </html>
