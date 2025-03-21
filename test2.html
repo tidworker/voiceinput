@@ -909,6 +909,19 @@
     function closeHelpModal() {
       document.getElementById("helpModal").style.display = "none";
     }
+   function startVoiceMemo() {
+     if (!holdActive) {
+       holdActive = true;
+       currentMode = "green";
+       // 隱藏 logo.png
+          document.getElementById("logoContainer").style.display = "none";
+    // 同樣延遲 1 秒後顯示 rec.png
+    recTimer = setTimeout(() => {
+      if (holdActive) { showRecordingIndicator(); }
+    }, 1000);
+    continuousRecognition();
+  }
+}
   </script>
 </body>
 </html>
