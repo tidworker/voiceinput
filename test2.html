@@ -631,74 +631,55 @@
     }
 
 // 全域變數用來儲存長按計時器
-// 全域變數，用來記錄計時器與是否已觸發長按效果
+// 新增全域變數紀錄 timer
 let longPressTimer = null;
-let longPressTriggered = false;
 
-function triggerLongPress(touch) {
-  if (!longPressTriggered) {
-    longPressTriggered = true;
-    // 震動 200 毫秒（若支援）
-    if (navigator.vibrate) {
-      navigator.vibrate(200);
-    }
-    // 建立並顯示 touch.png 圖片，置中於觸碰點
-    const touchImg = document.createElement("img");
-    touchImg.src = "touch.png";
-    touchImg.style.position = "absolute";
-    touchImg.style.width = "50px";
-    touchImg.style.height = "50px";
-    // 調整位置使圖片中心與觸碰點重合
-    touchImg.style.left = (touch.clientX - 25) + "px";
-    touchImg.style.top = (touch.clientY - 25) + "px";
-    touchImg.style.zIndex = "6000";
-    document.body.appendChild(touchImg);
-    // 1 秒後自動移除圖片
-    setTimeout(() => {
-      if (touchImg.parentNode) {
-        touchImg.parentNode.removeChild(touchImg);
-      }
-    }, 1000);
+function triggerTouchEffect(touch) {
+  // 若瀏覽器支援，震動 200 毫秒
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
   }
+  // 建立並顯示 touch.png，圖片中心對準觸碰點
+  const img = document.createElement("img");
+  img.src = "touch.png";
+  img.style.position = "absolute";
+  img.style.width = "50px";
+  img.style.height = "50px";
+  img.style.left = (touch.clientX - 25) + "px";
+  img.style.top = (touch.clientY - 25) + "px";
+  img.style.zIndex = "6000";
+  document.body.appendChild(img);
+  // 1 秒後自動移除
+  setTimeout(() => {
+    if (img.parentNode) { img.parentNode.removeChild(img); }
+  }, 1000);
 }
 
 document.body.addEventListener("touchstart", function(e) {
-  // 初始化標記
-  longPressTriggered = false;
   if (e.touches.length === 1) {
     const touch = e.touches[0];
-    // 設定1秒後觸發長按效果
+    // 開始計時 1 秒
     longPressTimer = setTimeout(() => {
-      triggerLongPress(touch);
+      triggerTouchEffect(touch);
     }, 1000);
   }
 });
 
 document.body.addEventListener("touchmove", function(e) {
   if (e.touches.length === 1) {
-    // 只要手指移動，就重設計時器
+    const touch = e.touches[0];
+    // 每次移動就重設計時器
     if (longPressTimer) {
       clearTimeout(longPressTimer);
     }
-    const touch = e.touches[0];
-    // 每次移動後重新設定1秒計時器，若手指停下來就會觸發
     longPressTimer = setTimeout(() => {
-      triggerLongPress(touch);
+      triggerTouchEffect(touch);
     }, 1000);
   }
 });
 
 document.body.addEventListener("touchend", function(e) {
-  // 觸碰結束時，取消計時器並重設觸發狀態
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    longPressTimer = null;
-  }
-  longPressTriggered = false;
-});
-
-document.body.addEventListener("touchmove", function(e) {
-  // 若使用者移動手指，也清除計時器 (避免誤觸)
+  // 手指離開時，清除計時器
   if (longPressTimer) {
     clearTimeout(longPressTimer);
     longPressTimer = null;
