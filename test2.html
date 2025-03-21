@@ -36,7 +36,7 @@
       display: none;
       position: fixed;
       left: 50%;
-      top: 55%;
+      top: 60%;
       transform: translate(-50%, -50%);
       z-index: 3000;
     }
@@ -865,24 +865,11 @@
           }
         }
       } else if (Math.abs(deltaY) > 50) {
-        if (verticalSwipeDirection === "down") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "red") {
-              startVoiceOrdering();
-            } else {
-              endVoiceOrdering();
-            }
-          } else if (verticalSwipeTriggered) {
+        // 僅處理長按（verticalSwipeTriggered 為 true）的狀況
+        if (verticalSwipeTriggered) {
+          if (verticalSwipeDirection === "down") {
             endVoiceOrdering();
-          }
-        } else if (verticalSwipeDirection === "up") {
-          if (!verticalSwipeTriggered && duration < 500) {
-            if (!holdActive || currentMode !== "green") {
-              startVoiceMemo();
-            } else {
-              endVoiceMemo();
-            }
-          } else if (verticalSwipeTriggered) {
+          } else if (verticalSwipeDirection === "up") {
             endVoiceMemo();
           }
         }
