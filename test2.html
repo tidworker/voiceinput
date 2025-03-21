@@ -667,24 +667,71 @@
     
     // ------------------ 錄音功能同步觸發觸碰效果 ------------------
     // 觸發效果函式：震動並在觸碰位置顯示 touch.png
-    function triggerTouchEffect(touch) {
-      if (navigator.vibrate) {
-        navigator.vibrate(200);
-      }
-      const img = document.createElement("img");
-      img.src = "touch.png";
-      img.style.position = "absolute";
-      img.style.width = "50px";
-      img.style.height = "50px";
-      img.style.left = (touch.clientX - 25) + "px";
-      img.style.top = (touch.clientY - 25) + "px";
-      img.style.zIndex = "6000";
-      document.body.appendChild(img);
-      setTimeout(() => {
-        if (img.parentNode) { img.parentNode.removeChild(img); }
-      }, 1000);
+    // 新增全域變數存放目前顯示的 touch 圖片
+let currentTouchImg = null;
+
+function triggerTouchEffect(touch) {
+  // 若瀏覽器支援，震動 200 毫秒
+  if (navigator.vibrate) {
+    navigator.vibrate(200);
+  }
+  // 若已經有圖片，先移除它
+  if (currentTouchImg) {
+    currentTouchImg.remove();
+    currentTouchImg = null;
+  }
+  // 建立並顯示 touch.png，圖片中心對準觸碰點
+  const img = document.createElement("img");
+  img.src = "touch.png";
+  img.style.position = "absolute";
+  img.style.width = "50px";
+  img.style.height = "50px";
+  img.style.left = (touch.clientX - 25) + "px";
+  img.style.top = (touch.clientY - 25) + "px";
+  img.style.zIndex = "6000";
+  document.body.appendChild(img);
+  currentTouchImg = img;
+  
+  // 如果需要自動關閉，也可保留 setTimeout，但最終會在 touchend 移除
+  setTimeout(() => {
+    if (currentTouchImg) {
+      currentTouchImg.remove();
+      currentTouchImg = null;
     }
-    
+  }, 1000);
+}
+
+// 原有長按／滑動停止後觸發效果的部分（touchstart, touchmove, touchend）
+document.body.addEventListener("touchstart", function(e) {
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    longPressTimer = setTimeout(() => {
+      triggerTouchEffect(touch);
+    }, 1000);
+  }
+});
+document.body.addEventListener("touchmove", function(e) {
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+    }
+    longPressTimer = setTimeout(() => {
+      triggerTouchEffect(touch);
+    }, 1000);
+  }
+});
+document.body.addEventListener("touchend", function(e) {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  // 釋放手指時，立即移除 touch 圖片（若存在）
+  if (currentTouchImg) {
+    currentTouchImg.remove();
+    currentTouchImg = null;
+  }
+});    
     // 修改 startVoiceOrdering 與 startVoiceMemo，開始錄音時同步觸發效果（依據最後記錄的觸碰位置）
     function startVoiceOrdering() {
       if (!holdActive) {
