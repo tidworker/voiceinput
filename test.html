@@ -106,7 +106,7 @@
     <div id="recognitionResults">無訓練資料</div>
     <!-- 書寫區 -->
     <canvas id="mainCanvas"></canvas>
-    <!-- 主頁面按鈕：移除模式切換按鈕 -->
+    <!-- 主頁面按鈕 -->
     <div class="button-group">
       <button id="clearBtn" class="func-btn">清空畫布</button>
       <button id="manageTagBtn" class="func-btn">管理標籤</button>
@@ -127,11 +127,11 @@
     </div>
   </div>
   
-  <!-- Modal：管理標籤 Modal（包含新增標籤區＋已建立標籤列表） -->
+  <!-- Modal：管理標籤 Modal -->
   <div id="modalManageTag" class="modal">
     <div class="modal-content">
       <h3>管理標籤</h3>
-      <!-- 新增標籤區 (每次開啟時清空) -->
+      <!-- 新增標籤區 -->
       <input type="text" id="newTagName" placeholder="標籤名稱">
       <textarea id="newTagRemark" placeholder="備註 (選填)"></textarea>
       <button id="addNewTagBtn">新增標籤</button>
@@ -164,16 +164,25 @@
   </div>
   
   <script>
-    // ========== 全局變數與初始化 ==========
-    // 直接使用校正模式
+    // === 內建預設標籤 ===
+    const defaultLabels = ["蔥油餅", "蔥油餅加蛋", "大腸麵線", "肉羹麵線", "炒麵", "小炒麵", "紅茶", "奶茶"];
+    defaultLabels.forEach(label => {
+      if (!localStorage.getItem("label_" + label)) {
+        localStorage.setItem("label_" + label, JSON.stringify([]));
+      }
+    });
+    
+    // ========== 全域變數與初始化 ==========
     let mode = "test";
+    // 儲存所有已完成的筆劃（每筆為一 array）
+    let allStrokes = [];
+    // 當前正在繪製的筆劃（單一 stroke）
     let currentStroke = [];
     let currentTag = ""; // 當前選中的標籤
     const canvas = document.getElementById("mainCanvas");
     const ctx = canvas.getContext("2d");
     canvas.width = 390;
     canvas.height = 500;
-    // 校正模式背景固定為黑色
     canvas.style.backgroundColor = "#000";
     document.body.style.backgroundColor = "#000";
     ctx.strokeStyle = "#fff";
@@ -214,6 +223,11 @@
       if (!drawing) return;
       evt.preventDefault();
       drawing = false;
+      if (currentStroke.length > 0) {
+        allStrokes.push(currentStroke);
+      }
+      currentStroke = [];
+      updateRecognitionResults();
     }
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mousemove", draw);
@@ -226,52 +240,120 @@
     
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      allStrokes = [];
       currentStroke = [];
       document.getElementById("recognitionResults").textContent = "無訓練資料";
     }
     
     // ========== 辨識／校正函式 ==========
-    function getAngleSignature(stroke) {
-      if (stroke.length < 2) return [];
-      let signature = [];
-      let accDistance = 0, lastIndex = 0, lastAngle = null;
-      for (let i = 1; i < stroke.length; i++) {
-        let dx = stroke[i].x - stroke[i-1].x;
-        let dy = stroke[i].y - stroke[i-1].y;
+    // 正規化單一筆劃：以該筆第一個點作為原點 (0,0)
+    function normalizeStroke(stroke) {
+      if (stroke.length === 0) return stroke;
+      const origin = stroke[0];
+      return stroke.map(pt => ({ x: pt.x - origin.x, y: pt.y - origin.y }));
+    }
+    
+    // 單一筆劃的簽名：每累積 10px 採樣一次，計算量化後的角度與當前點位置
+    function getSignature(stroke) {
+      if (stroke.length < 2) return { angles: [], positions: [] };
+      const normalizedStroke = normalizeStroke(stroke);
+      let angles = [];
+      let positions = [];
+      let accDistance = 0;
+      let lastIndex = 0;
+      
+      // 保留第一個點作為採樣點
+      positions.push(normalizedStroke[0]);
+      
+      for (let i = 1; i < normalizedStroke.length; i++) {
+        let dx = normalizedStroke[i].x - normalizedStroke[i - 1].x;
+        let dy = normalizedStroke[i].y - normalizedStroke[i - 1].y;
         let dist = Math.hypot(dx, dy);
         accDistance += dist;
-        if (accDistance >= 50) {
-          let totalDx = stroke[i].x - stroke[lastIndex].x;
-          let totalDy = stroke[i].y - stroke[lastIndex].y;
+        
+        if (accDistance >= 10) {  // 每累積 10px 進行一次採樣
+          let totalDx = normalizedStroke[i].x - normalizedStroke[lastIndex].x;
+          let totalDy = normalizedStroke[i].y - normalizedStroke[lastIndex].y;
           let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;
+          // 量化角度（以 10 度為單位）
           let quantized = Math.round(angle / 10) * 10;
-          if (lastAngle !== null) {
-            let diff = quantized - lastAngle;
-            while(diff > 180) diff -= 360;
-            while(diff < -180) diff += 360;
-            signature.push(diff);
-          } else {
-            signature.push(quantized);
-          }
-          lastAngle = quantized;
+          angles.push(quantized);
+          positions.push(normalizedStroke[i]);
           lastIndex = i;
           accDistance = 0;
         }
       }
-      return signature;
+      return { angles, positions };
     }
+    
+    // 取得整體簽名：將所有筆劃轉為簽名，並記錄筆劃數
+    function getFullSignature(strokes) {
+      let strokeSignatures = strokes.map(s => getSignature(s));
+      return { strokeCount: strokes.length, strokeSignatures: strokeSignatures };
+    }
+    
+    // 比較單一筆劃的簽名（原有方法）
     function signatureDistance(sig1, sig2) {
-      let len = Math.min(sig1.length, sig2.length);
-      let diff = 0;
+      const len = Math.min(sig1.angles.length, sig2.angles.length);
+      let angleDiff = 0;
+      let posDiff = 0;
+      
       for (let i = 0; i < len; i++) {
-        diff += Math.abs(sig1[i] - sig2[i]);
+        angleDiff += Math.abs(sig1.angles[i] - sig2.angles[i]);
+        let dx = sig1.positions[i].x - sig2.positions[i].x;
+        let dy = sig1.positions[i].y - sig2.positions[i].y;
+        posDiff += Math.hypot(dx, dy);
       }
-      diff += Math.abs(sig1.length - sig2.length) * 10;
-      return diff;
+      // 採樣點數不一致時，加權差異
+      angleDiff += Math.abs(sig1.angles.length - sig2.angles.length) * 10;
+      posDiff += Math.abs(sig1.positions.length - sig2.positions.length) * 10;
+      
+      return angleDiff + posDiff;
     }
+    
+    // === 端點位置檢查 ===
+    // 取得整個繪製的端點：第一個筆劃的第一個點與最後一個筆劃的最後一個點
+    function drawingEndpoints(strokes) {
+      if (strokes.length === 0) return { first: null, last: null };
+      let first = strokes[0][0];
+      let lastStroke = strokes[strokes.length - 1];
+      let last = lastStroke[lastStroke.length - 1];
+      return { first, last };
+    }
+    
+    // 計算兩組繪製資料的端點距離
+    function endpointDistance(strokesA, strokesB) {
+      const endpointsA = drawingEndpoints(strokesA);
+      const endpointsB = drawingEndpoints(strokesB);
+      if (!endpointsA.first || !endpointsB.first) return 0;
+      const d1 = Math.hypot(endpointsA.first.x - endpointsB.first.x, endpointsA.first.y - endpointsB.first.y);
+      const d2 = Math.hypot(endpointsA.last.x - endpointsB.last.x, endpointsA.last.y - endpointsB.last.y);
+      return d1 + d2;
+    }
+    
+    // 比較整體簽名：取消落筆次數檢查，改以各筆劃的簽名比對加上文字端點位置差異
+    function fullSignatureDistance(rawTestStrokes, rawSampleStrokes) {
+      let testSig = getFullSignature(rawTestStrokes);
+      let sampleSig = getFullSignature(rawSampleStrokes);
+      let common = Math.min(testSig.strokeCount, sampleSig.strokeCount);
+      let distance = 0;
+      for (let i = 0; i < common; i++) {
+        distance += signatureDistance(testSig.strokeSignatures[i], sampleSig.strokeSignatures[i]);
+      }
+      // 加上端點位置的差異
+      distance += endpointDistance(rawTestStrokes, rawSampleStrokes);
+      return distance;
+    }
+    
+    // 更新辨識結果：以目前完整筆跡（所有已完成筆劃加上正在繪製中的筆劃）與本地存儲資料進行比對
     function updateRecognitionResults() {
-      if (currentStroke.length === 0) return;
-      let testSignature = getAngleSignature(currentStroke);
+      // fullDrawing 為所有已完成筆劃，加上正在繪製中的筆劃（若有）
+      let fullDrawing = allStrokes.slice();
+      if (drawing && currentStroke.length > 0) {
+        fullDrawing.push(currentStroke);
+      }
+      if (fullDrawing.length === 0) return;
+      
       let candidates = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -280,10 +362,18 @@
           let stored = JSON.parse(localStorage.getItem(key));
           let bestDistance = Infinity;
           for (let sample of stored) {
-            let sampleStroke = (sample.stroke !== undefined ? sample.stroke : sample);
-            let sampleSignature = getAngleSignature(sampleStroke);
-            let dist = signatureDistance(testSignature, sampleSignature);
+            // sample 可能為 { stroke, remark } 或直接存入的多筆劃資料
+            let sampleData = sample;
+            if (typeof sample === 'object' && sample.stroke !== undefined) {
+              sampleData = sample.stroke;
+            }
+            if (sampleData.length === 0) continue;
+            let dist = fullSignatureDistance(fullDrawing, sampleData);
             if (dist < bestDistance) bestDistance = dist;
+          }
+          // 若該標籤尚無訓練資料，給一個很大距離值
+          if (bestDistance === Infinity) {
+            bestDistance = 1e6;
           }
           candidates.push({ label: label, distance: bestDistance });
         }
@@ -308,13 +398,20 @@
         resultsDiv.appendChild(candidateDiv);
       });
     }
+    
+    // 將目前完整筆跡存入指定標籤中
     function applyCorrection(label) {
-      if (currentStroke.length === 0) return;
+      let drawingData = allStrokes.slice();
+      if (currentStroke.length > 0) {
+        drawingData.push(currentStroke);
+      }
+      if (drawingData.length === 0) return;
+      
       const storageKey = "label_" + label;
       let storedData = localStorage.getItem(storageKey);
       if (storedData) { storedData = JSON.parse(storedData); }
       else { storedData = []; }
-      storedData.push(currentStroke);
+      storedData.push(drawingData);
       localStorage.setItem(storageKey, JSON.stringify(storedData));
       clearCanvas();
     }
@@ -326,7 +423,7 @@
     
     clearBtn.addEventListener("click", clearCanvas);
     manageTagBtn.addEventListener("click", function() {
-      // 每次開啟管理標籤 Modal時，清空新增標籤欄位
+      // 每次開啟管理標籤 Modal 時，清空新增標籤欄位
       document.getElementById("newTagName").value = "";
       document.getElementById("newTagRemark").value = "";
       updateManageList();
@@ -427,7 +524,7 @@
         alert("請輸入標籤名稱");
         return;
       }
-      if (currentStroke.length === 0) {
+      if (allStrokes.length === 0 && currentStroke.length === 0) {
         alert("請先在畫板上書寫");
         return;
       }
@@ -435,7 +532,9 @@
       let storedData = localStorage.getItem(storageKey);
       if (storedData) { storedData = JSON.parse(storedData); }
       else { storedData = []; }
-      storedData.push({ stroke: currentStroke, remark: newTagRemark });
+      let drawingData = allStrokes.slice();
+      if (currentStroke.length > 0) drawingData.push(currentStroke);
+      storedData.push({ stroke: drawingData, remark: newTagRemark });
       localStorage.setItem(storageKey, JSON.stringify(storedData));
       alert("已新增標籤：" + newTagName);
       clearCanvas();
@@ -448,7 +547,6 @@
     
     // ========== 標籤選項 Modal ==========
     document.getElementById("saveNewDataBtn").addEventListener("click", function() {
-      // 直接將目前筆跡存入，無需額外確認
       applyCorrection(currentTag);
       document.getElementById("modalTagOption").style.display = "none";
     });
