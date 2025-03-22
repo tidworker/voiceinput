@@ -2,23 +2,22 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>手寫辨識</title>
+  <!-- 設定 viewport，確保手機版面良好 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手寫辨識 - 手機版</title>
   <style>
+    /* 全頁背景全黑，內容置中 */
     html, body {
       margin: 0;
       padding: 0;
       background-color: #000;
       height: 100%;
-      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
-    /* 書寫區置中，背景黑、邊框白 */
-    #mainCanvas {
-      background-color: #000;
-      border: 2px solid #fff;
-      display: block;
-      margin: 50px auto;
-    }
-    /* 辨識結果：36px白色文字，置頂置中 */
+    /* 顯示辨識結果，36px 白色文字，置頂顯示 */
     #result {
       position: absolute;
       top: 20px;
@@ -27,6 +26,14 @@
       font-size: 36px;
       color: #fff;
       pointer-events: none;
+    }
+    /* 書寫區：固定 390×500，背景白色、邊框黑色 */
+    #mainCanvas {
+      background-color: #fff;
+      border: 2px solid #000;
+      touch-action: none;
+      width: 390px;
+      height: 500px;
     }
   </style>
 </head>
@@ -37,15 +44,15 @@
   <canvas id="mainCanvas" width="390" height="500"></canvas>
 
   <script>
-    /****************************
-     * 讀取 training_data.txt *
-     ****************************/
-    // 讀取並解析 training_data.txt，將資料存入 localStorage（以 "label_標籤名稱" 為 key）
+    /**********************************
+     * 讀取伺服器 training_data.txt *
+     **********************************/
     fetch('training_data.txt')
       .then(response => response.text())
       .then(text => {
         try {
           const data = JSON.parse(text);
+          // 將所有訓練資料存入 localStorage（key 為 "label_標籤"）
           for (const key in data) {
             if (data.hasOwnProperty(key)) {
               localStorage.setItem(key, JSON.stringify(data[key]));
@@ -57,24 +64,24 @@
       })
       .catch(err => console.error("無法讀取 training_data.txt：", err));
 
-    /***********************
-     * 全域變數與初始化  *
-     ***********************/
-    let allStrokes = [];    // 儲存所有已完成的筆劃（每筆劃為一 array）
-    let currentStroke = []; // 當前正在繪製的筆劃
-    let recognitionTimeout = null; // 停止書寫後延遲辨識的計時器
+    /**********************
+     * 全域變數與初始化 *
+     **********************/
+    let allStrokes = [];       // 儲存所有已完成筆劃（每筆為一 array）
+    let currentStroke = [];    // 當前正在書寫的筆劃
+    let recognitionTimeout = null;  // 書寫停止後 0.5 秒的計時器
 
     const canvas = document.getElementById("mainCanvas");
     const ctx = canvas.getContext("2d");
-    ctx.strokeStyle = "#fff";
+    // 筆畫設定為黑色，線寬 2
+    ctx.strokeStyle = "#000";
     ctx.lineWidth = 2;
 
-    // 用來顯示辨識結果的 div
     const resultDiv = document.getElementById("result");
 
-    /*************************
-     * 畫布事件與計時辨識機制 *
-     *************************/
+    /*******************************
+     * 畫布事件與 0.5 秒辨識機制 *
+     *******************************/
     function getCanvasPos(evt) {
       const rect = canvas.getBoundingClientRect();
       let x, y;
@@ -90,8 +97,9 @@
 
     function startDrawing(evt) {
       evt.preventDefault();
-      // 新的筆劃開始，清除結果與取消延遲辨識
+      // 每次開始書寫時，清除先前的辨識結果
       resultDiv.textContent = "";
+      // 取消先前的辨識延遲
       if (recognitionTimeout) {
         clearTimeout(recognitionTimeout);
         recognitionTimeout = null;
@@ -104,7 +112,6 @@
     }
 
     function draw(evt) {
-      if (!currentStroke) return;
       evt.preventDefault();
       const pos = getCanvasPos(evt);
       currentStroke.push(pos);
@@ -113,14 +120,16 @@
     }
 
     function endDrawing(evt) {
-      if (!currentStroke || currentStroke.length === 0) return;
       evt.preventDefault();
-      // 完成筆劃，將其加入 allStrokes
-      allStrokes.push(currentStroke);
-      // 停止書寫後 0.5 秒觸發辨識
+      if (currentStroke.length > 0) {
+        allStrokes.push(currentStroke);
+      }
+      currentStroke = [];
+      // 書寫停止 0.5 秒後觸發辨識
       recognitionTimeout = setTimeout(doRecognition, 500);
     }
 
+    // 綁定滑鼠與觸控事件
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mousemove", draw);
     canvas.addEventListener("mouseup", endDrawing);
@@ -130,38 +139,35 @@
     canvas.addEventListener("touchend", endDrawing);
     canvas.addEventListener("touchcancel", endDrawing);
 
-    /****************************
-     * 辨識系統核心函式          *
-     ****************************/
-    // ※ 此處採用向量變化（角度）與採樣點原始座標的比對，並加入文字端點位置檢查
+    /***************************
+     * 辨識系統核心函式         *
+     ***************************/
+    // 此處採用向量變化（角度）及採樣點原始座標比對，並加入文字端點位置檢查
 
-    // 取得單一筆劃的簽名
-    // 計算角度時以筆劃第一點正規化，但採樣後保留原始座標，讓向量變化時的位置資訊也被考慮
+    // 取得單一筆劃的簽名：
+    // 角度計算時以筆劃第一點正規化，但採樣後保留原始座標（使向量變化的實際位置也被考慮）
     function getSignature(stroke) {
       if (stroke.length < 2) return { angles: [], positions: [] };
       const origin = stroke[0];
-      // 用第一點作為基準，計算正規化座標（僅用於角度計算）
       const normalized = stroke.map(pt => ({ x: pt.x - origin.x, y: pt.y - origin.y }));
       let angles = [];
       let positions = [];
       let accDistance = 0;
       let lastIndex = 0;
-      // 保留第一個採樣點（採樣時使用原始座標）
+      // 使用原始座標作為第一個採樣點
       positions.push(stroke[0]);
       for (let i = 1; i < stroke.length; i++) {
         let dx = normalized[i].x - normalized[i - 1].x;
         let dy = normalized[i].y - normalized[i - 1].y;
         let dist = Math.hypot(dx, dy);
         accDistance += dist;
-        if (accDistance >= 10) {  // 每累積 10px 採樣一次
+        if (accDistance >= 10) {
           let totalDx = normalized[i].x - normalized[lastIndex].x;
           let totalDy = normalized[i].y - normalized[lastIndex].y;
           let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;
-          // 量化角度以 10 度為單位
           let quantized = Math.round(angle / 10) * 10;
           angles.push(quantized);
-          // 採樣點用原始座標（未正規化），以保留向量變化的實際位置
-          positions.push(stroke[i]);
+          positions.push(stroke[i]); // 保留原始採樣點
           lastIndex = i;
           accDistance = 0;
         }
@@ -169,7 +175,7 @@
       return { angles, positions };
     }
 
-    // 將所有筆劃轉換為簽名，並記錄筆劃數
+    // 取得整體筆跡簽名（多筆劃）
     function getFullSignature(strokes) {
       const strokeSignatures = strokes.map(s => getSignature(s));
       return { strokeCount: strokes.length, strokeSignatures };
@@ -178,21 +184,20 @@
     // 比較單一筆劃簽名：角度差與採樣點座標差均計算
     function signatureDistance(sig1, sig2) {
       const len = Math.min(sig1.angles.length, sig2.angles.length);
-      let angleDiff = 0;
-      let posDiff = 0;
+      let angleDiff = 0, posDiff = 0;
       for (let i = 0; i < len; i++) {
         angleDiff += Math.abs(sig1.angles[i] - sig2.angles[i]);
         let dx = sig1.positions[i].x - sig2.positions[i].x;
         let dy = sig1.positions[i].y - sig2.positions[i].y;
         posDiff += Math.hypot(dx, dy);
       }
-      // 採樣點數不一致時，依差異數量加入權重
+      // 採樣點數差異加權處理
       angleDiff += Math.abs(sig1.angles.length - sig2.angles.length) * 10;
       posDiff += Math.abs(sig1.positions.length - sig2.positions.length) * 10;
       return angleDiff + posDiff;
     }
 
-    // 取得整體繪製的端點：第一筆的第一個點與最後筆的最後一個點（使用原始座標）
+    // 取得整體筆跡端點（第一筆第一點與最後一筆最後一點）
     function drawingEndpoints(strokes) {
       if (strokes.length === 0) return { first: null, last: null };
       const first = strokes[0][0];
@@ -201,7 +206,7 @@
       return { first, last };
     }
 
-    // 計算兩組繪製資料的端點距離和
+    // 計算兩組筆跡端點的歐氏距離和
     function endpointDistance(strokesA, strokesB) {
       const endpointsA = drawingEndpoints(strokesA);
       const endpointsB = drawingEndpoints(strokesB);
@@ -211,7 +216,7 @@
       return d1 + d2;
     }
 
-    // 比較整體簽名：將各筆劃簽名比對結果與端點位置差異相加（取消筆劃數懲罰）
+    // 比較整體筆跡簽名：各筆劃簽名比對結果與端點位置差異相加（取消筆劃數懲罰）
     function fullSignatureDistance(testStrokes, sampleStrokes) {
       const testSig = getFullSignature(testStrokes);
       const sampleSig = getFullSignature(sampleStrokes);
@@ -224,22 +229,21 @@
       return distance;
     }
 
-    /**********************
-     * 辨識並顯示結果函式 *
-     **********************/
+    /****************************
+     * 辨識與顯示結果函式 *
+     ****************************/
     function doRecognition() {
       if (allStrokes.length === 0) return;
-      const fullDrawing = allStrokes; // 此時 currentStroke 已結束
+      const fullDrawing = allStrokes.slice();
       let bestLabel = null;
       let bestDistance = Infinity;
-      // 遍歷 localStorage 中所有以 "label_" 為前綴的訓練資料
+      // 遍歷 localStorage 中所有 "label_*" 的訓練資料
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key.startsWith("label_")) {
           const label = key.substring(6);
           const stored = JSON.parse(localStorage.getItem(key));
           for (const sample of stored) {
-            // sample 可能為 { stroke, remark } 或直接為筆劃資料
             let sampleData = sample;
             if (typeof sample === "object" && sample.stroke !== undefined) {
               sampleData = sample.stroke;
@@ -258,20 +262,15 @@
       } else {
         resultDiv.textContent = "無訓練資料";
       }
+      // 辨識後清空畫布
+      clearCanvas();
     }
 
-    /*******************
-     * 清除畫布功能（選擇性） *
-     *******************/
-    // 可根據需要加入按鈕來清除 canvas 與 allStrokes
-    // 例如：
-    // function clearCanvas() {
-    //   ctx.clearRect(0, 0, canvas.width, canvas.height);
-    //   allStrokes = [];
-    //   currentStroke = [];
-    //   resultDiv.textContent = "";
-    // }
-
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      allStrokes = [];
+      currentStroke = [];
+    }
   </script>
 </body>
 </html>
