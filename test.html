@@ -19,7 +19,7 @@
       width: 90vw;
       height: 90vh;
       touch-action: none;
-      background-color: #fff;
+      background-color: #000; /* 初始設定為黑色 */
     }
     /* 書寫區上方的校正結果顯示 */
     #recognitionResults {
@@ -46,7 +46,7 @@
       width: 60px;
       height: 60px;
       border-radius: 3px;
-      background-color: #0078d7;
+      background-color: #808080; /* 按鈕改為灰色 */
       color: #fff;
       border: none;
       font-size: 14px;
@@ -227,8 +227,6 @@
     }
     
     // ========== 辨識／校正相關函式 ==========
-    // 取得筆跡角度簽名：每累計50px後，計算從上次取樣點到目前點的方向（量化至10度）
-    // 非首筆則記錄與前一筆量化角度的差值（正規化至–180～180），首筆記錄初始角度
     function getAngleSignature(stroke) {
       if (stroke.length < 2) return [];
       let signature = [];
@@ -261,7 +259,6 @@
       return signature;
     }
     
-    // 計算兩個角度簽名序列的差異（每缺一筆懲罰10）
     function signatureDistance(sig1, sig2) {
       let len = Math.min(sig1.length, sig2.length);
       let diff = 0;
@@ -272,7 +269,6 @@
       return diff;
     }
     
-    // 更新校正結果：計算目前筆跡的角度簽名，與各標籤比對後排序，產生最接近的三個候選項
     function updateRecognitionResults() {
       if (currentStroke.length === 0) return;
       let testSignature = getAngleSignature(currentStroke);
@@ -305,7 +301,6 @@
         let div = document.createElement("div");
         div.className = "candidate";
         div.textContent = `${idx + 1}. ${item.label} (差異: ${item.distance.toFixed(2)})`;
-        // 點選候選項時執行校正：儲存當前筆跡到該標籤
         div.addEventListener("click", function() {
           applyCorrection(item.label);
         });
@@ -313,7 +308,6 @@
       });
     }
     
-    // 校正：將目前筆跡儲存到指定標籤
     function applyCorrection(label) {
       if (currentStroke.length === 0) {
         alert("請先書寫");
@@ -336,17 +330,18 @@
     function switchToTestMode() {
       mode = "test";
       clearCanvas();
-      canvas.style.backgroundColor = "#fff";
-      ctx.strokeStyle = "#000";
+      canvas.style.backgroundColor = "#555"; // 測試模式深灰色
+      document.body.style.backgroundColor = "#555"; // 網頁底色同步變更
+      ctx.strokeStyle = "#fff";           // 測試模式畫筆設定為白色
       document.getElementById("rightButton").textContent = "回編輯";
-      // 將左下按鈕文字改為「清除」
       document.getElementById("leftButton").textContent = "清除";
     }
     function switchToTrainMode() {
       mode = "train";
       clearCanvas();
-      canvas.style.backgroundColor = "#000";
-      ctx.strokeStyle = "#fff";
+      canvas.style.backgroundColor = "#000"; // 編輯模式黑色
+      document.body.style.backgroundColor = "#000"; // 網頁底色同步變更
+      ctx.strokeStyle = "#fff";              // 編輯模式畫筆設定為白色
       document.getElementById("rightButton").textContent = "選單";
       document.getElementById("leftButton").textContent = "儲存";
       document.getElementById("recognitionResults").innerHTML = "";
@@ -420,7 +415,6 @@
         updateQuickSelectLabels();
         document.getElementById("modalLeft").style.display = "block";
       } else if (mode === "test") {
-        // 在 test 模式下，點選左下按鈕直接清除畫布
         clearCanvas();
       }
     });
