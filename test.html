@@ -1,530 +1,494 @@
-<!DOCTYPE html>  <html>  
-<head>  
-  <meta charset="UTF-8">  
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">  
-  <title>手寫校正與辨識</title>  
-  <style>  
-    /* 整個螢幕皆為書寫區 */  
-    body, html {  
-      margin: 0;  
-      padding: 0;  
-      overflow: hidden;  
-    }  
-    /* 書寫區域：90%寬高，置中 */  
-    canvas {  
-      position: absolute;  
-      top: 5vh;  
-      left: 5vw;  
-      width: 90vw;  
-      height: 90vh;  
-      touch-action: none;  
-      background-color: #fff;  
-    }  
-    /* 書寫區上方的校正結果顯示 */  
-    #recognitionResults {  
-      position: fixed;  
-      top: 10px;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      background: rgba(255,255,255,0.8);  
-      padding: 5px;  
-      border-radius: 5px;  
-      z-index: 15;  
-      font-size: 16px;  
-    }  
-    /* 候選項的樣式 */  
-    .candidate {  
-      cursor: pointer;  
-      padding: 4px;  
-      margin: 2px 0;  
-      border-bottom: 1px solid #ccc;  
-    }  
-    /* 底部功能按鈕，上移10% */  
-    .func-btn {  
-      position: fixed;  
-      width: 60px;  
-      height: 60px;  
-      border-radius: 3px;  
-      background-color: #0078d7;  
-      color: #fff;  
-      border: none;  
-      font-size: 14px;  
-      cursor: pointer;  
-      z-index: 10;  
-    }  
-    #leftButton {  
-      bottom: 10vh;  
-      left: 20px;  
-    }  
-    #rightButton {  
-      bottom: 10vh;  
-      right: 20px;  
-    }  
-    /* Modal 共用樣式（其他功能維持原有） */  
-    .modal {  
-      display: none;  
-      position: fixed;  
-      top: 0;  
-      left: 0;  
-      width: 100vw;  
-      height: 100vh;  
-      background: rgba(0,0,0,0.5);  
-      z-index: 20;  
-    }  
-    .modal-content {  
-      background: #fff;  
-      padding: 20px;  
-      border-radius: 5px;  
-      max-width: 300px;  
-      margin: 150px auto;  
-    }  
-    .modal-content input, .modal-content button {  
-      width: 100%;  
-      margin: 5px 0;  
-      padding: 8px;  
-      font-size: 14px;  
-    }  
-    /* 快速選擇標籤區塊 */  
-    #quickSelectSection {  
-      margin-top: 10px;  
-      border-top: 1px solid #ccc;  
-      padding-top: 10px;  
-    }  
-    #quickSelectSection h3 {  
-      margin: 5px 0;  
-      font-size: 16px;  
-    }  
-    #quickSelectLabels button {  
-      display: block;  
-      width: 100%;  
-      margin: 3px 0;  
-      padding: 6px;  
-      font-size: 14px;  
-      cursor: pointer;  
-    }  
-  </style>  
-</head>  
-<body>  
-  <!-- 書寫區 -->  
-  <canvas id="mainCanvas"></canvas>  
-  <!-- 校正結果顯示區 -->  
-  <div id="recognitionResults"></div>    <!-- 左下功能按鈕：在 test 模式下將顯示「清除」 -->  <button id="leftButton" class="func-btn">校正</button>
-
-  <!-- 右下功能按鈕 -->  <button id="rightButton" class="func-btn">選單</button>
-
-  <!-- Modal：左下 (訓練模式) 新建標籤與快速選擇 -->    <div id="modalLeft" class="modal">  
-    <div class="modal-content">  
-      <input type="text" id="modalLabelInput" placeholder="輸入新標籤">  
-      <button id="modalSaveLabel">儲存新標籤</button>  
-      <button id="modalCancelLabel">取消</button>  
-      <div id="quickSelectSection">  
-        <h3>快速選擇標籤</h3>  
-        <div id="quickSelectLabels"></div>  
-      </div>  
-    </div>  
-  </div>    <!-- Modal：右下 (訓練模式) 功能選單 -->    <div id="modalRight" class="modal">  
-    <div class="modal-content">  
-      <button id="optClearCanvas">清除畫布</button>  
-      <button id="optDownload">下載資料</button>  
-      <button id="optUploadBtn">上傳資料</button>  
-      <input type="file" id="fileInput" style="display:none;">  
-      <button id="optClearAllLabels">清除所有標籤</button>  
-      <button id="optSwitchToTest">切換到測試模式</button>  
-      <button id="optCancel">取消</button>  
-    </div>  
-  </div>    <!-- Modal：標籤操作選單（其他功能保留） -->    <div id="modalLabelAction" class="modal">  
-    <div class="modal-content">  
-      <p id="modalLabelActionText"></p>  
-      <button id="actionSave">儲存資料</button>  
-      <button id="actionDelete">刪除標籤</button>  
-      <button id="actionCancel">取消</button>  
-    </div>  
-  </div>    <script>  
-    // ========== 全局變數 ==========  
-    let mode = "train"; // "train" 或 "test"  
-    let currentStroke = [];  
-    let selectedLabel = "";  
-    const canvas = document.getElementById("mainCanvas");  
-    const ctx = canvas.getContext("2d");  
-      
-    // 調整 canvas 尺寸與置中（90%寬高）  
-    function resizeCanvas() {  
-      canvas.width = window.innerWidth * 0.9;  
-      canvas.height = window.innerHeight * 0.9;  
-      canvas.style.left = (window.innerWidth * 0.05) + "px";  
-      canvas.style.top = (window.innerHeight * 0.05) + "px";  
-    }  
-    resizeCanvas();  
-    window.addEventListener("resize", resizeCanvas);  
-      
-    // 取得 canvas 上的相對座標  
-    function getCanvasPos(evt) {  
-      const rect = canvas.getBoundingClientRect();  
-      let x, y;  
-      if (evt.touches) {  
-        x = evt.touches[0].clientX - rect.left;  
-        y = evt.touches[0].clientY - rect.top;  
-      } else {  
-        x = evt.clientX - rect.left;  
-        y = evt.clientY - rect.top;  
-      }  
-      return { x, y };  
-    }  
-      
-    // ========== 畫筆事件 ==========  
-    let drawing = false;  
-    canvas.addEventListener("mousedown", startDrawing);  
-    canvas.addEventListener("mousemove", draw);  
-    canvas.addEventListener("mouseup", endDrawing);  
-    canvas.addEventListener("mouseout", endDrawing);  
-    canvas.addEventListener("touchstart", startDrawing);  
-    canvas.addEventListener("touchmove", draw);  
-    canvas.addEventListener("touchend", endDrawing);  
-    canvas.addEventListener("touchcancel", endDrawing);  
-      
-    function startDrawing(evt) {  
-      evt.preventDefault();  
-      drawing = true;  
-      currentStroke = [];  
-      const pos = getCanvasPos(evt);  
-      currentStroke.push(pos);  
-      ctx.beginPath();  
-      ctx.moveTo(pos.x, pos.y);  
-    }  
-    function draw(evt) {  
-      if (!drawing) return;  
-      evt.preventDefault();  
-      const pos = getCanvasPos(evt);  
-      currentStroke.push(pos);  
-      ctx.lineTo(pos.x, pos.y);  
-      ctx.stroke();  
-      if (mode === "test") {  
-        updateRecognitionResults();  
-      }  
-    }  
-    function endDrawing(evt) {  
-      if (!drawing) return;  
-      evt.preventDefault();  
-      drawing = false;  
-    }  
-    function clearCanvas() {  
-      ctx.clearRect(0, 0, canvas.width, canvas.height);  
-      currentStroke = [];  
-      document.getElementById("recognitionResults").innerHTML = "";  
-    }  
-      
-    // ========== 辨識／校正相關函式 ==========  
-    // 取得筆跡角度簽名：每累計50px後，計算從上次取樣點到目前點的方向（量化至10度）  
-    // 非首筆則記錄與前一筆量化角度的差值（正規化至–180～180），首筆記錄初始角度  
-    function getAngleSignature(stroke) {  
-      if (stroke.length < 2) return [];  
-      let signature = [];  
-      let accDistance = 0;  
-      let lastIndex = 0;  
-      let lastAngle = null;  
-      for (let i = 1; i < stroke.length; i++) {  
-        let dx = stroke[i].x - stroke[i - 1].x;  
-        let dy = stroke[i].y - stroke[i - 1].y;  
-        let dist = Math.hypot(dx, dy);  
-        accDistance += dist;  
-        if (accDistance >= 50) {  
-          let totalDx = stroke[i].x - stroke[lastIndex].x;  
-          let totalDy = stroke[i].y - stroke[lastIndex].y;  
-          let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;  
-          let quantized = Math.round(angle / 10) * 10;  
-          if (lastAngle !== null) {  
-            let diff = quantized - lastAngle;  
-            while (diff > 180) diff -= 360;  
-            while (diff < -180) diff += 360;  
-            signature.push(diff);  
-          } else {  
-            signature.push(quantized);  
-          }  
-          lastAngle = quantized;  
-          lastIndex = i;  
-          accDistance = 0;  
-        }  
-      }  
-      return signature;  
-    }  
-      
-    // 計算兩個角度簽名序列的差異（每缺一筆懲罰10）  
-    function signatureDistance(sig1, sig2) {  
-      let len = Math.min(sig1.length, sig2.length);  
-      let diff = 0;  
-      for (let i = 0; i < len; i++) {  
-        diff += Math.abs(sig1[i] - sig2[i]);  
-      }  
-      diff += Math.abs(sig1.length - sig2.length) * 10;  
-      return diff;  
-    }  
-      
-    // 更新校正結果：計算目前筆跡的角度簽名，與各標籤比對後排序，產生最接近的三個候選項  
-    function updateRecognitionResults() {  
-      if (currentStroke.length === 0) return;  
-      let testSignature = getAngleSignature(currentStroke);  
-      let candidates = [];  
-      for (let i = 0; i < localStorage.length; i++) {  
-        const key = localStorage.key(i);  
-        if (key.startsWith("label_")) {  
-          let label = key.substring(6);  
-          let stored = JSON.parse(localStorage.getItem(key));  
-          let bestDistanceForLabel = Infinity;  
-          for (let sample of stored) {  
-            let sampleSignature = getAngleSignature(sample);  
-            let dist = signatureDistance(testSignature, sampleSignature);  
-            if (dist < bestDistanceForLabel) {  
-              bestDistanceForLabel = dist;  
-            }  
-          }  
-          candidates.push({ label: label, distance: bestDistanceForLabel });  
-        }  
-      }  
-      const resultsDiv = document.getElementById("recognitionResults");  
-      resultsDiv.innerHTML = "";  
-      if (candidates.length === 0) {  
-        resultsDiv.innerHTML = "無訓練資料";  
-        return;  
-      }  
-      candidates.sort((a, b) => a.distance - b.distance);  
-      let topThree = candidates.slice(0, 3);  
-      topThree.forEach((item, idx) => {  
-        let div = document.createElement("div");  
-        div.className = "candidate";  
-        div.textContent = `${idx + 1}. ${item.label} (差異: ${item.distance.toFixed(2)})`;  
-        // 點選候選項時執行校正：儲存當前筆跡到該標籤  
-        div.addEventListener("click", function() {  
-          applyCorrection(item.label);  
-        });  
-        resultsDiv.appendChild(div);  
-      });  
-    }  
-      
-    // 校正：將目前筆跡儲存到指定標籤  
-    function applyCorrection(label) {  
-      if (currentStroke.length === 0) {  
-        alert("請先書寫");  
-        return;  
-      }  
-      const storageKey = "label_" + label;  
-      let storedData = localStorage.getItem(storageKey);  
-      if (storedData) {  
-        storedData = JSON.parse(storedData);  
-      } else {  
-        storedData = [];  
-      }  
-      storedData.push(currentStroke);  
-      localStorage.setItem(storageKey, JSON.stringify(storedData));  
-      alert("校正成功：已將資料儲存至標籤 " + label);  
-      clearCanvas();  
-    }  
-      
-    // ========== 模式切換 ==========  
-    function switchToTestMode() {  
-      mode = "test";  
-      clearCanvas();  
-      canvas.style.backgroundColor = "#fff";  
-      ctx.strokeStyle = "#000";  
-      document.getElementById("rightButton").textContent = "回編輯";  
-      // 將左下按鈕文字改為「清除」  
-      document.getElementById("leftButton").textContent = "清除";  
-    }  
-    function switchToTrainMode() {  
-      mode = "train";  
-      clearCanvas();  
-      canvas.style.backgroundColor = "#000";  
-      ctx.strokeStyle = "#fff";  
-      document.getElementById("rightButton").textContent = "選單";  
-      document.getElementById("leftButton").textContent = "儲存";  
-      document.getElementById("recognitionResults").innerHTML = "";  
-    }  
-      
-    // ========== 快速選擇標籤功能 ==========  
-    function updateQuickSelectLabels() {  
-      const container = document.getElementById("quickSelectLabels");  
-      container.innerHTML = "";  
-      let found = false;  
-      for (let i = 0; i < localStorage.length; i++) {  
-        const key = localStorage.key(i);  
-        if (key.startsWith("label_")) {  
-          found = true;  
-          const label = key.substring(6);  
-          const btn = document.createElement("button");  
-          btn.textContent = label;  
-          btn.addEventListener("click", function() {  
-            openLabelActionModal(label);  
-          });  
-          container.appendChild(btn);  
-        }  
-      }  
-      if (!found) {  
-        container.textContent = "尚無儲存標籤";  
-      }  
-    }  
-      
-    // ========== 標籤操作選單 ==========  
-    function openLabelActionModal(label) {  
-      selectedLabel = label;  
-      document.getElementById("modalLabelActionText").textContent = "標籤：" + label;  
-      document.getElementById("modalLabelAction").style.display = "block";  
-    }  
-    document.getElementById("actionSave").addEventListener("click", function() {  
-      if (currentStroke.length === 0) {  
-        alert("請先書寫");  
-        return;  
-      }  
-      const storageKey = "label_" + selectedLabel;  
-      let storedData = localStorage.getItem(storageKey);  
-      if (storedData) {  
-        storedData = JSON.parse(storedData);  
-      } else {  
-        storedData = [];  
-      }  
-      storedData.push(currentStroke);  
-      localStorage.setItem(storageKey, JSON.stringify(storedData));  
-      alert("已儲存資料到標籤：" + selectedLabel);  
-      clearCanvas();  
-      document.getElementById("modalLabelAction").style.display = "none";  
-    });  
-    document.getElementById("actionDelete").addEventListener("click", function() {  
-      if (confirm("確認刪除「" + selectedLabel + "」標籤資料？")) {  
-        localStorage.removeItem("label_" + selectedLabel);  
-        alert("已刪除「" + selectedLabel + "」標籤資料");  
-        updateQuickSelectLabels();  
-      }  
-      document.getElementById("modalLabelAction").style.display = "none";  
-    });  
-    document.getElementById("actionCancel").addEventListener("click", function() {  
-      document.getElementById("modalLabelAction").style.display = "none";  
-    });  
-      
-    // ========== 底部功能按鈕 ==========  
-    const leftButton = document.getElementById("leftButton");  
-    const rightButton = document.getElementById("rightButton");  
-    let leftButtonPressTimer = null;  
-    leftButton.addEventListener("click", function() {  
-      if (mode === "train") {  
-        updateQuickSelectLabels();  
-        document.getElementById("modalLeft").style.display = "block";  
-      } else if (mode === "test") {  
-        // 在 test 模式下，點選左下按鈕直接清除畫布  
-        clearCanvas();  
-      }  
-    });  
-    leftButton.addEventListener("touchstart", function() {  
-      if (mode === "test") {  
-        leftButtonPressTimer = setTimeout(function(){  
-          clearCanvas();  
-          leftButtonPressTimer = null;  
-        }, 800);  
-      }  
-    });  
-    leftButton.addEventListener("touchend", function() {  
-      if (mode === "test" && leftButtonPressTimer) {  
-        clearTimeout(leftButtonPressTimer);  
-        leftButtonPressTimer = null;  
-      }  
-    });  
-    rightButton.addEventListener("click", function() {  
-      if (mode === "train") {  
-        document.getElementById("modalRight").style.display = "block";  
-      } else if (mode === "test") {  
-        switchToTrainMode();  
-      }  
-    });  
-      
-    // ========== Modal 事件 ==========  
-    document.getElementById("modalSaveLabel").addEventListener("click", function(){  
-      const label = document.getElementById("modalLabelInput").value.trim();  
-      if (label === "") {  
-        alert("請輸入標籤");  
-        return;  
-      }  
-      if (currentStroke.length === 0) {  
-        alert("請先書寫");  
-        return;  
-      }  
-      const storageKey = "label_" + label;  
-      let storedData = localStorage.getItem(storageKey);  
-      if (storedData) {  
-        storedData = JSON.parse(storedData);  
-      } else {  
-        storedData = [];  
-      }  
-      storedData.push(currentStroke);  
-      localStorage.setItem(storageKey, JSON.stringify(storedData));  
-      alert("已儲存資料到標籤：" + label);  
-      clearCanvas();  
-      document.getElementById("modalLabelInput").value = "";  
-      document.getElementById("modalLeft").style.display = "none";  
-    });  
-    document.getElementById("modalCancelLabel").addEventListener("click", function(){  
-      document.getElementById("modalLeft").style.display = "none";  
-    });  
-      
-    document.getElementById("optClearCanvas").addEventListener("click", function(){  
-      clearCanvas();  
-    });  
-    document.getElementById("optDownload").addEventListener("click", function(){  
-      let data = {};  
-      for (let i = 0; i < localStorage.length; i++) {  
-        const key = localStorage.key(i);  
-        if (key.startsWith("label_")) {  
-          data[key] = JSON.parse(localStorage.getItem(key));  
-        }  
-      }  
-      const blob = new Blob([JSON.stringify(data, null, 2)], {type: "text/plain;charset=utf-8"});  
-      const link = document.createElement("a");  
-      link.href = URL.createObjectURL(blob);  
-      link.download = "training_data.txt";  
-      link.click();  
-    });  
-    document.getElementById("optUploadBtn").addEventListener("click", function(){  
-      document.getElementById("fileInput").click();  
-    });  
-    document.getElementById("fileInput").addEventListener("change", function(evt){  
-      const file = evt.target.files[0];  
-      if (!file) return;  
-      const reader = new FileReader();  
-      reader.onload = function(e) {  
-        try {  
-          const data = JSON.parse(e.target.result);  
-          for (let key in data) {  
-            if (data.hasOwnProperty(key)) {  
-              localStorage.setItem(key, JSON.stringify(data[key]));  
-            }  
-          }  
-          alert("上傳資料成功");  
-        } catch(err) {  
-          alert("檔案格式錯誤");  
-        }  
-      };  
-      reader.readAsText(file);  
-    });  
-    document.getElementById("optClearAllLabels").addEventListener("click", function(){  
-      if (confirm("確認清除所有標籤？")) {  
-        let keysToRemove = [];  
-        for (let i = 0; i < localStorage.length; i++) {  
-          const key = localStorage.key(i);  
-          if (key.startsWith("label_")) {  
-            keysToRemove.push(key);  
-          }  
-        }  
-        for (const key of keysToRemove) {  
-          localStorage.removeItem(key);  
-        }  
-        alert("已清除所有標籤");  
-      }  
-    });  
-    document.getElementById("optSwitchToTest").addEventListener("click", function(){  
-      switchToTestMode();  
-      document.getElementById("modalRight").style.display = "none";  
-    });  
-    document.getElementById("optCancel").addEventListener("click", function(){  
-      document.getElementById("modalRight").style.display = "none";  
-    });  
-      
-    // ========== 初始模式 ==========  
-    switchToTrainMode();  
-  </script>  </body>  
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手寫校正與辨識</title>
+  <style>
+    /* 重置與基本設定 */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: sans-serif;
+      background-color: #000; /* 固定黑色背景 */
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container { display: flex; flex-direction: column; align-items: center; }
+    /* 浮動候選結果：固定在視窗頂部 */
+    #recognitionResults {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 5px 10px;
+      background: rgba(255,255,255,0.8);
+      border-radius: 5px;
+      font-size: 16px;
+      color: #000;
+      z-index: 1000;
+    }
+    /* 書寫區：固定 390x500px */
+    #mainCanvas {
+      border: 2px solid #fff;
+      background-color: #000; /* 固定黑色 */
+      width: 390px;
+      height: 500px;
+      touch-action: none;
+      margin-top: 60px; /* 留出候選結果空間 */
+    }
+    /* 主頁面按鈕 */
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .func-btn {
+      width: 100px;
+      height: 40px;
+      border: none;
+      border-radius: 5px;
+      background-color: #808080;
+      color: #fff;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    /* Modal 樣式 */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.5);
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    .modal-content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 5px;
+      width: 300px;
+      color: #000;
+    }
+    .modal-content input,
+    .modal-content textarea,
+    .modal-content button {
+      width: 100%;
+      margin: 5px 0;
+      padding: 8px;
+      font-size: 14px;
+    }
+    /* 管理標籤 Modal 列表 */
+    #manageList {
+      margin-top: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      border-top: 1px solid #ccc;
+      padding-top: 10px;
+    }
+    #manageList div {
+      border-bottom: 1px solid #ccc;
+      padding: 5px 0;
+      margin-bottom: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 浮動候選結果 -->
+    <div id="recognitionResults">無訓練資料</div>
+    <!-- 書寫區 -->
+    <canvas id="mainCanvas"></canvas>
+    <!-- 主頁面按鈕：移除模式切換按鈕 -->
+    <div class="button-group">
+      <button id="clearBtn" class="func-btn">清空畫布</button>
+      <button id="manageTagBtn" class="func-btn">管理標籤</button>
+      <button id="menuBtn" class="func-btn">選單</button>
+    </div>
+  </div>
+  
+  <!-- 隱藏的檔案輸入欄位（上傳用） -->
+  <input type="file" id="fileInput" style="display:none;">
+  
+  <!-- Modal：選單 Modal -->
+  <div id="modalRight" class="modal">
+    <div class="modal-content">
+      <button id="downloadBtnMenu">下載資料</button>
+      <button id="uploadBtnMenu">上傳資料</button>
+      <button id="clearAllBtn">清除所有標籤</button>
+      <button id="menuCancelBtn">取消</button>
+    </div>
+  </div>
+  
+  <!-- Modal：管理標籤 Modal（包含新增標籤區＋已建立標籤列表） -->
+  <div id="modalManageTag" class="modal">
+    <div class="modal-content">
+      <h3>管理標籤</h3>
+      <!-- 新增標籤區 (每次開啟時清空) -->
+      <input type="text" id="newTagName" placeholder="標籤名稱">
+      <textarea id="newTagRemark" placeholder="備註 (選填)"></textarea>
+      <button id="addNewTagBtn">新增標籤</button>
+      <hr>
+      <!-- 已建立標籤列表 -->
+      <div id="manageList">尚無儲存標籤</div>
+      <button id="manageCloseBtn">關閉</button>
+    </div>
+  </div>
+  
+  <!-- Modal：標籤選項 Modal -->
+  <div id="modalTagOption" class="modal">
+    <div class="modal-content">
+      <h3 id="tagOptionTitle"></h3>
+      <button id="saveNewDataBtn">儲存新數據</button>
+      <button id="updateRemarkBtn">更新備註</button>
+      <button id="deleteTagBtn">刪除標籤</button>
+      <button id="tagOptionCancelBtn">取消</button>
+    </div>
+  </div>
+  
+  <!-- Modal：更新備註 Modal -->
+  <div id="modalUpdateRemark" class="modal">
+    <div class="modal-content">
+      <h3>更新備註</h3>
+      <input type="text" id="newRemarkInput" placeholder="請輸入新的備註">
+      <button id="confirmUpdateRemarkBtn">確定更新</button>
+      <button id="cancelUpdateRemarkBtn">取消</button>
+    </div>
+  </div>
+  
+  <script>
+    // ========== 全局變數與初始化 ==========
+    // 直接使用校正模式
+    let mode = "test";
+    let currentStroke = [];
+    let currentTag = ""; // 當前選中的標籤
+    const canvas = document.getElementById("mainCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = 390;
+    canvas.height = 500;
+    // 校正模式背景固定為黑色
+    canvas.style.backgroundColor = "#000";
+    document.body.style.backgroundColor = "#000";
+    ctx.strokeStyle = "#fff";
+    
+    // ========== 畫板事件 ==========
+    let drawing = false;
+    function getCanvasPos(evt) {
+      const rect = canvas.getBoundingClientRect();
+      let x, y;
+      if (evt.touches) {
+        x = evt.touches[0].clientX - rect.left;
+        y = evt.touches[0].clientY - rect.top;
+      } else {
+        x = evt.clientX - rect.left;
+        y = evt.clientY - rect.top;
+      }
+      return { x, y };
+    }
+    function startDrawing(evt) {
+      evt.preventDefault();
+      drawing = true;
+      currentStroke = [];
+      const pos = getCanvasPos(evt);
+      currentStroke.push(pos);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    }
+    function draw(evt) {
+      if (!drawing) return;
+      evt.preventDefault();
+      const pos = getCanvasPos(evt);
+      currentStroke.push(pos);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      updateRecognitionResults();
+    }
+    function endDrawing(evt) {
+      if (!drawing) return;
+      evt.preventDefault();
+      drawing = false;
+    }
+    canvas.addEventListener("mousedown", startDrawing);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDrawing);
+    canvas.addEventListener("mouseout", endDrawing);
+    canvas.addEventListener("touchstart", startDrawing);
+    canvas.addEventListener("touchmove", draw);
+    canvas.addEventListener("touchend", endDrawing);
+    canvas.addEventListener("touchcancel", endDrawing);
+    
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      currentStroke = [];
+      document.getElementById("recognitionResults").textContent = "無訓練資料";
+    }
+    
+    // ========== 辨識／校正函式 ==========
+    function getAngleSignature(stroke) {
+      if (stroke.length < 2) return [];
+      let signature = [];
+      let accDistance = 0, lastIndex = 0, lastAngle = null;
+      for (let i = 1; i < stroke.length; i++) {
+        let dx = stroke[i].x - stroke[i-1].x;
+        let dy = stroke[i].y - stroke[i-1].y;
+        let dist = Math.hypot(dx, dy);
+        accDistance += dist;
+        if (accDistance >= 50) {
+          let totalDx = stroke[i].x - stroke[lastIndex].x;
+          let totalDy = stroke[i].y - stroke[lastIndex].y;
+          let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;
+          let quantized = Math.round(angle / 10) * 10;
+          if (lastAngle !== null) {
+            let diff = quantized - lastAngle;
+            while(diff > 180) diff -= 360;
+            while(diff < -180) diff += 360;
+            signature.push(diff);
+          } else {
+            signature.push(quantized);
+          }
+          lastAngle = quantized;
+          lastIndex = i;
+          accDistance = 0;
+        }
+      }
+      return signature;
+    }
+    function signatureDistance(sig1, sig2) {
+      let len = Math.min(sig1.length, sig2.length);
+      let diff = 0;
+      for (let i = 0; i < len; i++) {
+        diff += Math.abs(sig1[i] - sig2[i]);
+      }
+      diff += Math.abs(sig1.length - sig2.length) * 10;
+      return diff;
+    }
+    function updateRecognitionResults() {
+      if (currentStroke.length === 0) return;
+      let testSignature = getAngleSignature(currentStroke);
+      let candidates = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith("label_")) {
+          let label = key.substring(6);
+          let stored = JSON.parse(localStorage.getItem(key));
+          let bestDistance = Infinity;
+          for (let sample of stored) {
+            let sampleStroke = (sample.stroke !== undefined ? sample.stroke : sample);
+            let sampleSignature = getAngleSignature(sampleStroke);
+            let dist = signatureDistance(testSignature, sampleSignature);
+            if (dist < bestDistance) bestDistance = dist;
+          }
+          candidates.push({ label: label, distance: bestDistance });
+        }
+      }
+      const resultsDiv = document.getElementById("recognitionResults");
+      if (candidates.length === 0) {
+        resultsDiv.textContent = "無訓練資料";
+        return;
+      }
+      candidates.sort((a, b) => a.distance - b.distance);
+      let topThree = candidates.slice(0, 3);
+      resultsDiv.innerHTML = "";
+      topThree.forEach((item, idx) => {
+        let candidateDiv = document.createElement("div");
+        candidateDiv.textContent = `${idx+1}. ${item.label} (差異: ${item.distance.toFixed(2)})`;
+        candidateDiv.style.cursor = "pointer";
+        candidateDiv.addEventListener("click", function(){
+          if(confirm("您確定要將目前筆跡存入標籤 " + item.label + " 嗎？")){
+            applyCorrection(item.label);
+          }
+        });
+        resultsDiv.appendChild(candidateDiv);
+      });
+    }
+    function applyCorrection(label) {
+      if (currentStroke.length === 0) return;
+      const storageKey = "label_" + label;
+      let storedData = localStorage.getItem(storageKey);
+      if (storedData) { storedData = JSON.parse(storedData); }
+      else { storedData = []; }
+      storedData.push(currentStroke);
+      localStorage.setItem(storageKey, JSON.stringify(storedData));
+      clearCanvas();
+    }
+    
+    // ========== 主頁面按鈕事件 ==========
+    const clearBtn = document.getElementById("clearBtn");
+    const manageTagBtn = document.getElementById("manageTagBtn");
+    const menuBtn = document.getElementById("menuBtn");
+    
+    clearBtn.addEventListener("click", clearCanvas);
+    manageTagBtn.addEventListener("click", function() {
+      // 每次開啟管理標籤 Modal時，清空新增標籤欄位
+      document.getElementById("newTagName").value = "";
+      document.getElementById("newTagRemark").value = "";
+      updateManageList();
+      document.getElementById("modalManageTag").style.display = "flex";
+    });
+    menuBtn.addEventListener("click", function() {
+      document.getElementById("modalRight").style.display = "flex";
+    });
+    
+    // ========== 選單 Modal 事件 ==========
+    document.getElementById("downloadBtnMenu").addEventListener("click", function() {
+      let data = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith("label_")) {
+          data[key] = JSON.parse(localStorage.getItem(key));
+        }
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "text/plain;charset=utf-8" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "training_data.txt";
+      link.click();
+    });
+    document.getElementById("uploadBtnMenu").addEventListener("click", function() {
+      document.getElementById("fileInput").click();
+    });
+    document.getElementById("clearAllBtn").addEventListener("click", function() {
+      if (confirm("確認清除所有標籤？")) {
+        let keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key.startsWith("label_")) { keysToRemove.push(key); }
+        }
+        for (const key of keysToRemove) { localStorage.removeItem(key); }
+        alert("已清除所有標籤");
+      }
+    });
+    document.getElementById("menuCancelBtn").addEventListener("click", function() {
+      document.getElementById("modalRight").style.display = "none";
+    });
+    
+    // 檔案上傳處理
+    document.getElementById("fileInput").addEventListener("change", function(evt) {
+      const file = evt.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          for (let key in data) {
+            if (data.hasOwnProperty(key)) {
+              localStorage.setItem(key, JSON.stringify(data[key]));
+            }
+          }
+          alert("上傳資料成功");
+        } catch(err) {
+          alert("檔案格式錯誤");
+        }
+      };
+      reader.readAsText(file);
+    });
+    
+    // ========== 管理標籤 Modal ==========
+    function updateManageList() {
+      const container = document.getElementById("manageList");
+      container.innerHTML = "";
+      let found = false;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith("label_")) {
+          found = true;
+          const label = key.substring(6);
+          let stored = JSON.parse(localStorage.getItem(key));
+          let remark = "";
+          if (stored.length > 0 && stored[stored.length - 1].remark !== undefined) {
+            remark = stored[stored.length - 1].remark;
+          }
+          const div = document.createElement("div");
+          div.innerHTML = `<strong>${label}</strong><br>備註：${remark}`;
+          div.style.cursor = "pointer";
+          div.addEventListener("click", function() {
+            currentTag = label;
+            document.getElementById("tagOptionTitle").textContent = "標籤：" + label;
+            document.getElementById("modalTagOption").style.display = "flex";
+          });
+          container.appendChild(div);
+        }
+      }
+      if (!found) { container.textContent = "尚無儲存標籤"; }
+    }
+    
+    // 管理標籤 Modal - 新增標籤
+    document.getElementById("addNewTagBtn").addEventListener("click", function() {
+      const newTagName = document.getElementById("newTagName").value.trim();
+      const newTagRemark = document.getElementById("newTagRemark").value.trim();
+      if (newTagName === "") {
+        alert("請輸入標籤名稱");
+        return;
+      }
+      if (currentStroke.length === 0) {
+        alert("請先在畫板上書寫");
+        return;
+      }
+      const storageKey = "label_" + newTagName;
+      let storedData = localStorage.getItem(storageKey);
+      if (storedData) { storedData = JSON.parse(storedData); }
+      else { storedData = []; }
+      storedData.push({ stroke: currentStroke, remark: newTagRemark });
+      localStorage.setItem(storageKey, JSON.stringify(storedData));
+      alert("已新增標籤：" + newTagName);
+      clearCanvas();
+      updateManageList();
+    });
+    
+    document.getElementById("manageCloseBtn").addEventListener("click", function() {
+      document.getElementById("modalManageTag").style.display = "none";
+    });
+    
+    // ========== 標籤選項 Modal ==========
+    document.getElementById("saveNewDataBtn").addEventListener("click", function() {
+      // 直接將目前筆跡存入，無需額外確認
+      applyCorrection(currentTag);
+      document.getElementById("modalTagOption").style.display = "none";
+    });
+    document.getElementById("updateRemarkBtn").addEventListener("click", function() {
+      document.getElementById("newRemarkInput").value = "";
+      document.getElementById("modalTagOption").style.display = "none";
+      document.getElementById("modalUpdateRemark").style.display = "flex";
+    });
+    document.getElementById("deleteTagBtn").addEventListener("click", function() {
+      if (confirm("確定刪除標籤 " + currentTag + " 嗎？")) {
+        localStorage.removeItem("label_" + currentTag);
+        alert("標籤 " + currentTag + " 已刪除");
+      }
+      document.getElementById("modalTagOption").style.display = "none";
+      updateManageList();
+    });
+    document.getElementById("tagOptionCancelBtn").addEventListener("click", function() {
+      document.getElementById("modalTagOption").style.display = "none";
+    });
+    
+    // ========== 更新備註 Modal ==========
+    document.getElementById("confirmUpdateRemarkBtn").addEventListener("click", function() {
+      const newRemark = document.getElementById("newRemarkInput").value.trim();
+      if (newRemark === "") {
+        alert("請輸入備註");
+        return;
+      }
+      const storageKey = "label_" + currentTag;
+      let stored = JSON.parse(localStorage.getItem(storageKey));
+      for (let i = 0; i < stored.length; i++) {
+        stored[i].remark = newRemark;
+      }
+      localStorage.setItem(storageKey, JSON.stringify(stored));
+      alert("備註已更新");
+      document.getElementById("modalUpdateRemark").style.display = "none";
+      updateManageList();
+    });
+    document.getElementById("cancelUpdateRemarkBtn").addEventListener("click", function() {
+      document.getElementById("modalUpdateRemark").style.display = "none";
+    });
+  </script>
+</body>
 </html>
