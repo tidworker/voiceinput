@@ -1,276 +1,683 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <!-- 設定 viewport，確保手機版面良好 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>手寫辨識 - 手機版</title>
+  <meta charset="utf-8" />
+  <title>多筆畫 + LocalStorage + 點選標籤後彈出對話框 (存入或刪除) + 3字截斷</title>
   <style>
-    /* 全頁背景全黑，內容置中 */
-    html, body {
+    body {
       margin: 0;
       padding: 0;
-      background-color: #000;
-      height: 100%;
+      font-family: sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: flex-start;
+    }
+    h1 {
+      margin: 1rem;
+    }
+
+    /* === Canvas 外觀 === */
+    #myCanvas {
+      border: 1px solid #ccc;
+      touch-action: none; /* 防止手機在 Canvas 上捏拉、滾動 */
+    }
+
+    /* === 控制按鈕區 === */
+    .controls {
+      margin: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
       justify-content: center;
     }
-    /* 顯示辨識結果，36px 白色文字，置頂顯示 */
-    #result {
-      position: absolute;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 36px;
-      color: #fff;
-      pointer-events: none;
-    }
-    /* 書寫區：固定 390×500，背景白色、邊框黑色 */
-    #mainCanvas {
-      background-color: #fff;
-      border: 2px solid #000;
-      touch-action: none;
+
+    /* === 標籤列表容器：一行最多 3 個標籤 === */
+    #labelList {
+      margin: 8px;
+      padding: 8px;
+      border: 1px solid #999;
       width: 390px;
-      height: 500px;
+      min-height: 30px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    /* === 單個標籤區塊 === */
+    .label-item {
+      font-size: 10px;
+      flex: 0 0 calc(33.333% - 10px);
+      box-sizing: border-box;
+      border: 1px solid #aaa;
+      padding: 6px 10px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .label-name {
+      font-weight: bold;
+    }
+
+    /* === Modal (對話框) === */
+    #modalBackdrop {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw; height: 100vh;
+      background: rgba(0,0,0,0.5);
+      display: none; /* 預設隱藏 */
+      align-items: center;
+      justify-content: center;
+    }
+    #modalBox {
+      background: #fff;
+      padding: 20px;
+      border-radius: 6px;
+      min-width: 300px;
+    }
+    #modalButtons {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    button {
+      cursor: pointer;
+      padding: 6px 12px;
     }
   </style>
 </head>
 <body>
-  <!-- 辨識結果顯示區 -->
-  <div id="result"></div>
-  <!-- 書寫區 -->
-  <canvas id="mainCanvas" width="390" height="500"></canvas>
 
-  <script>
-    /**********************************
-     * 讀取伺服器 training_data.txt *
-     **********************************/
-    fetch('training_data.txt')
-      .then(response => response.text())
-      .then(text => {
-        try {
-          const data = JSON.parse(text);
-          // 將所有訓練資料存入 localStorage（key 為 "label_標籤"）
-          for (const key in data) {
-            if (data.hasOwnProperty(key)) {
-              localStorage.setItem(key, JSON.stringify(data[key]));
-            }
-          }
-        } catch (err) {
-          console.error("讀取 training_data.txt 錯誤：", err);
-        }
-      })
-      .catch(err => console.error("無法讀取 training_data.txt：", err));
+<br>
 
-    /**********************
-     * 全域變數與初始化 *
-     **********************/
-    let allStrokes = [];       // 儲存所有已完成筆劃（每筆為一 array）
-    let currentStroke = [];    // 當前正在書寫的筆劃
-    let recognitionTimeout = null;  // 書寫停止後 0.5 秒的計時器
+<canvas id="myCanvas" width="390" height="390"></canvas>
 
-    const canvas = document.getElementById("mainCanvas");
-    const ctx = canvas.getContext("2d");
-    // 筆畫設定為黑色，線寬 2
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 2;
+<div class="controls">
+  <button id="clearCanvasBtn">清除畫布</button>
 
-    const resultDiv = document.getElementById("result");
+  <input type="text" id="labelInput" placeholder="輸入標籤名稱(不限長度)" />
+  <button id="createLabelBtn">建立標籤</button>
 
-    /*******************************
-     * 畫布事件與 0.5 秒辨識機制 *
-     *******************************/
-    function getCanvasPos(evt) {
-      const rect = canvas.getBoundingClientRect();
-      let x, y;
-      if (evt.touches) {
-        x = evt.touches[0].clientX - rect.left;
-        y = evt.touches[0].clientY - rect.top;
-      } else {
-        x = evt.clientX - rect.left;
-        y = evt.clientY - rect.top;
-      }
-      return { x, y };
-    }
+  <button id="clearAllLabelsBtn">清空所有標籤</button>
+</div>
 
-    function startDrawing(evt) {
-      evt.preventDefault();
-      // 每次開始書寫時，清除先前的辨識結果
-      resultDiv.textContent = "";
-      // 取消先前的辨識延遲
-      if (recognitionTimeout) {
-        clearTimeout(recognitionTimeout);
-        recognitionTimeout = null;
-      }
-      currentStroke = [];
-      const pos = getCanvasPos(evt);
-      currentStroke.push(pos);
+<!-- 標籤列表 (每行最多3個) -->
+<div id="labelList">（尚無任何標籤）</div>
+
+<!-- 自訂對話框的背景 (半透明) & 內容區塊 -->
+<div id="modalBackdrop">
+  <div id="modalBox">
+    <div id="modalMessage">你想對標籤 xxx 做什麼？</div>
+    <div id="modalButtons">
+      <button id="btnStore">存入</button>
+      <button id="btnDelete">刪除</button>
+      <button id="btnCancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =====================================================
+   0. 全域資料結構 & 變數
+===================================================== */
+const canvas = document.getElementById('myCanvas');
+const ctx = canvas.getContext('2d');
+
+const clearCanvasBtn    = document.getElementById('clearCanvasBtn');
+const labelInput        = document.getElementById('labelInput');
+const createLabelBtn    = document.getElementById('createLabelBtn');
+const clearAllLabelsBtn = document.getElementById('clearAllLabelsBtn');
+const labelListDiv      = document.getElementById('labelList');
+
+// Modal 元件
+const modalBackdrop   = document.getElementById('modalBackdrop');
+const modalMessage    = document.getElementById('modalMessage');
+const btnStore        = document.getElementById('btnStore');
+const btnDelete       = document.getElementById('btnDelete');
+const btnCancel       = document.getElementById('btnCancel');
+
+// 是否正在書寫
+let isDrawing = false;
+
+// 當前字（多筆畫）
+let currentCharRawStrokes = [];
+let currentCharSimplifiedStrokes = [];
+
+// 暫存單筆畫
+let currentStrokeRaw = [];
+
+/**
+ * 標籤結構：存到 localStorage
+ * labels = [
+ *   {
+ *     name: 'XXXXX',
+ *     examples: [
+ *       {
+ *         rawStrokes: [ [.....], ... ],
+ *         simplifiedStrokes: [ [.....], ... ]
+ *       },
+ *       ...
+ *     ]
+ *   },
+ *   ...
+ * ]
+ */
+let labels = [];
+// 用於「點擊標籤」後，紀錄要操作的標籤名稱
+let currentLabelNameForModal = null;
+
+
+/* =====================================================
+   1. 載入時 → 讀取 localStorage
+===================================================== */
+window.addEventListener('DOMContentLoaded', () => {
+  loadLabelsFromLocalStorage();
+  renderLabelList();
+});
+
+
+/* =====================================================
+   2. 多筆畫書寫 (mouse + touch)
+===================================================== */
+canvas.addEventListener('touchstart', startDraw, false);
+canvas.addEventListener('mousedown', startDraw, false);
+
+function startDraw(evt) {
+  evt.preventDefault();
+  isDrawing = true;
+  currentStrokeRaw = [];
+
+  const pos = getPointerPos(evt);
+  currentStrokeRaw.push(pos);
+}
+
+canvas.addEventListener('touchmove', draw, false);
+canvas.addEventListener('mousemove', draw, false);
+
+function draw(evt) {
+  if (!isDrawing) return;
+  evt.preventDefault();
+
+  const pos = getPointerPos(evt);
+  const lastPos = currentStrokeRaw[currentStrokeRaw.length - 1];
+
+  // 畫黑線
+  ctx.beginPath();
+  ctx.moveTo(lastPos.x, lastPos.y);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.closePath();
+
+  currentStrokeRaw.push(pos);
+}
+
+canvas.addEventListener('touchend', endDraw, false);
+canvas.addEventListener('mouseup', endDraw, false);
+canvas.addEventListener('mouseleave', endDraw, false);
+
+function endDraw(evt) {
+  if (!isDrawing) return;
+  evt.preventDefault();
+  isDrawing = false;
+
+  // 等距取樣 + RDP
+  const resampled = resample(currentStrokeRaw, 4);
+  const simplified = ramerDouglasPeucker(resampled, 3);
+
+  currentCharRawStrokes.push(currentStrokeRaw.slice());
+  currentCharSimplifiedStrokes.push(simplified);
+
+  renderAll();
+}
+
+
+/* =====================================================
+   3. 清除畫布 (只清當前字)
+===================================================== */
+clearCanvasBtn.addEventListener('click', () => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  currentCharRawStrokes = [];
+  currentCharSimplifiedStrokes = [];
+});
+
+
+/* =====================================================
+   4. 建立新標籤
+===================================================== */
+createLabelBtn.addEventListener('click', () => {
+  const name = labelInput.value.trim();
+  if(!name){
+    alert('請輸入標籤名稱');
+    return;
+  }
+  // 檢查重複
+  if(labels.find(l=> l.name===name)){
+    alert('標籤已存在');
+    return;
+  }
+
+  labels.push({
+    name,
+    examples: []
+  });
+  labelInput.value='';
+  saveLabelsToLocalStorage();
+  renderLabelList();
+});
+
+
+/* =====================================================
+   5. 清空所有標籤
+===================================================== */
+clearAllLabelsBtn.addEventListener('click', () => {
+  const isOk= confirm('確定要清空所有標籤嗎？\n這會移除所有已儲存的範例。');
+  if(!isOk) return;
+
+  labels=[];
+  saveLabelsToLocalStorage();
+  renderLabelList();
+  alert('所有標籤已被刪除。');
+});
+
+
+/* =====================================================
+   6. 重繪 + 即時比對
+===================================================== */
+function renderAll(){
+  ctx.clearRect(0,0, canvas.width, canvas.height);
+
+  // [A] 畫多筆畫(黑線)
+  currentCharRawStrokes.forEach(stroke=>{
+    for(let i=1; i<stroke.length; i++){
+      const p0=stroke[i-1];
+      const p1=stroke[i];
       ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    }
-
-    function draw(evt) {
-      evt.preventDefault();
-      const pos = getCanvasPos(evt);
-      currentStroke.push(pos);
-      ctx.lineTo(pos.x, pos.y);
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.strokeStyle='#000';
+      ctx.lineWidth=2;
       ctx.stroke();
+      ctx.closePath();
+    }
+  });
+
+  // [B] 畫紅點
+  let allRedPoints=[];
+  currentCharSimplifiedStrokes.forEach(stroke=>{
+    stroke.forEach(pt=>{
+      drawDot(pt.x, pt.y, 'red');
+      allRedPoints.push(pt);
+    });
+  });
+
+  // [C] 4個綠點
+  if(allRedPoints.length>0){
+    let corners= getBoundingCorners(allRedPoints);
+    corners.forEach(pt=> drawDot(pt.x, pt.y, 'green'));
+  }
+
+  // [D] 即時比對
+  let totalExamples=0;
+  labels.forEach(lbl=> totalExamples+= lbl.examples.length);
+  if(allRedPoints.length>0 && totalExamples>0){
+    const top3= compareCurrentCharByLabel(allRedPoints);
+    drawCompareResultsOnCanvas(top3);
+  }
+}
+
+
+/* =====================================================
+   7. 同標籤分數加總/平均 → 取前三
+===================================================== */
+function compareCurrentCharByLabel(curAllRedPoints){
+  let labelResults=[];
+
+  labels.forEach(lbl=>{
+    if(lbl.examples.length===0) return;
+    let sumDist=0;
+    lbl.examples.forEach(ex=>{
+      let exAllRed= unifyPoints(ex.simplifiedStrokes);
+      let dist= shapeDistance(curAllRedPoints, exAllRed);
+      sumDist+= dist;
+    });
+    let avgDist= sumDist / lbl.examples.length;
+    labelResults.push({
+      label: lbl.name,
+      distance: avgDist
+    });
+  });
+
+  labelResults.sort((a,b)=> a.distance- b.distance);
+  return labelResults.slice(0,3);
+}
+
+function drawCompareResultsOnCanvas(top3){
+  ctx.fillStyle='rgba(255,255,255,0.8)';
+  ctx.fillRect(5,5,180,80);
+  ctx.font='16px sans-serif';
+  ctx.fillStyle='blue';
+
+  let y=25;
+  top3.forEach((r,i)=>{
+    let text=`#${i+1} ${r.label} (${r.distance.toFixed(2)})`;
+    ctx.fillText(text,10,y);
+    y+=20;
+  });
+}
+
+
+/* =====================================================
+   8. 渲染標籤列表 (一列最多3個)
+      - 點擊標籤 → 彈出對話框
+      - 超過3字 → "..."
+===================================================== */
+function renderLabelList(){
+  if(labels.length===0){
+    labelListDiv.innerHTML='（尚無任何標籤）';
+    return;
+  }
+
+  labelListDiv.innerHTML='';
+
+  labels.forEach(lbl=>{
+    let divItem= document.createElement('div');
+    divItem.className='label-item';
+
+    let shortName= lbl.name;
+    if(shortName.length>5){
+      shortName= shortName.slice(0,5)+'...';
     }
 
-    function endDrawing(evt) {
-      evt.preventDefault();
-      if (currentStroke.length > 0) {
-        allStrokes.push(currentStroke);
-      }
-      currentStroke = [];
-      // 書寫停止 0.5 秒後觸發辨識
-      recognitionTimeout = setTimeout(doRecognition, 500);
+    divItem.innerHTML=`
+      <span class="label-name">${shortName}</span>
+      <span>(${lbl.examples.length}筆)</span>
+    `;
+
+    // 點擊 → 開啟對話框
+    divItem.addEventListener('click', ()=>{
+      openLabelModal(lbl.name);
+    });
+
+    labelListDiv.appendChild(divItem);
+  });
+}
+
+
+/* =====================================================
+   9. 自訂對話框彈出 (存入 or 刪除)
+===================================================== */
+function openLabelModal(labelName){
+  currentLabelNameForModal = labelName;
+  // 動態顯示訊息
+  modalMessage.textContent = `請選擇對「${labelName}」要做的操作：`;
+  // 顯示對話框
+  modalBackdrop.style.display = 'flex';
+}
+
+// 按「存入」
+btnStore.addEventListener('click', () => {
+  if(!currentLabelNameForModal) return;
+  storeCurrentCharToLabel(currentLabelNameForModal);
+  closeModal();
+});
+
+// 按「刪除」
+btnDelete.addEventListener('click', () => {
+  if(!currentLabelNameForModal) return;
+  removeLabel(currentLabelNameForModal);
+  closeModal();
+});
+
+// 按「取消」
+btnCancel.addEventListener('click', () => {
+  closeModal();
+});
+
+function closeModal(){
+  modalBackdrop.style.display='none';
+  currentLabelNameForModal=null;
+}
+
+
+/* =====================================================
+   10. 存入當前字 → 指定標籤
+===================================================== */
+function storeCurrentCharToLabel(labelName){
+  if(currentCharSimplifiedStrokes.length===0){
+    alert('目前沒有任何筆畫，無法存入標籤');
+    return;
+  }
+
+  let isOk= confirm(`確定要將當前字存入標籤「${labelName}」嗎？`);
+  if(!isOk) return;
+
+  let lbl= labels.find(l=> l.name===labelName);
+  if(!lbl) return;
+
+  // 最多 20 筆
+  if(lbl.examples.length>=20){
+    lbl.examples.shift();
+  }
+
+  lbl.examples.push({
+    rawStrokes: currentCharRawStrokes.map(stk=> stk.slice()),
+    simplifiedStrokes: currentCharSimplifiedStrokes.map(stk=> stk.slice())
+  });
+
+  saveLabelsToLocalStorage();
+  alert(`已將當前字存入標籤「${labelName}」，現在共有 ${lbl.examples.length} 筆。`);
+
+  // 清畫布
+  ctx.clearRect(0,0, canvas.width, canvas.height);
+  currentCharRawStrokes=[];
+  currentCharSimplifiedStrokes=[];
+  renderAll();
+  renderLabelList();
+}
+
+
+/* =====================================================
+   11. 刪除標籤
+===================================================== */
+function removeLabel(labelName){
+  const isOk= confirm(`確定要刪除整個標籤「${labelName}」嗎？\n(該標籤底下所有範例都會消失)`);
+  if(!isOk) return;
+
+  let idx= labels.findIndex(l=> l.name===labelName);
+  if(idx>=0){
+    labels.splice(idx,1);
+    saveLabelsToLocalStorage();
+    alert(`已刪除標籤「${labelName}」。`);
+    renderLabelList();
+  }
+}
+
+
+/* =====================================================
+   12. LocalStorage
+===================================================== */
+function saveLabelsToLocalStorage(){
+  localStorage.setItem('myLabels', JSON.stringify(labels));
+}
+
+function loadLabelsFromLocalStorage(){
+  let dataStr= localStorage.getItem('myLabels');
+  if(dataStr){
+    try{
+      labels= JSON.parse(dataStr);
+    } catch(e){
+      console.error('localStorage解析失敗:', e);
+      labels=[];
     }
+  } else {
+    labels=[];
+  }
+}
 
-    // 綁定滑鼠與觸控事件
-    canvas.addEventListener("mousedown", startDrawing);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", endDrawing);
-    canvas.addEventListener("mouseout", endDrawing);
-    canvas.addEventListener("touchstart", startDrawing);
-    canvas.addEventListener("touchmove", draw);
-    canvas.addEventListener("touchend", endDrawing);
-    canvas.addEventListener("touchcancel", endDrawing);
 
-    /***************************
-     * 辨識系統核心函式         *
-     ***************************/
-    // 此處採用向量變化（角度）及採樣點原始座標比對，並加入文字端點位置檢查
+/* =====================================================
+   13. 工具函式：等距取樣、RDP、比對
+===================================================== */
+function getPointerPos(evt){
+  let x,y;
+  if(evt.touches && evt.touches.length>0){
+    x= evt.touches[0].clientX;
+    y= evt.touches[0].clientY;
+  } else {
+    x= evt.clientX;
+    y= evt.clientY;
+  }
+  const rect= canvas.getBoundingClientRect();
+  return { x: x - rect.left, y: y - rect.top };
+}
 
-    // 取得單一筆劃的簽名：
-    // 角度計算時以筆劃第一點正規化，但採樣後保留原始座標（使向量變化的實際位置也被考慮）
-    function getSignature(stroke) {
-      if (stroke.length < 2) return { angles: [], positions: [] };
-      const origin = stroke[0];
-      const normalized = stroke.map(pt => ({ x: pt.x - origin.x, y: pt.y - origin.y }));
-      let angles = [];
-      let positions = [];
-      let accDistance = 0;
-      let lastIndex = 0;
-      // 使用原始座標作為第一個採樣點
-      positions.push(stroke[0]);
-      for (let i = 1; i < stroke.length; i++) {
-        let dx = normalized[i].x - normalized[i - 1].x;
-        let dy = normalized[i].y - normalized[i - 1].y;
-        let dist = Math.hypot(dx, dy);
-        accDistance += dist;
-        if (accDistance >= 10) {
-          let totalDx = normalized[i].x - normalized[lastIndex].x;
-          let totalDy = normalized[i].y - normalized[lastIndex].y;
-          let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;
-          let quantized = Math.round(angle / 10) * 10;
-          angles.push(quantized);
-          positions.push(stroke[i]); // 保留原始採樣點
-          lastIndex = i;
-          accDistance = 0;
-        }
-      }
-      return { angles, positions };
+function drawDot(x,y,color='red'){
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, 2*Math.PI);
+  ctx.fillStyle= color;
+  ctx.fill();
+  ctx.closePath();
+}
+
+// 多筆畫 → 單陣列
+function unifyPoints(strokes){
+  let pts=[];
+  strokes.forEach(stk=>{
+    stk.forEach(p=> pts.push(p));
+  });
+  return pts;
+}
+
+// 取得 4 角落
+function getBoundingCorners(points){
+  let minX=Infinity, maxX=-Infinity;
+  let minY=Infinity, maxY=-Infinity;
+  points.forEach(pt=>{
+    if(pt.x<minX) minX=pt.x;
+    if(pt.x>maxX) maxX=pt.x;
+    if(pt.y<minY) minY=pt.y;
+    if(pt.y>maxY) maxY=pt.y;
+  });
+  return [
+    {x:minX,y:minY},
+    {x:minX,y:maxY},
+    {x:maxX,y:minY},
+    {x:maxX,y:maxY}
+  ];
+}
+
+// 等距取樣
+function resample(points, step=5){
+  if(points.length<2) return points;
+  const newPoints=[points[0]];
+  let accumulatedDist=0;
+
+  for(let i=1;i<points.length;i++){
+    let dx= points[i].x - points[i-1].x;
+    let dy= points[i].y - points[i-1].y;
+    let dist= Math.sqrt(dx*dx + dy*dy);
+
+    if(accumulatedDist+dist>=step){
+      let ratio=(step-accumulatedDist)/dist;
+      let newX= points[i-1].x + ratio*dx;
+      let newY= points[i-1].y + ratio*dy;
+      newPoints.push({x:newX, y:newY});
+
+      points.splice(i,0,{x:newX,y:newY});
+      accumulatedDist=0;
+    } else {
+      accumulatedDist+=dist;
     }
+  }
+  if(newPoints[newPoints.length-1] !== points[points.length-1]){
+    newPoints.push(points[points.length-1]);
+  }
+  return newPoints;
+}
 
-    // 取得整體筆跡簽名（多筆劃）
-    function getFullSignature(strokes) {
-      const strokeSignatures = strokes.map(s => getSignature(s));
-      return { strokeCount: strokes.length, strokeSignatures };
-    }
+// Ramer–Douglas–Peucker
+function ramerDouglasPeucker(points, epsilon=3){
+  if(points.length<3) return points;
 
-    // 比較單一筆劃簽名：角度差與採樣點座標差均計算
-    function signatureDistance(sig1, sig2) {
-      const len = Math.min(sig1.angles.length, sig2.angles.length);
-      let angleDiff = 0, posDiff = 0;
-      for (let i = 0; i < len; i++) {
-        angleDiff += Math.abs(sig1.angles[i] - sig2.angles[i]);
-        let dx = sig1.positions[i].x - sig2.positions[i].x;
-        let dy = sig1.positions[i].y - sig2.positions[i].y;
-        posDiff += Math.hypot(dx, dy);
-      }
-      // 採樣點數差異加權處理
-      angleDiff += Math.abs(sig1.angles.length - sig2.angles.length) * 10;
-      posDiff += Math.abs(sig1.positions.length - sig2.positions.length) * 10;
-      return angleDiff + posDiff;
-    }
+  let maxDist=0, index=0;
+  const start= points[0];
+  const end= points[points.length-1];
 
-    // 取得整體筆跡端點（第一筆第一點與最後一筆最後一點）
-    function drawingEndpoints(strokes) {
-      if (strokes.length === 0) return { first: null, last: null };
-      const first = strokes[0][0];
-      const lastStroke = strokes[strokes.length - 1];
-      const last = lastStroke[lastStroke.length - 1];
-      return { first, last };
+  for(let i=1;i<points.length-1;i++){
+    const dist= perpendicularDistance(points[i], start, end);
+    if(dist>maxDist){
+      index=i; maxDist=dist;
     }
+  }
+  if(maxDist>epsilon){
+    let left= ramerDouglasPeucker(points.slice(0,index+1), epsilon);
+    let right= ramerDouglasPeucker(points.slice(index), epsilon);
+    return left.slice(0, left.length-1).concat(right);
+  } else {
+    return [start,end];
+  }
+}
 
-    // 計算兩組筆跡端點的歐氏距離和
-    function endpointDistance(strokesA, strokesB) {
-      const endpointsA = drawingEndpoints(strokesA);
-      const endpointsB = drawingEndpoints(strokesB);
-      if (!endpointsA.first || !endpointsB.first) return 0;
-      const d1 = Math.hypot(endpointsA.first.x - endpointsB.first.x, endpointsA.first.y - endpointsB.first.y);
-      const d2 = Math.hypot(endpointsA.last.x - endpointsB.last.x, endpointsA.last.y - endpointsB.last.y);
-      return d1 + d2;
-    }
+// 點到線段的垂直距離
+function perpendicularDistance(p, start, end){
+  const dx= end.x - start.x;
+  const dy= end.y - start.y;
+  if(dx===0 && dy===0){
+    return Math.sqrt((p.x-start.x)**2 + (p.y-start.y)**2);
+  }
+  const numerator= Math.abs(dy*p.x - dx*p.y + end.x*start.y - end.y*start.x);
+  const denominator= Math.sqrt(dx*dx + dy*dy);
+  return numerator/denominator;
+}
 
-    // 比較整體筆跡簽名：各筆劃簽名比對結果與端點位置差異相加（取消筆劃數懲罰）
-    function fullSignatureDistance(testStrokes, sampleStrokes) {
-      const testSig = getFullSignature(testStrokes);
-      const sampleSig = getFullSignature(sampleStrokes);
-      const common = Math.min(testSig.strokeCount, sampleSig.strokeCount);
-      let distance = 0;
-      for (let i = 0; i < common; i++) {
-        distance += signatureDistance(testSig.strokeSignatures[i], sampleSig.strokeSignatures[i]);
-      }
-      distance += endpointDistance(testStrokes, sampleStrokes);
-      return distance;
-    }
+// 形狀比對
+function shapeDistance(ptsA, ptsB){
+  if(ptsA.length===0||ptsB.length===0) return 9999999;
+  let boxA= getBox(ptsA);
+  let boxB= getBox(ptsB, 300);
 
-    /****************************
-     * 辨識與顯示結果函式 *
-     ****************************/
-    function doRecognition() {
-      if (allStrokes.length === 0) return;
-      const fullDrawing = allStrokes.slice();
-      let bestLabel = null;
-      let bestDistance = Infinity;
-      // 遍歷 localStorage 中所有 "label_*" 的訓練資料
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith("label_")) {
-          const label = key.substring(6);
-          const stored = JSON.parse(localStorage.getItem(key));
-          for (const sample of stored) {
-            let sampleData = sample;
-            if (typeof sample === "object" && sample.stroke !== undefined) {
-              sampleData = sample.stroke;
-            }
-            if (!sampleData || sampleData.length === 0) continue;
-            const dist = fullSignatureDistance(fullDrawing, sampleData);
-            if (dist < bestDistance) {
-              bestDistance = dist;
-              bestLabel = label;
-            }
-          }
-        }
-      }
-      if (bestLabel !== null) {
-        resultDiv.textContent = bestLabel;
-      } else {
-        resultDiv.textContent = "無訓練資料";
-      }
-      // 辨識後清空畫布
-      clearCanvas();
-    }
+  let scaledA= scalePoints(ptsA, boxA, 300);
+  let scaledB= scalePoints(ptsB, boxB, 300);
 
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      allStrokes = [];
-      currentStroke = [];
-    }
-  </script>
+  let len= Math.min(scaledA.length, scaledB.length);
+  let totalDist=0;
+  for(let i=0;i<len;i++){
+    let dx= scaledA[i].x - scaledB[i].x;
+    let dy= scaledA[i].y - scaledB[i].y;
+    totalDist+= Math.sqrt(dx*dx + dy*dy);
+  }
+  return totalDist / len;
+}
+function getBox(pts){
+  let minX=Infinity, maxX=-Infinity;
+  let minY=Infinity, maxY=-Infinity;
+  pts.forEach(p=>{
+    if(p.x<minX) minX=p.x;
+    if(p.x>maxX) maxX=p.x;
+    if(p.y<minY) minY=p.y;
+    if(p.y>maxY) maxY=p.y;
+  });
+  if(minX===Infinity){
+    return {minX:0,maxX:0,minY:0,maxY:0};
+  }
+  return {minX,maxX,minY,maxY};
+}
+function scalePoints(pts, box, size){
+  let w= box.maxX - box.minX;
+  let h= box.maxY - box.minY;
+  if(w===0) w=1;
+  if(h===0) h=1;
+
+  return pts.map(p=>{
+    let nx= (p.x-box.minX)/w * size;
+    let ny= (p.y-box.minY)/h * size;
+    return {x:nx,y:ny};
+  });
+}
+</script>
 </body>
 </html>
