@@ -1,581 +1,182 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>手寫校正與辨識</title>
+  <meta name="viewport" content="width=390, initial-scale=1.0">
+  <title>手寫記錄與辨識模組 - X或Y軸最大距離</title>
   <style>
-    /* 重置與基本設定 */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: sans-serif;
-      background-color: #000; /* 固定黑色背景 */
-      color: #fff;
+      margin: 0;
+      padding: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 100vh;
-      padding: 20px;
+      justify-content: center;
+      height: 100vh;
+      background-color: #f5f5f5;
     }
-    .container { display: flex; flex-direction: column; align-items: center; }
-    /* 浮動候選結果：固定在視窗頂部 */
-    #recognitionResults {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 5px 10px;
-      background: rgba(255,255,255,0.8);
-      border-radius: 5px;
-      font-size: 16px;
-      color: #000;
-      z-index: 1000;
-    }
-    /* 書寫區：固定 390x500px */
-    #mainCanvas {
-      border: 2px solid #fff;
-      background-color: #000; /* 固定黑色 */
+    #canvas {
+      border: 1px solid #333;
       width: 390px;
-      height: 500px;
+      height: 390px;
       touch-action: none;
-      margin-top: 60px; /* 留出候選結果空間 */
     }
-    /* 主頁面按鈕 */
-    .button-group {
-      margin-top: 20px;
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    .func-btn {
-      width: 100px;
-      height: 40px;
-      border: none;
-      border-radius: 5px;
-      background-color: #808080;
-      color: #fff;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    /* Modal 樣式 */
-    .modal {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.5);
-      justify-content: center;
-      align-items: center;
-      z-index: 100;
-    }
-    .modal-content {
-      background: #fff;
-      padding: 20px;
-      border-radius: 5px;
-      width: 300px;
-      color: #000;
-    }
-    .modal-content input,
-    .modal-content textarea,
-    .modal-content button {
-      width: 100%;
-      margin: 5px 0;
-      padding: 8px;
-      font-size: 14px;
-    }
-    /* 管理標籤 Modal 列表 */
-    #manageList {
+    #clearBtn {
       margin-top: 10px;
-      max-height: 200px;
-      overflow-y: auto;
-      border-top: 1px solid #ccc;
-      padding-top: 10px;
-    }
-    #manageList div {
-      border-bottom: 1px solid #ccc;
-      padding: 5px 0;
-      margin-bottom: 5px;
-      cursor: pointer;
+      padding: 10px 20px;
+      font-size: 16px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <!-- 浮動候選結果 -->
-    <div id="recognitionResults">無訓練資料</div>
-    <!-- 書寫區 -->
-    <canvas id="mainCanvas"></canvas>
-    <!-- 主頁面按鈕 -->
-    <div class="button-group">
-      <button id="clearBtn" class="func-btn">清空畫布</button>
-      <button id="manageTagBtn" class="func-btn">管理標籤</button>
-      <button id="menuBtn" class="func-btn">選單</button>
-    </div>
-  </div>
-  
-  <!-- 隱藏的檔案輸入欄位（上傳用） -->
-  <input type="file" id="fileInput" style="display:none;">
-  
-  <!-- Modal：選單 Modal -->
-  <div id="modalRight" class="modal">
-    <div class="modal-content">
-      <button id="downloadBtnMenu">下載資料</button>
-      <button id="uploadBtnMenu">上傳資料</button>
-      <button id="clearAllBtn">清除所有標籤</button>
-      <button id="menuCancelBtn">取消</button>
-    </div>
-  </div>
-  
-  <!-- Modal：管理標籤 Modal -->
-  <div id="modalManageTag" class="modal">
-    <div class="modal-content">
-      <h3>管理標籤</h3>
-      <!-- 新增標籤區 -->
-      <input type="text" id="newTagName" placeholder="標籤名稱">
-      <textarea id="newTagRemark" placeholder="備註 (選填)"></textarea>
-      <button id="addNewTagBtn">新增標籤</button>
-      <hr>
-      <!-- 已建立標籤列表 -->
-      <div id="manageList">尚無儲存標籤</div>
-      <button id="manageCloseBtn">關閉</button>
-    </div>
-  </div>
-  
-  <!-- Modal：標籤選項 Modal -->
-  <div id="modalTagOption" class="modal">
-    <div class="modal-content">
-      <h3 id="tagOptionTitle"></h3>
-      <button id="saveNewDataBtn">儲存新數據</button>
-      <button id="updateRemarkBtn">更新備註</button>
-      <button id="deleteTagBtn">刪除標籤</button>
-      <button id="tagOptionCancelBtn">取消</button>
-    </div>
-  </div>
-  
-  <!-- Modal：更新備註 Modal -->
-  <div id="modalUpdateRemark" class="modal">
-    <div class="modal-content">
-      <h3>更新備註</h3>
-      <input type="text" id="newRemarkInput" placeholder="請輸入新的備註">
-      <button id="confirmUpdateRemarkBtn">確定更新</button>
-      <button id="cancelUpdateRemarkBtn">取消</button>
-    </div>
-  </div>
-  
+  <canvas id="canvas" width="390" height="390"></canvas>
+  <button id="clearBtn">清除</button>
   <script>
-    // === 內建預設標籤 ===
-    const defaultLabels = ["蔥油餅", "蔥油餅加蛋", "大腸麵線", "肉羹麵線", "炒麵", "小炒麵", "紅茶", "奶茶"];
-    defaultLabels.forEach(label => {
-      if (!localStorage.getItem("label_" + label)) {
-        localStorage.setItem("label_" + label, JSON.stringify([]));
-      }
-    });
-    
-    // ========== 全域變數與初始化 ==========
-    let mode = "test";
-    // 儲存所有已完成的筆劃（每筆為一 array）
-    let allStrokes = [];
-    // 當前正在繪製的筆劃（單一 stroke）
-    let currentStroke = [];
-    let currentTag = ""; // 當前選中的標籤
-    const canvas = document.getElementById("mainCanvas");
+    const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = 390;
-    canvas.height = 500;
-    canvas.style.backgroundColor = "#000";
-    document.body.style.backgroundColor = "#000";
-    ctx.strokeStyle = "#fff";
-    
-    // ========== 畫板事件 ==========
+    const clearBtn = document.getElementById("clearBtn");
+
     let drawing = false;
-    function getCanvasPos(evt) {
+    let points = [];
+
+    // 取得畫布上相對座標
+    function getCanvasPos(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
-      let x, y;
-      if (evt.touches) {
-        x = evt.touches[0].clientX - rect.left;
-        y = evt.touches[0].clientY - rect.top;
-      } else {
-        x = evt.clientX - rect.left;
-        y = evt.clientY - rect.top;
-      }
-      return { x, y };
+      return { x: clientX - rect.left, y: clientY - rect.top };
     }
-    function startDrawing(evt) {
-      evt.preventDefault();
+
+    // 清除畫布與點陣列
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      points = [];
+    }
+
+    // 開始書寫：初始化點陣列與起點
+    function startDrawing(pos) {
       drawing = true;
-      currentStroke = [];
-      const pos = getCanvasPos(evt);
-      currentStroke.push(pos);
+      clearCanvas();
+      points.push(pos);
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
     }
-    function draw(evt) {
+
+    // 書寫過程中依序記錄點並畫線
+    function drawMove(pos) {
       if (!drawing) return;
-      evt.preventDefault();
-      const pos = getCanvasPos(evt);
-      currentStroke.push(pos);
+      points.push(pos);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
-      updateRecognitionResults();
     }
-    function endDrawing(evt) {
+
+    // 筆畫結束後進行轉折點偵測與標記
+    function endDrawing() {
       if (!drawing) return;
-      evt.preventDefault();
       drawing = false;
-      if (currentStroke.length > 0) {
-        allStrokes.push(currentStroke);
+      
+      const turningPoints = detectTurningPoints(points);
+      
+      ctx.fillStyle = "red";
+      ctx.font = "16px Arial";
+      
+      // 依序標記偵測到的轉折點（從 0 開始編號）
+      for (let i = 0; i < turningPoints.length; i++) {
+        const pt = turningPoints[i];
+        ctx.fillText(i.toString(), pt.x, pt.y);
       }
-      currentStroke = [];
-      updateRecognitionResults();
-    }
-    canvas.addEventListener("mousedown", startDrawing);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", endDrawing);
-    canvas.addEventListener("mouseout", endDrawing);
-    canvas.addEventListener("touchstart", startDrawing);
-    canvas.addEventListener("touchmove", draw);
-    canvas.addEventListener("touchend", endDrawing);
-    canvas.addEventListener("touchcancel", endDrawing);
-    
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      allStrokes = [];
-      currentStroke = [];
-      document.getElementById("recognitionResults").textContent = "無訓練資料";
-    }
-    
-    // ========== 辨識／校正函式 ==========
-    // 單一筆劃的簽名：以筆劃原始資料計算，每累積 10px 採樣一次，角度以筆劃第一點正規化計算，但採樣後保留原始座標
-    function getSignature(stroke) {
-      if (stroke.length < 2) return { angles: [], positions: [] };
-      // 用第一點正規化來計算角度，但保留原始採樣點座標
-      const origin = stroke[0];
-      let normalized = stroke.map(pt => ({ x: pt.x - origin.x, y: pt.y - origin.y }));
-      let angles = [];
-      let positions = [];
-      let accDistance = 0;
-      let lastIndex = 0;
       
-      // 保留第一個點（原始座標）
-      positions.push(stroke[0]);
+      console.log("所有點：", points);
+      console.log("偵測到的轉折點：", turningPoints);
+    }
+
+    /* 
+      偵測轉折點邏輯（以 x 或 y 軸最大距離比較，門檻值 5px）：
       
-      for (let i = 1; i < stroke.length; i++) {
-        let dx = normalized[i].x - normalized[i - 1].x;
-        let dy = normalized[i].y - normalized[i - 1].y;
-        let dist = Math.hypot(dx, dy);
-        accDistance += dist;
+      - 以第一個點作為 lastRecorded（同時記錄為第一個轉折點）。
+      - 從第二個點開始，計算每個點與 lastRecorded 的距離：
+            d = max(|current.x - lastRecorded.x|, |current.y - lastRecorded.y|)
+      - 如果 d 值持續上升，則更新 candidate 為該點（candidate 代表目前區段中與 lastRecorded 差距最大的點）。
+      - 當遇到 d 值下降時，若 candidate 與 lastRecorded 的距離大於等於門檻（5px），就記錄 candidate 為轉折點，並更新 lastRecorded 為 candidate，再重新開始比較。
+      - 筆畫結束時，若最後的 candidate 與 lastRecorded 的距離達標，也記錄之。
+    */
+    function detectTurningPoints(points) {
+      const threshold = 5;
+      let turningPoints = [];
+      if (points.length === 0) return turningPoints;
+      
+      // 記錄第一個點為起點
+      let lastRecorded = points[0];
+      turningPoints.push(lastRecorded);
+      
+      let candidate = points[0];
+      let prevD = 0; // 前一個候選的距離
+      for (let i = 1; i < points.length; i++) {
+        let current = points[i];
+        let d = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
         
-        if (accDistance >= 10) {  // 每累積 10px 採樣一次
-          let totalDx = normalized[i].x - normalized[lastIndex].x;
-          let totalDy = normalized[i].y - normalized[lastIndex].y;
-          let angle = Math.atan2(totalDy, totalDx) * 180 / Math.PI;
-          let quantized = Math.round(angle / 10) * 10;
-          angles.push(quantized);
-          positions.push(stroke[i]); // 保留原始座標
-          lastIndex = i;
-          accDistance = 0;
+        // 如果目前的 d 值大於等於前一個候選值，更新 candidate
+        if (d >= prevD) {
+          candidate = current;
+          prevD = d;
+        } else {
+          // d 值下降，表示候選點已達局部最大
+          if (prevD >= threshold && (candidate.x !== lastRecorded.x || candidate.y !== lastRecorded.y)) {
+            turningPoints.push(candidate);
+            lastRecorded = candidate;
+          }
+          // 重置 candidate 與 prevD
+          candidate = current;
+          prevD = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
         }
       }
-      return { angles, positions };
-    }
-    
-    // 取得整體簽名：將所有筆劃轉換為簽名，並記錄筆劃數
-    function getFullSignature(strokes) {
-      let strokeSignatures = strokes.map(s => getSignature(s));
-      return { strokeCount: strokes.length, strokeSignatures: strokeSignatures };
-    }
-    
-    // 比較單一筆劃簽名：角度差異與採樣點座標差異均納入計算
-    function signatureDistance(sig1, sig2) {
-      const len = Math.min(sig1.angles.length, sig2.angles.length);
-      let angleDiff = 0;
-      let posDiff = 0;
-      for (let i = 0; i < len; i++) {
-        angleDiff += Math.abs(sig1.angles[i] - sig2.angles[i]);
-        let dx = sig1.positions[i].x - sig2.positions[i].x;
-        let dy = sig1.positions[i].y - sig2.positions[i].y;
-        posDiff += Math.hypot(dx, dy);
-      }
-      // 採樣點數不一致時，加權差異
-      angleDiff += Math.abs(sig1.angles.length - sig2.angles.length) * 10;
-      posDiff += Math.abs(sig1.positions.length - sig2.positions.length) * 10;
-      return angleDiff + posDiff;
-    }
-    
-    // === 端點位置檢查 ===
-    // 取得整個繪製的端點：第一個筆劃的第一個點與最後一個筆劃的最後一個點（使用原始座標）
-    function drawingEndpoints(strokes) {
-      if (strokes.length === 0) return { first: null, last: null };
-      let first = strokes[0][0];
-      let lastStroke = strokes[strokes.length - 1];
-      let last = lastStroke[lastStroke.length - 1];
-      return { first, last };
-    }
-    
-    // 計算兩組繪製資料端點之間的歐氏距離和
-    function endpointDistance(strokesA, strokesB) {
-      const endpointsA = drawingEndpoints(strokesA);
-      const endpointsB = drawingEndpoints(strokesB);
-      if (!endpointsA.first || !endpointsB.first) return 0;
-      const d1 = Math.hypot(endpointsA.first.x - endpointsB.first.x, endpointsA.first.y - endpointsB.first.y);
-      const d2 = Math.hypot(endpointsA.last.x - endpointsB.last.x, endpointsA.last.y - endpointsB.last.y);
-      return d1 + d2;
-    }
-    
-    // 比較整體簽名：以各筆劃的簽名比對加上端點位置差異，取消筆劃數懲罰
-    function fullSignatureDistance(rawTestStrokes, rawSampleStrokes) {
-      let testSig = getFullSignature(rawTestStrokes);
-      let sampleSig = getFullSignature(rawSampleStrokes);
-      let common = Math.min(testSig.strokeCount, sampleSig.strokeCount);
-      let distance = 0;
-      for (let i = 0; i < common; i++) {
-        distance += signatureDistance(testSig.strokeSignatures[i], sampleSig.strokeSignatures[i]);
-      }
-      // 加上端點位置差異
-      distance += endpointDistance(rawTestStrokes, rawSampleStrokes);
-      return distance;
-    }
-    
-    // 更新辨識結果：比對目前完整筆跡與本地存儲資料
-    function updateRecognitionResults() {
-      // fullDrawing：所有已完成筆劃加上正在繪製中的筆劃（若有）
-      let fullDrawing = allStrokes.slice();
-      if (drawing && currentStroke.length > 0) {
-        fullDrawing.push(currentStroke);
-      }
-      if (fullDrawing.length === 0) return;
       
-      let candidates = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith("label_")) {
-          let label = key.substring(6);
-          let stored = JSON.parse(localStorage.getItem(key));
-          let bestDistance = Infinity;
-          for (let sample of stored) {
-            // sample 可能為 { stroke, remark } 或直接為多筆劃資料
-            let sampleData = sample;
-            if (typeof sample === 'object' && sample.stroke !== undefined) {
-              sampleData = sample.stroke;
-            }
-            if (sampleData.length === 0) continue;
-            let dist = fullSignatureDistance(fullDrawing, sampleData);
-            if (dist < bestDistance) bestDistance = dist;
-          }
-          // 若該標籤尚無訓練資料，則設定一個大值
-          if (bestDistance === Infinity) {
-            bestDistance = 1e6;
-          }
-          candidates.push({ label: label, distance: bestDistance });
-        }
+      // 筆畫結束時，檢查最後的 candidate
+      let finalD = Math.max(Math.abs(candidate.x - lastRecorded.x), Math.abs(candidate.y - lastRecorded.y));
+      if (finalD >= threshold && (candidate.x !== lastRecorded.x || candidate.y !== lastRecorded.y)) {
+        turningPoints.push(candidate);
       }
-      const resultsDiv = document.getElementById("recognitionResults");
-      if (candidates.length === 0) {
-        resultsDiv.textContent = "無訓練資料";
-        return;
-      }
-      candidates.sort((a, b) => a.distance - b.distance);
-      let topThree = candidates.slice(0, 3);
-      resultsDiv.innerHTML = "";
-      topThree.forEach((item, idx) => {
-        let candidateDiv = document.createElement("div");
-        candidateDiv.textContent = `${idx+1}. ${item.label} (差異: ${item.distance.toFixed(2)})`;
-        candidateDiv.style.cursor = "pointer";
-        candidateDiv.addEventListener("click", function(){
-          if (confirm("您確定要將目前筆跡存入標籤 " + item.label + " 嗎？")) {
-            applyCorrection(item.label);
-          }
-        });
-        resultsDiv.appendChild(candidateDiv);
-      });
+      
+      return turningPoints;
     }
-    
-    // 將目前完整筆跡存入指定標籤中
-    function applyCorrection(label) {
-      let drawingData = allStrokes.slice();
-      if (currentStroke.length > 0) {
-        drawingData.push(currentStroke);
-      }
-      if (drawingData.length === 0) return;
-      const storageKey = "label_" + label;
-      let storedData = localStorage.getItem(storageKey);
-      if (storedData) { storedData = JSON.parse(storedData); }
-      else { storedData = []; }
-      storedData.push(drawingData);
-      localStorage.setItem(storageKey, JSON.stringify(storedData));
+
+    // Touch 事件（行動裝置）
+    canvas.addEventListener("touchstart", function(e) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const pos = getCanvasPos(touch.clientX, touch.clientY);
+      startDrawing(pos);
+    });
+    canvas.addEventListener("touchmove", function(e) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const pos = getCanvasPos(touch.clientX, touch.clientY);
+      drawMove(pos);
+    });
+    canvas.addEventListener("touchend", function(e) {
+      e.preventDefault();
+      endDrawing();
+    });
+
+    // Mouse 事件（桌面測試）
+    canvas.addEventListener("mousedown", function(e) {
+      const pos = getCanvasPos(e.clientX, e.clientY);
+      startDrawing(pos);
+    });
+    canvas.addEventListener("mousemove", function(e) {
+      if (!drawing) return;
+      const pos = getCanvasPos(e.clientX, e.clientY);
+      drawMove(pos);
+    });
+    canvas.addEventListener("mouseup", function(e) {
+      endDrawing();
+    });
+    canvas.addEventListener("mouseleave", function(e) {
+      if (drawing) endDrawing();
+    });
+
+    // 清除按鈕事件
+    clearBtn.addEventListener("click", function() {
       clearCanvas();
-    }
-    
-    // ========== 主頁面按鈕事件 ==========
-    const clearBtn = document.getElementById("clearBtn");
-    const manageTagBtn = document.getElementById("manageTagBtn");
-    const menuBtn = document.getElementById("menuBtn");
-    
-    clearBtn.addEventListener("click", clearCanvas);
-    manageTagBtn.addEventListener("click", function() {
-      document.getElementById("newTagName").value = "";
-      document.getElementById("newTagRemark").value = "";
-      updateManageList();
-      document.getElementById("modalManageTag").style.display = "flex";
-    });
-    menuBtn.addEventListener("click", function() {
-      document.getElementById("modalRight").style.display = "flex";
-    });
-    
-    // ========== 選單 Modal 事件 ==========
-    document.getElementById("downloadBtnMenu").addEventListener("click", function() {
-      let data = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith("label_")) {
-          data[key] = JSON.parse(localStorage.getItem(key));
-        }
-      }
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "text/plain;charset=utf-8" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "training_data.txt";
-      link.click();
-    });
-    document.getElementById("uploadBtnMenu").addEventListener("click", function() {
-      document.getElementById("fileInput").click();
-    });
-    document.getElementById("clearAllBtn").addEventListener("click", function() {
-      if (confirm("確認清除所有標籤？")) {
-        let keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key.startsWith("label_")) { keysToRemove.push(key); }
-        }
-        for (const key of keysToRemove) { localStorage.removeItem(key); }
-        alert("已清除所有標籤");
-      }
-    });
-    document.getElementById("menuCancelBtn").addEventListener("click", function() {
-      document.getElementById("modalRight").style.display = "none";
-    });
-    
-    // 檔案上傳處理
-    document.getElementById("fileInput").addEventListener("change", function(evt) {
-      const file = evt.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const data = JSON.parse(e.target.result);
-          for (let key in data) {
-            if (data.hasOwnProperty(key)) {
-              localStorage.setItem(key, JSON.stringify(data[key]));
-            }
-          }
-          alert("上傳資料成功");
-        } catch(err) {
-          alert("檔案格式錯誤");
-        }
-      };
-      reader.readAsText(file);
-    });
-    
-    // ========== 管理標籤 Modal ==========
-    function updateManageList() {
-      const container = document.getElementById("manageList");
-      container.innerHTML = "";
-      let found = false;
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key.startsWith("label_")) {
-          found = true;
-          const label = key.substring(6);
-          let stored = JSON.parse(localStorage.getItem(key));
-          let remark = "";
-          if (stored.length > 0 && stored[stored.length - 1].remark !== undefined) {
-            remark = stored[stored.length - 1].remark;
-          }
-          const div = document.createElement("div");
-          div.innerHTML = `<strong>${label}</strong><br>備註：${remark}`;
-          div.style.cursor = "pointer";
-          div.addEventListener("click", function() {
-            currentTag = label;
-            document.getElementById("tagOptionTitle").textContent = "標籤：" + label;
-            document.getElementById("modalTagOption").style.display = "flex";
-          });
-          container.appendChild(div);
-        }
-      }
-      if (!found) { container.textContent = "尚無儲存標籤"; }
-    }
-    
-    // 管理標籤 Modal - 新增標籤
-    document.getElementById("addNewTagBtn").addEventListener("click", function() {
-      const newTagName = document.getElementById("newTagName").value.trim();
-      const newTagRemark = document.getElementById("newTagRemark").value.trim();
-      if (newTagName === "") {
-        alert("請輸入標籤名稱");
-        return;
-      }
-      if (allStrokes.length === 0 && currentStroke.length === 0) {
-        alert("請先在畫板上書寫");
-        return;
-      }
-      const storageKey = "label_" + newTagName;
-      let storedData = localStorage.getItem(storageKey);
-      if (storedData) { storedData = JSON.parse(storedData); }
-      else { storedData = []; }
-      let drawingData = allStrokes.slice();
-      if (currentStroke.length > 0) drawingData.push(currentStroke);
-      storedData.push({ stroke: drawingData, remark: newTagRemark });
-      localStorage.setItem(storageKey, JSON.stringify(storedData));
-      alert("已新增標籤：" + newTagName);
-      clearCanvas();
-      updateManageList();
-    });
-    
-    document.getElementById("manageCloseBtn").addEventListener("click", function() {
-      document.getElementById("modalManageTag").style.display = "none";
-    });
-    
-    // ========== 標籤選項 Modal ==========
-    document.getElementById("saveNewDataBtn").addEventListener("click", function() {
-      applyCorrection(currentTag);
-      document.getElementById("modalTagOption").style.display = "none";
-    });
-    document.getElementById("updateRemarkBtn").addEventListener("click", function() {
-      document.getElementById("newRemarkInput").value = "";
-      document.getElementById("modalTagOption").style.display = "none";
-      document.getElementById("modalUpdateRemark").style.display = "flex";
-    });
-    document.getElementById("deleteTagBtn").addEventListener("click", function() {
-      if (confirm("確定刪除標籤 " + currentTag + " 嗎？")) {
-        localStorage.removeItem("label_" + currentTag);
-        alert("標籤 " + currentTag + " 已刪除");
-      }
-      document.getElementById("modalTagOption").style.display = "none";
-      updateManageList();
-    });
-    document.getElementById("tagOptionCancelBtn").addEventListener("click", function() {
-      document.getElementById("modalTagOption").style.display = "none";
-    });
-    
-    // ========== 更新備註 Modal ==========
-    document.getElementById("confirmUpdateRemarkBtn").addEventListener("click", function() {
-      const newRemark = document.getElementById("newRemarkInput").value.trim();
-      if (newRemark === "") {
-        alert("請輸入備註");
-        return;
-      }
-      const storageKey = "label_" + currentTag;
-      let stored = JSON.parse(localStorage.getItem(storageKey));
-      for (let i = 0; i < stored.length; i++) {
-        stored[i].remark = newRemark;
-      }
-      localStorage.setItem(storageKey, JSON.stringify(stored));
-      alert("備註已更新");
-      document.getElementById("modalUpdateRemark").style.display = "none";
-      updateManageList();
-    });
-    document.getElementById("cancelUpdateRemarkBtn").addEventListener("click", function() {
-      document.getElementById("modalUpdateRemark").style.display = "none";
+      points = [];
     });
   </script>
 </body>
