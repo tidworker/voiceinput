@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=390, initial-scale=1.0">
-  <title>手寫記錄與辨識 - 分軸縮小即記錄轉折點</title>
+  <title>手寫記錄與辨識 - 分軸縮小即記錄轉折點 (30px 門檻, 結尾點必記, 50×50 區域內只保留一點)</title>
   <style>
     body {
       margin: 0;
@@ -37,7 +37,17 @@
     const clearBtn = document.getElementById("clearBtn");
     let drawing = false;
     let points = [];
-    const THRESHOLD = 30; // 兩記錄點間至少 30px
+    const THRESHOLD = 30; // x 與 y 軸位移均需達到 30px 才認定為有效轉折點
+
+    // 判斷 newPoint 是否與 turningPoints 中的任何一點落在同一個 50×50 區域內
+    function isFarEnough(newPoint, turningPoints) {
+      for (let p of turningPoints) {
+        if (Math.abs(newPoint.x - p.x) < 50 && Math.abs(newPoint.y - p.y) < 50) {
+          return false;
+        }
+      }
+      return true;
+    }
 
     // 取得畫布上相對座標
     function getCanvasPos(clientX, clientY) {
@@ -71,12 +81,15 @@
     /*
       detectTurningPoints 函式說明：
       - 以第一個點作為起始記錄點 lastTurning，並存入轉折點陣列。
-      - 使用 candidate 儲存從 lastTurning 出發距離持續增加的點，
-        並分別記錄相對 lastTurning 的最佳 x 與 y 距離（bestXDist, bestYDist）。
-      - 當遇到新的點，其相對 lastTurning 的 x 或 y 距離未能超越先前最佳值時，
-        就認為前一個 candidate 為局部轉折點（前提是 candidate 與 lastTurning 至少有 THRESHOLD 的距離）。
-      - 更新 lastTurning 為 candidate，並從當前點重新開始累積。
-      - 最後若迴圈結束時 candidate 與 lastTurning 不同且距離達標，也補記錄 candidate。
+      - 從 lastTurning 出發，沿著筆跡逐點更新候選點 candidate，
+        並分別記錄相對於 lastTurning 的最佳 x 與 y 軸位移（bestXDist, bestYDist）。
+      - 當遇到新的點，其相對於 lastTurning 的 x 或 y 位移未能超越先前最佳值時，
+        判斷前一個 candidate 是否在 x 與 y 軸上均達到 30px（THRESHOLD）。
+        如果達標且該 candidate 與已記錄轉折點不在同一 50×50 區域內，就記錄 candidate 為轉折點，
+        並更新 lastTurning 為 candidate。
+      - 每次重置候選點時，都以 lastTurning 為新基準。
+      - 迴圈結束後，若最後候選點符合門檻且與 lastTurning 不同，則補記錄一次；
+        此外，筆畫結尾點（最後一個點）一定加入（不受 50×50 檢查限制）。
     */
     function detectTurningPoints(points) {
       if (points.length === 0) return [];
@@ -85,56 +98,63 @@
       let lastTurning = points[0];
       turningPoints.push(lastTurning);
       
-      // 初始化 candidate 與最佳距離
       let candidate = lastTurning;
       let bestXDist = 0;
       let bestYDist = 0;
       
       for (let i = 1; i < points.length; i++) {
         const current = points[i];
-        // 分別計算 x 與 y 軸距離
         const xDist = Math.abs(current.x - lastTurning.x);
         const yDist = Math.abs(current.y - lastTurning.y);
         
-        // 如果在 x 與 y 軸上均未縮小，更新候選點與最佳距離
+        // 當兩軸位移均不小於先前最佳值時，更新候選點與最佳位移
         if (xDist >= bestXDist && yDist >= bestYDist) {
           candidate = current;
           bestXDist = xDist;
           bestYDist = yDist;
         } else {
-          // 當任一軸的距離縮小時，檢查先前的 candidate 是否達到 THRESHOLD
-          const candidateDist = Math.max(bestXDist, bestYDist);
-          if (candidateDist >= THRESHOLD) {
-            turningPoints.push(candidate);
+          // 當任一軸位移縮小時，檢查 candidate 是否在兩軸上均達到 THRESHOLD
+          if (bestXDist >= THRESHOLD && bestYDist >= THRESHOLD) {
+            // 若 candidate 與目前轉折點集合中沒有點落在同一 50×50 區域，則記錄
+            if (isFarEnough(candidate, turningPoints)) {
+              turningPoints.push(candidate);
+            }
             lastTurning = candidate;
           }
-          // 從 lastTurning 重置，候選點重新設為 current
+          // 從 lastTurning 重置候選點與最佳位移
           candidate = current;
           bestXDist = Math.abs(current.x - lastTurning.x);
           bestYDist = Math.abs(current.y - lastTurning.y);
         }
       }
       
-      // 迴圈結束後，若最後候選點與 lastTurning 不同且距離達標，補記錄一次
-      const finalDist = Math.max(
-        Math.abs(candidate.x - lastTurning.x),
-        Math.abs(candidate.y - lastTurning.y)
-      );
-      if (finalDist >= THRESHOLD && candidate !== lastTurning) {
-        turningPoints.push(candidate);
+      // 迴圈結束後，若最後候選點符合門檻且與 lastTurning 不同，補記錄一次
+      if (Math.abs(candidate.x - lastTurning.x) >= THRESHOLD &&
+          Math.abs(candidate.y - lastTurning.y) >= THRESHOLD &&
+          (candidate.x !== lastTurning.x || candidate.y !== lastTurning.y)) {
+        if (isFarEnough(candidate, turningPoints)) {
+          turningPoints.push(candidate);
+        }
+      }
+      
+      // 強制記錄筆畫最後一個點（不檢查 50×50 限制）
+      const lastPoint = points[points.length - 1];
+      const lastRecorded = turningPoints[turningPoints.length - 1];
+      if (lastPoint.x !== lastRecorded.x || lastPoint.y !== lastRecorded.y) {
+        turningPoints.push(lastPoint);
       }
       
       return turningPoints;
     }
 
-    // 筆畫結束後進行轉折點偵測與標記
+    // 筆畫結束後偵測轉折點，並在畫布上標記
     function endDrawing() {
       if (!drawing) return;
       drawing = false;
       
       const turningPoints = detectTurningPoints(points);
       
-      // 標記轉折點：用紅色圓圈與編號
+      // 用紅色圓圈與編號標示轉折點
       ctx.fillStyle = "red";
       ctx.font = "16px Arial";
       for (let i = 0; i < turningPoints.length; i++) {
