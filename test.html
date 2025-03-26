@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=390, initial-scale=1.0">
-  <title>手寫記錄與辨識模組 - X或Y軸最大距離</title>
+  <title>手寫記錄與辨識模組 - 依 x 或 y 軸距離紀錄轉折點</title>
   <style>
     body {
       margin: 0;
@@ -35,11 +35,11 @@
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const clearBtn = document.getElementById("clearBtn");
-
     let drawing = false;
     let points = [];
+    const threshold = 5;  // 5px 閾值
 
-    // 取得畫布上相對座標
+    // 取得畫布上的相對座標
     function getCanvasPos(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       return { x: clientX - rect.left, y: clientY - rect.top };
@@ -68,6 +68,53 @@
       ctx.stroke();
     }
 
+    /* 
+      偵測轉折點邏輯：
+      - 以第一個點作為 lastRecorded 並記錄下。
+      - 從第二個點開始，計算與 lastRecorded 之「x 或 y 軸最大差距」(d)。
+      - 當 d 持續增長時更新 candidate；當發現 d 開始縮短時，
+        若候選點與 lastRecorded 的距離（d）達到或超過 threshold (5px) 時，
+        記錄 candidate 為轉折點，並以其作為新的 lastRecorded。
+      - 最後再檢查一次最後候選點。
+    */
+    function detectTurningPoints(points) {
+      let turningPoints = [];
+      if (points.length === 0) return turningPoints;
+      
+      let lastRecorded = points[0];
+      turningPoints.push(lastRecorded);
+      
+      let candidate = lastRecorded;
+      let prevD = 0;
+      
+      for (let i = 1; i < points.length; i++) {
+        let current = points[i];
+        // 計算與 lastRecorded 之「x 或 y 軸最大差距」
+        let d = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
+        
+        if (d >= prevD) {
+          candidate = current;
+          prevD = d;
+        } else {
+          // 當距離開始縮短時，若前一區段中候選點與 lastRecorded 間距 >= threshold，才記錄
+          if (prevD >= threshold) {
+            turningPoints.push(candidate);
+            lastRecorded = candidate;
+          }
+          candidate = current;
+          prevD = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
+        }
+      }
+      
+      // 檢查筆畫結束時最後候選點與 lastRecorded 的距離是否達標
+      let finalD = Math.max(Math.abs(candidate.x - lastRecorded.x), Math.abs(candidate.y - lastRecorded.y));
+      if (finalD >= threshold && (candidate.x !== lastRecorded.x || candidate.y !== lastRecorded.y)) {
+        turningPoints.push(candidate);
+      }
+      
+      return turningPoints;
+    }
+
     // 筆畫結束後進行轉折點偵測與標記
     function endDrawing() {
       if (!drawing) return;
@@ -75,10 +122,9 @@
       
       const turningPoints = detectTurningPoints(points);
       
+      // 標記轉折點：紅色文字標示編號
       ctx.fillStyle = "red";
       ctx.font = "16px Arial";
-      
-      // 依序標記偵測到的轉折點（從 0 開始編號）
       for (let i = 0; i < turningPoints.length; i++) {
         const pt = turningPoints[i];
         ctx.fillText(i.toString(), pt.x, pt.y);
@@ -86,56 +132,6 @@
       
       console.log("所有點：", points);
       console.log("偵測到的轉折點：", turningPoints);
-    }
-
-    /* 
-      偵測轉折點邏輯（以 x 或 y 軸最大距離比較，門檻值 5px）：
-      
-      - 以第一個點作為 lastRecorded（同時記錄為第一個轉折點）。
-      - 從第二個點開始，計算每個點與 lastRecorded 的距離：
-            d = max(|current.x - lastRecorded.x|, |current.y - lastRecorded.y|)
-      - 如果 d 值持續上升，則更新 candidate 為該點（candidate 代表目前區段中與 lastRecorded 差距最大的點）。
-      - 當遇到 d 值下降時，若 candidate 與 lastRecorded 的距離大於等於門檻（5px），就記錄 candidate 為轉折點，並更新 lastRecorded 為 candidate，再重新開始比較。
-      - 筆畫結束時，若最後的 candidate 與 lastRecorded 的距離達標，也記錄之。
-    */
-    function detectTurningPoints(points) {
-      const threshold = 5;
-      let turningPoints = [];
-      if (points.length === 0) return turningPoints;
-      
-      // 記錄第一個點為起點
-      let lastRecorded = points[0];
-      turningPoints.push(lastRecorded);
-      
-      let candidate = points[0];
-      let prevD = 0; // 前一個候選的距離
-      for (let i = 1; i < points.length; i++) {
-        let current = points[i];
-        let d = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
-        
-        // 如果目前的 d 值大於等於前一個候選值，更新 candidate
-        if (d >= prevD) {
-          candidate = current;
-          prevD = d;
-        } else {
-          // d 值下降，表示候選點已達局部最大
-          if (prevD >= threshold && (candidate.x !== lastRecorded.x || candidate.y !== lastRecorded.y)) {
-            turningPoints.push(candidate);
-            lastRecorded = candidate;
-          }
-          // 重置 candidate 與 prevD
-          candidate = current;
-          prevD = Math.max(Math.abs(current.x - lastRecorded.x), Math.abs(current.y - lastRecorded.y));
-        }
-      }
-      
-      // 筆畫結束時，檢查最後的 candidate
-      let finalD = Math.max(Math.abs(candidate.x - lastRecorded.x), Math.abs(candidate.y - lastRecorded.y));
-      if (finalD >= threshold && (candidate.x !== lastRecorded.x || candidate.y !== lastRecorded.y)) {
-        turningPoints.push(candidate);
-      }
-      
-      return turningPoints;
     }
 
     // Touch 事件（行動裝置）
