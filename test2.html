@@ -12,6 +12,24 @@
       padding: 0;
     }
     h2 { text-align: center; }
+    /* 建議區域，放在畫面上方 */
+    #phase1Suggestions {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin: 10px auto;
+      max-width: 390px;
+      font-size: 18px;
+    }
+    #phase1Suggestions div {
+      flex: 1;
+      text-align: center;
+      cursor: pointer;
+      border: 1px solid #ccc;
+      padding: 5px;
+      margin: 0 5px;
+      border-radius: 5px;
+    }
     canvas {
       display: block;
       margin: 0 auto 10px;
@@ -20,17 +38,20 @@
       max-width: 390px;
       height: auto;
     }
-    #clearButton, #outputField {
+    #clearButton {
       display: block;
-      margin: 10px auto;
+      margin: 0 auto 10px;
       font-size: 16px;
     }
     #outputField {
+      display: block;
+      margin: 10px auto;
       width: 90%;
       max-width: 390px;
       padding: 8px;
+      font-size: 16px;
     }
-    /* Modal 樣式 */
+    /* Modal 樣式 (用於後續階段) */
     #modal {
       display: none;
       position: fixed;
@@ -57,13 +78,16 @@
 </head>
 <body>
   <h2>快速手寫輸入系統</h2>
+  <!-- 第一階段建議區域：即時顯示標籤（僅 phase 1 使用） -->
+  <div id="phase1Suggestions"></div>
+  
   <!-- 手寫畫布 -->
   <canvas id="canvas" width="390" height="390"></canvas>
   <button id="clearButton">清除畫布</button>
   <!-- 輸出欄位 -->
   <input type="text" id="outputField" placeholder="輸入欄位..." readonly>
   
-  <!-- Modal 區塊 -->
+  <!-- Modal 區塊（後續階段使用） -->
   <div id="modal">
     <div class="modal-content">
       <p id="modalMessage"></p>
@@ -72,15 +96,15 @@
   </div>
   
   <script>
-    /************* 全域變數與設定 *************/
-    let phase = 1; // 1、2、3 三個階段
-    let currentTags = [];  // 當前階段讀取的標籤資料（陣列，每筆資料 { label, stroke, grid }）
+    /********** 全域變數與階段設定 **********/
+    let phase = 1; // 1、2、3 三階段
+    let currentTags = [];  // 當前階段載入的標籤資料（tagsX.json，格式為陣列，每筆 { label, stroke, grid }）
     
-    // 用來記錄筆畫方向與九宮格資料
+    // 用來記錄已完成筆畫的資料（筆畫方向與九宮格），在第一階段過程中會累計在 recognizedStrokeText / recognizedGridText 中
     let recognizedStrokeText = "";
     let recognizedGridText = "";
     
-    // 參考先前系統的全局筆畫邊界
+    // 全局筆畫邊界（用於九宮格計算）
     let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
     function updateGlobalBounds(point) {
       if(point.x < globalMinX) globalMinX = point.x;
@@ -89,19 +113,17 @@
       if(point.y > globalMaxY) globalMaxY = point.y;
     }
     
-    // 依照 phase 讀取對應的 JSON 檔
+    // 根據 phase 讀取對應 JSON，檔名為 tags1.json、tags2.json、tags3.json
     function loadCurrentTags(phaseNumber) {
-      // 檔名 tags1.json、tags2.json、tags3.json
       fetch("tags" + phaseNumber + ".json")
         .then(response => response.json())
         .then(data => { currentTags = data; })
         .catch(err => { console.error("載入 tags" + phaseNumber + ".json 失敗：", err); });
     }
-    
-    // 初始載入第一階段資料
+    // 初始載入 phase 1 的標籤資料
     loadCurrentTags(1);
     
-    /************* 手寫辨識與筆畫處理 *************/
+    /********** 手寫辨識與筆畫處理 **********/
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     let drawing = false;
@@ -138,7 +160,6 @@
         if(cumulativeDistance >= 30) {
           let angle = getAngle(lastSample, points[i]);
           let rawIndex = Math.floor(angle/36);
-          // 利用公式將 252°～288° 轉為 0，其餘依序轉為 1～9
           let mappedDigit = ((rawIndex - 7 + 10) % 10).toString();
           result += mappedDigit;
           lastSample = points[i];
@@ -199,9 +220,13 @@
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       e.preventDefault();
+      // 若處於第一階段，實時更新建議
+      if(phase === 1) {
+        updatePhase1Suggestions();
+      }
     }
     
-    // 結束筆畫後處理：計算筆畫字串與九宮格字串
+    // 結束筆畫後更新暫存字串（筆畫方向與九宮格）
     function endDrawing(e) {
       if(!drawing) return;
       drawing = false;
@@ -228,9 +253,19 @@
         let gridResult = startCell.toString() + endCell.toString();
         recognizedGridText += gridResult;
       }
-      // 進入各階段處理
-      processPhase();
-      // 清空畫布（同時重置全局邊界）
+      // 更新 phase 1 建議（即使筆畫結束也更新建議區）
+      if(phase === 1) updatePhase1Suggestions();
+      // 若處於 phase 2 或 3（自動選擇或模態選擇），可在 endDrawing 時進行後續處理（參考原邏輯）
+      if(phase === 2) {
+        // 第二階段：延遲 0.5 秒後自動選擇最佳建議
+        setTimeout(() => {
+          let best = getBestSuggestion();
+          if(best) appendToOutput(best.label);
+          phase = 3;
+          loadCurrentTags(3);
+        }, 500);
+      }
+      // 清空畫布並重置全局邊界
       clearCanvasAfterProcessing();
       e.preventDefault();
     }
@@ -250,7 +285,7 @@
       globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
     
-    /************* 比對函式 *************/
+    /********** 比對函式 **********/
     function computeSequenceDifference(seq1, seq2) {
       let maxLen = Math.max(seq1.length, seq2.length);
       let diff = 0;
@@ -263,80 +298,92 @@
       }
       return diff;
     }
-    
     function computeRecordDifference(strokeA, gridA, strokeB, gridB) {
       return computeSequenceDifference(strokeA, strokeB) +
              computeSequenceDifference(gridA, gridB);
     }
     
-    /************* 快速輸入階段處理 *************/
-    // 依據目前 phase（1、2、3）進行比對處理
-    function processPhase() {
-      // 若目前沒有手寫輸入（字串空白），則不處理
-      if(recognizedStrokeText === "" && recognizedGridText === "") return;
-      // 針對當前輸入與 currentTags 進行比對，取得所有記錄之差值
+    /********** 第一階段：即時顯示建議 **********/
+    // 更新 phase 1 建議區域（依據 recognizedStrokeText 與當前筆畫更新）
+    function updatePhase1Suggestions() {
+      if(phase !== 1) return;
+      // 取目前筆畫（未完成部分）＋已完成部分
+      let currentStroke = recognizedStrokeText + processPointsByDistance();
+      let currentGrid = recognizedGridText; // 此階段 grid 尚未完全更新
       let suggestions = currentTags.map(record => {
         return {
           label: record.label,
-          diff: computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid)
+          diff: computeRecordDifference(currentStroke, currentGrid, record.stroke, record.grid)
         };
       });
-      // 排序後取最小差值的建議
       suggestions.sort((a, b) => a.diff - b.diff);
+      // 根據要求：第一順位（最佳）在中間，第二在左，第三在右
+      let best = suggestions[0] ? suggestions[0].label : "";
+      let second = suggestions[1] ? suggestions[1].label : "";
+      let third = suggestions[2] ? suggestions[2].label : "";
       
-      if(phase === 1 || phase === 3) {
-        // 顯示模態視窗讓使用者選擇（僅顯示前三名）
-        let topSuggestions = suggestions.slice(0, 3);
-        showSuggestionsModal(topSuggestions);
-      } else if(phase === 2) {
-        // 第二階段：延遲 0.5 秒後自動選擇最佳建議
-        setTimeout(() => {
-          if(suggestions.length > 0) {
-            let best = suggestions[0];
-            appendToOutput(best.label);
-          }
-          // 第二階段完成後進入第三階段
-          phase = 3;
-          loadCurrentTags(3);
-        }, 500);
-      }
-    }
-    
-    // 模態視窗顯示建議供使用者點選
-    function showSuggestionsModal(suggestions) {
-      let msg = "請選擇標籤：\n";
-      // 此處以按鈕方式呈現建議（不顯示於畫面上，只透過模態視窗）
-      let options = suggestions.map(s => {
-        return { label: s.label, action: function(){ suggestionSelected(s.label); } };
+      let container = document.getElementById("phase1Suggestions");
+      container.innerHTML = "";
+      
+      // 建立三個區塊：左 (第二順位)、中 (第一順位)、右 (第三順位)
+      let leftDiv = document.createElement("div");
+      leftDiv.textContent = second;
+      leftDiv.addEventListener("click", function() {
+        if(second !== "") suggestionSelected(second);
       });
-      openModal(msg, options);
+      
+      let centerDiv = document.createElement("div");
+      centerDiv.textContent = best;
+      centerDiv.style.fontWeight = "bold";
+      centerDiv.addEventListener("click", function() {
+        if(best !== "") suggestionSelected(best);
+      });
+      
+      let rightDiv = document.createElement("div");
+      rightDiv.textContent = third;
+      rightDiv.addEventListener("click", function() {
+        if(third !== "") suggestionSelected(third);
+      });
+      
+      container.appendChild(leftDiv);
+      container.appendChild(centerDiv);
+      container.appendChild(rightDiv);
     }
     
-    // 當使用者點選建議時
+    // 取得最佳建議（用於 phase 2 自動選擇）
+    function getBestSuggestion() {
+      let currentStroke = recognizedStrokeText + processPointsByDistance();
+      let currentGrid = recognizedGridText;
+      let suggestions = currentTags.map(record => {
+        return {
+          label: record.label,
+          diff: computeRecordDifference(currentStroke, currentGrid, record.stroke, record.grid)
+        };
+      });
+      suggestions.sort((a, b) => a.diff - b.diff);
+      return suggestions[0];
+    }
+    
+    // 當使用者點選建議（phase 1 手動選擇）
     function suggestionSelected(selectedLabel) {
       appendToOutput(selectedLabel);
-      // 如果當前為第一階段，完成後進入第二階段
-      if(phase === 1) {
-        phase = 2;
-        loadCurrentTags(2);
-      } else if(phase === 3) {
-        // 第三階段：若選擇的標籤為 "OK"（不分大小寫），則清空輸入欄位，並重置回第一階段
-        if(selectedLabel.toLowerCase() === "ok") {
-          document.getElementById("outputField").value = "";
-          phase = 1;
-          loadCurrentTags(1);
-        }
-        // 否則仍處於第三階段
-      }
+      // 清空畫布與暫存筆畫資料
+      clearCanvasAfterProcessing();
+      recognizedStrokeText = "";
+      recognizedGridText = "";
+      // 切換至第二階段
+      phase = 2;
+      loadCurrentTags(2);
+      // 清除 phase 1 建議區域
+      document.getElementById("phase1Suggestions").innerHTML = "";
     }
     
-    // 將選擇的標籤加入到輸入欄位（以累積方式）
     function appendToOutput(label) {
       let outputField = document.getElementById("outputField");
       outputField.value += label;
     }
     
-    /************* Modal 工具函式 *************/
+    /********** Modal 工具（後續階段使用） **********/
     function openModal(message, options) {
       const modal = document.getElementById("modal");
       const modalMessage = document.getElementById("modalMessage");
@@ -358,12 +405,13 @@
       document.getElementById("modal").style.display = "none";
     }
     
-    /************* 下載/上傳（本系統不在畫面上顯示標籤）*************/
-    // 此處階段系統不需顯示標籤管理介面，僅依據三階段比對後輸出結果
+    /********** 第二、三階段處理 **********/
+    // Phase 2：在筆畫結束後自動選擇最佳建議（延遲 0.5 秒）
+    // Phase 3：採模態視窗讓使用者選擇
+    // （此範例僅示意 phase 2 與 phase 3 的流程，可依需求擴充）
     
-    /************* 初始設定 *************/
+    /********** 初始設定 **********/
     // 輸出欄位為唯讀，僅由系統自動填入
-    // 當系統載入時，phase 為 1，已載入 tags1.json
   </script>
 </body>
 </html>
