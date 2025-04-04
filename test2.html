@@ -1,683 +1,369 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <title>多筆畫 + LocalStorage + 點選標籤後彈出對話框 (存入或刪除) + 3字截斷</title>
+  <meta charset="utf-8">
+  <!-- 使畫面適配手機裝置 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>快速手寫輸入系統</title>
   <style>
     body {
-      margin: 0;
-      padding: 0;
-      font-family: sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-    }
-    h1 {
-      margin: 1rem;
-    }
-
-    /* === Canvas 外觀 === */
-    #myCanvas {
-      border: 1px solid #ccc;
-      touch-action: none; /* 防止手機在 Canvas 上捏拉、滾動 */
-    }
-
-    /* === 控制按鈕區 === */
-    .controls {
+      font-family: Arial, sans-serif;
       margin: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      justify-content: center;
+      padding: 0;
     }
-
-    /* === 標籤列表容器：一行最多 3 個標籤 === */
-    #labelList {
-      margin: 8px;
+    h2 { text-align: center; }
+    canvas {
+      display: block;
+      margin: 0 auto 10px;
+      border: 1px solid #000;
+      width: 100%;
+      max-width: 390px;
+      height: auto;
+    }
+    #clearButton, #outputField {
+      display: block;
+      margin: 10px auto;
+      font-size: 16px;
+    }
+    #outputField {
+      width: 90%;
+      max-width: 390px;
       padding: 8px;
-      border: 1px solid #999;
-      width: 390px;
-      min-height: 30px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
     }
-    /* === 單個標籤區塊 === */
-    .label-item {
-      font-size: 10px;
-      flex: 0 0 calc(33.333% - 10px);
-      box-sizing: border-box;
-      border: 1px solid #aaa;
-      padding: 6px 10px;
-      cursor: pointer;
-      user-select: none;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .label-name {
-      font-weight: bold;
-    }
-
-    /* === Modal (對話框) === */
-    #modalBackdrop {
+    /* Modal 樣式 */
+    #modal {
+      display: none;
       position: fixed;
-      top: 0; left: 0;
-      width: 100vw; height: 100vh;
-      background: rgba(0,0,0,0.5);
-      display: none; /* 預設隱藏 */
-      align-items: center;
-      justify-content: center;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.5);
     }
-    #modalBox {
-      background: #fff;
+    .modal-content {
+      background-color: #fff;
+      margin: 20% auto;
       padding: 20px;
-      border-radius: 6px;
-      min-width: 300px;
+      border: 1px solid #888;
+      width: 80%;
+      max-width: 300px;
+      text-align: center;
     }
-    #modalButtons {
-      margin-top: 10px;
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-    }
-    button {
-      cursor: pointer;
-      padding: 6px 12px;
+    .modal-content button {
+      margin: 5px;
+      font-size: 14px;
+      padding: 5px 10px;
     }
   </style>
 </head>
 <body>
-
-<br>
-
-<canvas id="myCanvas" width="390" height="390"></canvas>
-
-<div class="controls">
-  <button id="clearCanvasBtn">清除畫布</button>
-
-  <input type="text" id="labelInput" placeholder="輸入標籤名稱(不限長度)" />
-  <button id="createLabelBtn">建立標籤</button>
-
-  <button id="clearAllLabelsBtn">清空所有標籤</button>
-</div>
-
-<!-- 標籤列表 (每行最多3個) -->
-<div id="labelList">（尚無任何標籤）</div>
-
-<!-- 自訂對話框的背景 (半透明) & 內容區塊 -->
-<div id="modalBackdrop">
-  <div id="modalBox">
-    <div id="modalMessage">你想對標籤 xxx 做什麼？</div>
-    <div id="modalButtons">
-      <button id="btnStore">存入</button>
-      <button id="btnDelete">刪除</button>
-      <button id="btnCancel">取消</button>
+  <h2>快速手寫輸入系統</h2>
+  <!-- 手寫畫布 -->
+  <canvas id="canvas" width="390" height="390"></canvas>
+  <button id="clearButton">清除畫布</button>
+  <!-- 輸出欄位 -->
+  <input type="text" id="outputField" placeholder="輸入欄位..." readonly>
+  
+  <!-- Modal 區塊 -->
+  <div id="modal">
+    <div class="modal-content">
+      <p id="modalMessage"></p>
+      <div id="modalButtons"></div>
     </div>
   </div>
-</div>
-
-<script>
-/* =====================================================
-   0. 全域資料結構 & 變數
-===================================================== */
-const canvas = document.getElementById('myCanvas');
-const ctx = canvas.getContext('2d');
-
-const clearCanvasBtn    = document.getElementById('clearCanvasBtn');
-const labelInput        = document.getElementById('labelInput');
-const createLabelBtn    = document.getElementById('createLabelBtn');
-const clearAllLabelsBtn = document.getElementById('clearAllLabelsBtn');
-const labelListDiv      = document.getElementById('labelList');
-
-// Modal 元件
-const modalBackdrop   = document.getElementById('modalBackdrop');
-const modalMessage    = document.getElementById('modalMessage');
-const btnStore        = document.getElementById('btnStore');
-const btnDelete       = document.getElementById('btnDelete');
-const btnCancel       = document.getElementById('btnCancel');
-
-// 是否正在書寫
-let isDrawing = false;
-
-// 當前字（多筆畫）
-let currentCharRawStrokes = [];
-let currentCharSimplifiedStrokes = [];
-
-// 暫存單筆畫
-let currentStrokeRaw = [];
-
-/**
- * 標籤結構：存到 localStorage
- * labels = [
- *   {
- *     name: 'XXXXX',
- *     examples: [
- *       {
- *         rawStrokes: [ [.....], ... ],
- *         simplifiedStrokes: [ [.....], ... ]
- *       },
- *       ...
- *     ]
- *   },
- *   ...
- * ]
- */
-let labels = [];
-// 用於「點擊標籤」後，紀錄要操作的標籤名稱
-let currentLabelNameForModal = null;
-
-
-/* =====================================================
-   1. 載入時 → 讀取 localStorage
-===================================================== */
-window.addEventListener('DOMContentLoaded', () => {
-  loadLabelsFromLocalStorage();
-  renderLabelList();
-});
-
-
-/* =====================================================
-   2. 多筆畫書寫 (mouse + touch)
-===================================================== */
-canvas.addEventListener('touchstart', startDraw, false);
-canvas.addEventListener('mousedown', startDraw, false);
-
-function startDraw(evt) {
-  evt.preventDefault();
-  isDrawing = true;
-  currentStrokeRaw = [];
-
-  const pos = getPointerPos(evt);
-  currentStrokeRaw.push(pos);
-}
-
-canvas.addEventListener('touchmove', draw, false);
-canvas.addEventListener('mousemove', draw, false);
-
-function draw(evt) {
-  if (!isDrawing) return;
-  evt.preventDefault();
-
-  const pos = getPointerPos(evt);
-  const lastPos = currentStrokeRaw[currentStrokeRaw.length - 1];
-
-  // 畫黑線
-  ctx.beginPath();
-  ctx.moveTo(lastPos.x, lastPos.y);
-  ctx.lineTo(pos.x, pos.y);
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.closePath();
-
-  currentStrokeRaw.push(pos);
-}
-
-canvas.addEventListener('touchend', endDraw, false);
-canvas.addEventListener('mouseup', endDraw, false);
-canvas.addEventListener('mouseleave', endDraw, false);
-
-function endDraw(evt) {
-  if (!isDrawing) return;
-  evt.preventDefault();
-  isDrawing = false;
-
-  // 等距取樣 + RDP
-  const resampled = resample(currentStrokeRaw, 4);
-  const simplified = ramerDouglasPeucker(resampled, 3);
-
-  currentCharRawStrokes.push(currentStrokeRaw.slice());
-  currentCharSimplifiedStrokes.push(simplified);
-
-  renderAll();
-}
-
-
-/* =====================================================
-   3. 清除畫布 (只清當前字)
-===================================================== */
-clearCanvasBtn.addEventListener('click', () => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  currentCharRawStrokes = [];
-  currentCharSimplifiedStrokes = [];
-});
-
-
-/* =====================================================
-   4. 建立新標籤
-===================================================== */
-createLabelBtn.addEventListener('click', () => {
-  const name = labelInput.value.trim();
-  if(!name){
-    alert('請輸入標籤名稱');
-    return;
-  }
-  // 檢查重複
-  if(labels.find(l=> l.name===name)){
-    alert('標籤已存在');
-    return;
-  }
-
-  labels.push({
-    name,
-    examples: []
-  });
-  labelInput.value='';
-  saveLabelsToLocalStorage();
-  renderLabelList();
-});
-
-
-/* =====================================================
-   5. 清空所有標籤
-===================================================== */
-clearAllLabelsBtn.addEventListener('click', () => {
-  const isOk= confirm('確定要清空所有標籤嗎？\n這會移除所有已儲存的範例。');
-  if(!isOk) return;
-
-  labels=[];
-  saveLabelsToLocalStorage();
-  renderLabelList();
-  alert('所有標籤已被刪除。');
-});
-
-
-/* =====================================================
-   6. 重繪 + 即時比對
-===================================================== */
-function renderAll(){
-  ctx.clearRect(0,0, canvas.width, canvas.height);
-
-  // [A] 畫多筆畫(黑線)
-  currentCharRawStrokes.forEach(stroke=>{
-    for(let i=1; i<stroke.length; i++){
-      const p0=stroke[i-1];
-      const p1=stroke[i];
+  
+  <script>
+    /************* 全域變數與設定 *************/
+    let phase = 1; // 1、2、3 三個階段
+    let currentTags = [];  // 當前階段讀取的標籤資料（陣列，每筆資料 { label, stroke, grid }）
+    
+    // 用來記錄筆畫方向與九宮格資料
+    let recognizedStrokeText = "";
+    let recognizedGridText = "";
+    
+    // 參考先前系統的全局筆畫邊界
+    let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
+    function updateGlobalBounds(point) {
+      if(point.x < globalMinX) globalMinX = point.x;
+      if(point.x > globalMaxX) globalMaxX = point.x;
+      if(point.y < globalMinY) globalMinY = point.y;
+      if(point.y > globalMaxY) globalMaxY = point.y;
+    }
+    
+    // 依照 phase 讀取對應的 JSON 檔
+    function loadCurrentTags(phaseNumber) {
+      // 檔名 tags1.json、tags2.json、tags3.json
+      fetch("tags" + phaseNumber + ".json")
+        .then(response => response.json())
+        .then(data => { currentTags = data; })
+        .catch(err => { console.error("載入 tags" + phaseNumber + ".json 失敗：", err); });
+    }
+    
+    // 初始載入第一階段資料
+    loadCurrentTags(1);
+    
+    /************* 手寫辨識與筆畫處理 *************/
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let points = [];
+    
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      if(e.touches && e.touches[0]){
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      } else {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+    }
+    
+    function getAngle(p1, p2) {
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      let rad = Math.atan2(dy, dx);
+      let deg = rad * 180 / Math.PI;
+      if(deg < 0) deg += 360;
+      return deg;
+    }
+    
+    // 每累積30px取樣一次，產生筆畫字串
+    function processPointsByDistance() {
+      let result = "";
+      if(points.length < 2) return result;
+      let lastSample = points[0];
+      let cumulativeDistance = 0;
+      for(let i = 1; i < points.length; i++){
+        const dx = points[i].x - points[i-1].x;
+        const dy = points[i].y - points[i-1].y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        cumulativeDistance += dist;
+        if(cumulativeDistance >= 30) {
+          let angle = getAngle(lastSample, points[i]);
+          let rawIndex = Math.floor(angle/36);
+          // 利用公式將 252°～288° 轉為 0，其餘依序轉為 1～9
+          let mappedDigit = ((rawIndex - 7 + 10) % 10).toString();
+          result += mappedDigit;
+          lastSample = points[i];
+          cumulativeDistance = 0;
+        }
+      }
+      return result;
+    }
+    
+    // 壓縮連續數列（與先前系統相同）
+    function compressConsecutiveSequence(s) {
+      let temp = s.replace(/(.)\1+/g, "$1");
+      let result = "";
+      let i = 0;
+      while(i < temp.length) {
+        let j = i + 1;
+        if(i < temp.length - 1) {
+          let diff = parseInt(temp[i+1]) - parseInt(temp[i]);
+          if(diff === 1 || diff === -1) {
+            while(j < temp.length && (parseInt(temp[j]) - parseInt(temp[j-1]) === diff)) { j++; }
+            if(j - i >= 3) { result += temp[i] + temp[j-1]; }
+            else { result += temp.slice(i, j); }
+            i = j;
+            continue;
+          }
+        }
+        result += temp[i];
+        i++;
+      }
+      return result;
+    }
+    
+    // 畫布手寫事件
+    canvas.addEventListener("mousedown", startDrawing);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDrawing);
+    canvas.addEventListener("mouseout", endDrawing);
+    canvas.addEventListener("touchstart", startDrawing);
+    canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
+    canvas.addEventListener("touchend", endDrawing);
+    
+    function startDrawing(e) {
+      drawing = true;
+      points = [];
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
       ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.strokeStyle='#000';
-      ctx.lineWidth=2;
+      ctx.moveTo(pos.x, pos.y);
+      e.preventDefault();
+    }
+    
+    function draw(e) {
+      if(!drawing) return;
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
+      ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
-      ctx.closePath();
+      e.preventDefault();
     }
-  });
-
-  // [B] 畫紅點
-  let allRedPoints=[];
-  currentCharSimplifiedStrokes.forEach(stroke=>{
-    stroke.forEach(pt=>{
-      drawDot(pt.x, pt.y, 'red');
-      allRedPoints.push(pt);
-    });
-  });
-
-  // [C] 4個綠點
-  if(allRedPoints.length>0){
-    let corners= getBoundingCorners(allRedPoints);
-    corners.forEach(pt=> drawDot(pt.x, pt.y, 'green'));
-  }
-
-  // [D] 即時比對
-  let totalExamples=0;
-  labels.forEach(lbl=> totalExamples+= lbl.examples.length);
-  if(allRedPoints.length>0 && totalExamples>0){
-    const top3= compareCurrentCharByLabel(allRedPoints);
-    drawCompareResultsOnCanvas(top3);
-  }
-}
-
-
-/* =====================================================
-   7. 同標籤分數加總/平均 → 取前三
-===================================================== */
-function compareCurrentCharByLabel(curAllRedPoints){
-  let labelResults=[];
-
-  labels.forEach(lbl=>{
-    if(lbl.examples.length===0) return;
-    let sumDist=0;
-    lbl.examples.forEach(ex=>{
-      let exAllRed= unifyPoints(ex.simplifiedStrokes);
-      let dist= shapeDistance(curAllRedPoints, exAllRed);
-      sumDist+= dist;
-    });
-    let avgDist= sumDist / lbl.examples.length;
-    labelResults.push({
-      label: lbl.name,
-      distance: avgDist
-    });
-  });
-
-  labelResults.sort((a,b)=> a.distance- b.distance);
-  return labelResults.slice(0,3);
-}
-
-function drawCompareResultsOnCanvas(top3){
-  ctx.fillStyle='rgba(255,255,255,0.8)';
-  ctx.fillRect(5,5,180,80);
-  ctx.font='16px sans-serif';
-  ctx.fillStyle='blue';
-
-  let y=25;
-  top3.forEach((r,i)=>{
-    let text=`#${i+1} ${r.label} (${r.distance.toFixed(2)})`;
-    ctx.fillText(text,10,y);
-    y+=20;
-  });
-}
-
-
-/* =====================================================
-   8. 渲染標籤列表 (一列最多3個)
-      - 點擊標籤 → 彈出對話框
-      - 超過3字 → "..."
-===================================================== */
-function renderLabelList(){
-  if(labels.length===0){
-    labelListDiv.innerHTML='（尚無任何標籤）';
-    return;
-  }
-
-  labelListDiv.innerHTML='';
-
-  labels.forEach(lbl=>{
-    let divItem= document.createElement('div');
-    divItem.className='label-item';
-
-    let shortName= lbl.name;
-    if(shortName.length>5){
-      shortName= shortName.slice(0,5)+'...';
+    
+    // 結束筆畫後處理：計算筆畫字串與九宮格字串
+    function endDrawing(e) {
+      if(!drawing) return;
+      drawing = false;
+      let strokeStartPoint = points[0];
+      let strokeEndPoint = points[points.length-1];
+      let strokeResult = processPointsByDistance();
+      recognizedStrokeText += strokeResult;
+      recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
+      // 依全局邊界計算九宮格區號
+      if(globalMinX !== Infinity) {
+        let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+        let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+        let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+        let cellSize = edgeLength/3;
+        function getCell(point) {
+          let col = Math.floor((point.x - squareLeft)/cellSize);
+          let row = Math.floor((point.y - squareTop)/cellSize);
+          if(col < 0) col = 0; if(col > 2) col = 2;
+          if(row < 0) row = 0; if(row > 2) row = 2;
+          return row * 3 + col + 1;
+        }
+        let startCell = getCell(strokeStartPoint);
+        let endCell = getCell(strokeEndPoint);
+        let gridResult = startCell.toString() + endCell.toString();
+        recognizedGridText += gridResult;
+      }
+      // 進入各階段處理
+      processPhase();
+      // 清空畫布（同時重置全局邊界）
+      clearCanvasAfterProcessing();
+      e.preventDefault();
     }
-
-    divItem.innerHTML=`
-      <span class="label-name">${shortName}</span>
-      <span>(${lbl.examples.length}筆)</span>
-    `;
-
-    // 點擊 → 開啟對話框
-    divItem.addEventListener('click', ()=>{
-      openLabelModal(lbl.name);
-    });
-
-    labelListDiv.appendChild(divItem);
-  });
-}
-
-
-/* =====================================================
-   9. 自訂對話框彈出 (存入 or 刪除)
-===================================================== */
-function openLabelModal(labelName){
-  currentLabelNameForModal = labelName;
-  // 動態顯示訊息
-  modalMessage.textContent = `請選擇對「${labelName}」要做的操作：`;
-  // 顯示對話框
-  modalBackdrop.style.display = 'flex';
-}
-
-// 按「存入」
-btnStore.addEventListener('click', () => {
-  if(!currentLabelNameForModal) return;
-  storeCurrentCharToLabel(currentLabelNameForModal);
-  closeModal();
-});
-
-// 按「刪除」
-btnDelete.addEventListener('click', () => {
-  if(!currentLabelNameForModal) return;
-  removeLabel(currentLabelNameForModal);
-  closeModal();
-});
-
-// 按「取消」
-btnCancel.addEventListener('click', () => {
-  closeModal();
-});
-
-function closeModal(){
-  modalBackdrop.style.display='none';
-  currentLabelNameForModal=null;
-}
-
-
-/* =====================================================
-   10. 存入當前字 → 指定標籤
-===================================================== */
-function storeCurrentCharToLabel(labelName){
-  if(currentCharSimplifiedStrokes.length===0){
-    alert('目前沒有任何筆畫，無法存入標籤');
-    return;
-  }
-
-  let isOk= confirm(`確定要將當前字存入標籤「${labelName}」嗎？`);
-  if(!isOk) return;
-
-  let lbl= labels.find(l=> l.name===labelName);
-  if(!lbl) return;
-
-  // 最多 20 筆
-  if(lbl.examples.length>=20){
-    lbl.examples.shift();
-  }
-
-  lbl.examples.push({
-    rawStrokes: currentCharRawStrokes.map(stk=> stk.slice()),
-    simplifiedStrokes: currentCharSimplifiedStrokes.map(stk=> stk.slice())
-  });
-
-  saveLabelsToLocalStorage();
-  alert(`已將當前字存入標籤「${labelName}」，現在共有 ${lbl.examples.length} 筆。`);
-
-  // 清畫布
-  ctx.clearRect(0,0, canvas.width, canvas.height);
-  currentCharRawStrokes=[];
-  currentCharSimplifiedStrokes=[];
-  renderAll();
-  renderLabelList();
-}
-
-
-/* =====================================================
-   11. 刪除標籤
-===================================================== */
-function removeLabel(labelName){
-  const isOk= confirm(`確定要刪除整個標籤「${labelName}」嗎？\n(該標籤底下所有範例都會消失)`);
-  if(!isOk) return;
-
-  let idx= labels.findIndex(l=> l.name===labelName);
-  if(idx>=0){
-    labels.splice(idx,1);
-    saveLabelsToLocalStorage();
-    alert(`已刪除標籤「${labelName}」。`);
-    renderLabelList();
-  }
-}
-
-
-/* =====================================================
-   12. LocalStorage
-===================================================== */
-function saveLabelsToLocalStorage(){
-  localStorage.setItem('myLabels', JSON.stringify(labels));
-}
-
-function loadLabelsFromLocalStorage(){
-  let dataStr= localStorage.getItem('myLabels');
-  if(dataStr){
-    try{
-      labels= JSON.parse(dataStr);
-    } catch(e){
-      console.error('localStorage解析失敗:', e);
-      labels=[];
+    
+    function clearCanvasAfterProcessing() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      points = [];
+      globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
-  } else {
-    labels=[];
-  }
-}
-
-
-/* =====================================================
-   13. 工具函式：等距取樣、RDP、比對
-===================================================== */
-function getPointerPos(evt){
-  let x,y;
-  if(evt.touches && evt.touches.length>0){
-    x= evt.touches[0].clientX;
-    y= evt.touches[0].clientY;
-  } else {
-    x= evt.clientX;
-    y= evt.clientY;
-  }
-  const rect= canvas.getBoundingClientRect();
-  return { x: x - rect.left, y: y - rect.top };
-}
-
-function drawDot(x,y,color='red'){
-  ctx.beginPath();
-  ctx.arc(x, y, 3, 0, 2*Math.PI);
-  ctx.fillStyle= color;
-  ctx.fill();
-  ctx.closePath();
-}
-
-// 多筆畫 → 單陣列
-function unifyPoints(strokes){
-  let pts=[];
-  strokes.forEach(stk=>{
-    stk.forEach(p=> pts.push(p));
-  });
-  return pts;
-}
-
-// 取得 4 角落
-function getBoundingCorners(points){
-  let minX=Infinity, maxX=-Infinity;
-  let minY=Infinity, maxY=-Infinity;
-  points.forEach(pt=>{
-    if(pt.x<minX) minX=pt.x;
-    if(pt.x>maxX) maxX=pt.x;
-    if(pt.y<minY) minY=pt.y;
-    if(pt.y>maxY) maxY=pt.y;
-  });
-  return [
-    {x:minX,y:minY},
-    {x:minX,y:maxY},
-    {x:maxX,y:minY},
-    {x:maxX,y:maxY}
-  ];
-}
-
-// 等距取樣
-function resample(points, step=5){
-  if(points.length<2) return points;
-  const newPoints=[points[0]];
-  let accumulatedDist=0;
-
-  for(let i=1;i<points.length;i++){
-    let dx= points[i].x - points[i-1].x;
-    let dy= points[i].y - points[i-1].y;
-    let dist= Math.sqrt(dx*dx + dy*dy);
-
-    if(accumulatedDist+dist>=step){
-      let ratio=(step-accumulatedDist)/dist;
-      let newX= points[i-1].x + ratio*dx;
-      let newY= points[i-1].y + ratio*dy;
-      newPoints.push({x:newX, y:newY});
-
-      points.splice(i,0,{x:newX,y:newY});
-      accumulatedDist=0;
-    } else {
-      accumulatedDist+=dist;
+    
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      points = [];
+      recognizedStrokeText = "";
+      recognizedGridText = "";
+      document.getElementById("outputField").value = "";
+      globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
-  }
-  if(newPoints[newPoints.length-1] !== points[points.length-1]){
-    newPoints.push(points[points.length-1]);
-  }
-  return newPoints;
-}
-
-// Ramer–Douglas–Peucker
-function ramerDouglasPeucker(points, epsilon=3){
-  if(points.length<3) return points;
-
-  let maxDist=0, index=0;
-  const start= points[0];
-  const end= points[points.length-1];
-
-  for(let i=1;i<points.length-1;i++){
-    const dist= perpendicularDistance(points[i], start, end);
-    if(dist>maxDist){
-      index=i; maxDist=dist;
+    
+    /************* 比對函式 *************/
+    function computeSequenceDifference(seq1, seq2) {
+      let maxLen = Math.max(seq1.length, seq2.length);
+      let diff = 0;
+      for(let i = 0; i < maxLen; i++){
+        if(i < seq1.length && i < seq2.length) {
+          diff += Math.abs(parseInt(seq1[i]) - parseInt(seq2[i]));
+        } else {
+          diff += 3;
+        }
+      }
+      return diff;
     }
-  }
-  if(maxDist>epsilon){
-    let left= ramerDouglasPeucker(points.slice(0,index+1), epsilon);
-    let right= ramerDouglasPeucker(points.slice(index), epsilon);
-    return left.slice(0, left.length-1).concat(right);
-  } else {
-    return [start,end];
-  }
-}
-
-// 點到線段的垂直距離
-function perpendicularDistance(p, start, end){
-  const dx= end.x - start.x;
-  const dy= end.y - start.y;
-  if(dx===0 && dy===0){
-    return Math.sqrt((p.x-start.x)**2 + (p.y-start.y)**2);
-  }
-  const numerator= Math.abs(dy*p.x - dx*p.y + end.x*start.y - end.y*start.x);
-  const denominator= Math.sqrt(dx*dx + dy*dy);
-  return numerator/denominator;
-}
-
-// 形狀比對
-function shapeDistance(ptsA, ptsB){
-  if(ptsA.length===0||ptsB.length===0) return 9999999;
-  let boxA= getBox(ptsA);
-  let boxB= getBox(ptsB, 300);
-
-  let scaledA= scalePoints(ptsA, boxA, 300);
-  let scaledB= scalePoints(ptsB, boxB, 300);
-
-  let len= Math.min(scaledA.length, scaledB.length);
-  let totalDist=0;
-  for(let i=0;i<len;i++){
-    let dx= scaledA[i].x - scaledB[i].x;
-    let dy= scaledA[i].y - scaledB[i].y;
-    totalDist+= Math.sqrt(dx*dx + dy*dy);
-  }
-  return totalDist / len;
-}
-function getBox(pts){
-  let minX=Infinity, maxX=-Infinity;
-  let minY=Infinity, maxY=-Infinity;
-  pts.forEach(p=>{
-    if(p.x<minX) minX=p.x;
-    if(p.x>maxX) maxX=p.x;
-    if(p.y<minY) minY=p.y;
-    if(p.y>maxY) maxY=p.y;
-  });
-  if(minX===Infinity){
-    return {minX:0,maxX:0,minY:0,maxY:0};
-  }
-  return {minX,maxX,minY,maxY};
-}
-function scalePoints(pts, box, size){
-  let w= box.maxX - box.minX;
-  let h= box.maxY - box.minY;
-  if(w===0) w=1;
-  if(h===0) h=1;
-
-  return pts.map(p=>{
-    let nx= (p.x-box.minX)/w * size;
-    let ny= (p.y-box.minY)/h * size;
-    return {x:nx,y:ny};
-  });
-}
-</script>
+    
+    function computeRecordDifference(strokeA, gridA, strokeB, gridB) {
+      return computeSequenceDifference(strokeA, strokeB) +
+             computeSequenceDifference(gridA, gridB);
+    }
+    
+    /************* 快速輸入階段處理 *************/
+    // 依據目前 phase（1、2、3）進行比對處理
+    function processPhase() {
+      // 若目前沒有手寫輸入（字串空白），則不處理
+      if(recognizedStrokeText === "" && recognizedGridText === "") return;
+      // 針對當前輸入與 currentTags 進行比對，取得所有記錄之差值
+      let suggestions = currentTags.map(record => {
+        return {
+          label: record.label,
+          diff: computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid)
+        };
+      });
+      // 排序後取最小差值的建議
+      suggestions.sort((a, b) => a.diff - b.diff);
+      
+      if(phase === 1 || phase === 3) {
+        // 顯示模態視窗讓使用者選擇（僅顯示前三名）
+        let topSuggestions = suggestions.slice(0, 3);
+        showSuggestionsModal(topSuggestions);
+      } else if(phase === 2) {
+        // 第二階段：延遲 0.5 秒後自動選擇最佳建議
+        setTimeout(() => {
+          if(suggestions.length > 0) {
+            let best = suggestions[0];
+            appendToOutput(best.label);
+          }
+          // 第二階段完成後進入第三階段
+          phase = 3;
+          loadCurrentTags(3);
+        }, 500);
+      }
+    }
+    
+    // 模態視窗顯示建議供使用者點選
+    function showSuggestionsModal(suggestions) {
+      let msg = "請選擇標籤：\n";
+      // 此處以按鈕方式呈現建議（不顯示於畫面上，只透過模態視窗）
+      let options = suggestions.map(s => {
+        return { label: s.label, action: function(){ suggestionSelected(s.label); } };
+      });
+      openModal(msg, options);
+    }
+    
+    // 當使用者點選建議時
+    function suggestionSelected(selectedLabel) {
+      appendToOutput(selectedLabel);
+      // 如果當前為第一階段，完成後進入第二階段
+      if(phase === 1) {
+        phase = 2;
+        loadCurrentTags(2);
+      } else if(phase === 3) {
+        // 第三階段：若選擇的標籤為 "OK"（不分大小寫），則清空輸入欄位，並重置回第一階段
+        if(selectedLabel.toLowerCase() === "ok") {
+          document.getElementById("outputField").value = "";
+          phase = 1;
+          loadCurrentTags(1);
+        }
+        // 否則仍處於第三階段
+      }
+    }
+    
+    // 將選擇的標籤加入到輸入欄位（以累積方式）
+    function appendToOutput(label) {
+      let outputField = document.getElementById("outputField");
+      outputField.value += label;
+    }
+    
+    /************* Modal 工具函式 *************/
+    function openModal(message, options) {
+      const modal = document.getElementById("modal");
+      const modalMessage = document.getElementById("modalMessage");
+      const modalButtons = document.getElementById("modalButtons");
+      modalMessage.textContent = message;
+      modalButtons.innerHTML = "";
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.textContent = opt.label;
+        btn.addEventListener("click", function() {
+          opt.action();
+          closeModal();
+        });
+        modalButtons.appendChild(btn);
+      });
+      modal.style.display = "block";
+    }
+    function closeModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+    
+    /************* 下載/上傳（本系統不在畫面上顯示標籤）*************/
+    // 此處階段系統不需顯示標籤管理介面，僅依據三階段比對後輸出結果
+    
+    /************* 初始設定 *************/
+    // 輸出欄位為唯讀，僅由系統自動填入
+    // 當系統載入時，phase 為 1，已載入 tags1.json
+  </script>
 </body>
 </html>
