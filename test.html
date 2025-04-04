@@ -2,13 +2,50 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <!-- 新增 viewport 設定，確保在手機上正確縮放 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>手持裝置手寫辨識系統 with Tagging</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    canvas { border: 1px solid #000; touch-action: none; display: block; margin-bottom: 10px; }
-    #suggestions { background: #eee; padding: 5px; border: 1px solid #000; margin-top: 10px; margin-bottom: 10px; }
-    #tagManagement { margin-top: 20px; border: 1px solid #aaa; padding: 10px; width: 400px; }
-    #tagList button { margin: 5px; }
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      padding: 0;
+    }
+    /* 畫布置中，最大寬度 390px，但寬度會自適應小裝置 */
+    canvas {
+      display: block;
+      margin: 0 auto 10px;
+      border: 1px solid #000;
+      width: 100%;
+      max-width: 390px;
+      height: auto;
+    }
+    #suggestions {
+      background: #eee;
+      padding: 5px;
+      border: 1px solid #000;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    #tagManagement {
+      margin-top: 20px;
+      border: 1px solid #aaa;
+      padding: 10px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    #tagManagement input,
+    #tagManagement button {
+      font-size: 14px;
+      padding: 5px;
+      margin: 5px 0;
+    }
+    #tagList button {
+      margin: 5px;
+      font-size: 14px;
+      padding: 5px 10px;
+    }
     /* Modal 樣式 */
     #modal {
       display: none;
@@ -20,24 +57,25 @@
     }
     .modal-content {
       background-color: #fff;
-      margin: 15% auto;
+      margin: 20% auto;
       padding: 20px;
       border: 1px solid #888;
-      width: 300px;
+      width: 80%;
+      max-width: 300px;
       text-align: center;
     }
-    .modal-content button { margin: 5px; }
+    .modal-content button { margin: 5px; font-size: 14px; padding: 5px 10px; }
   </style>
 </head>
 <body>
-  <h2>手寫辨識系統</h2>
+  <h2 style="text-align:center;">手持裝置手寫辨識系統 with Tagging</h2>
   
   <!-- 手寫畫板 -->
   <canvas id="canvas" width="390" height="390"></canvas>
-  <div>
+  <div style="text-align:center;">
     <button id="clearButton">清除畫布</button>
   </div>
-  <div>
+  <div style="text-align:center;">
     <p>筆畫字串：<span id="resultStroke"></span></p>
     <p>九宮格字串：<span id="resultGrid"></span></p>
   </div>
@@ -47,11 +85,11 @@
   
   <!-- 標籤管理區 -->
   <div id="tagManagement">
-    <h3>標籤管理</h3>
-    <input type="text" id="tagInput" placeholder="輸入標籤名稱">
-    <button id="addTagButton">新增標籤</button>
-    <div id="tagList"></div>
-    <div style="margin-top:10px;">
+    <h3 style="text-align:center;">標籤管理</h3>
+    <input type="text" id="tagInput" placeholder="輸入標籤名稱" style="width:100%; box-sizing:border-box;">
+    <button id="addTagButton" style="width:100%;">新增標籤</button>
+    <div id="tagList" style="text-align:center;"></div>
+    <div style="margin-top:10px; text-align:center;">
       <button id="optionsButton">選項</button>
       <!-- 隱藏的上傳檔案輸入 -->
       <input type="file" id="uploadInput" style="display:none;">
@@ -315,7 +353,7 @@
       updateTagList();
     }
     
-    // 標籤按鈕點擊後開啟模態視窗，選項中「儲存資料」與「清除資料」(清除前詢問確認)
+    // 標籤按鈕點擊後開啟模態視窗，選項中「儲存資料」與「清除資料」（清除前詢問確認）
     function openTagModal(tagName) {
       openModal("請選擇操作 (標籤：" + tagName + ")", [
         { label: "儲存資料", action: function(){ saveDataToTag(tagName); } },
@@ -362,10 +400,10 @@
       updateTagList();
     }
     
-    // 全域選項模態視窗：包含清除、下載、上傳
+    // 全域選項模態視窗：包含清除、下載、上傳（上傳下載功能移至此處）
     function openOptionsModal() {
       openModal("請選擇全域操作", [
-        { label: "清除數據資料", action: function(){
+        { label: "清除所有標籤資料", action: function(){
             if(confirm("確定要清除所有標籤資料嗎？")){
               let tags = loadTags();
               tags.forEach(tag => tag.data = []);
@@ -375,7 +413,7 @@
             }
           }
         },
-        { label: "重置", action: function(){
+        { label: "清除所有標籤 (包含標籤本身)", action: function(){
             if(confirm("確定要清除所有標籤及資料嗎？")){
               localStorage.removeItem(TAG_STORAGE_KEY);
               alert("已清除所有標籤及資料");
@@ -427,7 +465,7 @@
     }
     
     /******************************************
-     * 下載/上傳資料庫函式（皆放在選項中）
+     * 下載/上傳資料庫函式（均放在全域選項中）
      ******************************************/
     function downloadDatabase() {
       let data = localStorage.getItem(TAG_STORAGE_KEY) || "";
