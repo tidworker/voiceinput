@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <!-- viewport 設定，確保在手機裝置上自適應 -->
+  <!-- 使畫面在手機上自適應 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>快速手寫輸入系統</title>
   <style>
@@ -12,7 +12,7 @@
       padding: 0;
     }
     h2 { text-align: center; }
-    /* Phase 1 建議區域 */
+    /* Phase 1 建議區：分為三欄 */
     #phase1Suggestions {
       display: flex;
       justify-content: space-around;
@@ -31,6 +31,7 @@
       border-radius: 5px;
       min-height: 30px;
     }
+    /* 畫布設定 */
     canvas {
       display: block;
       margin: 0 auto 10px;
@@ -52,7 +53,7 @@
       padding: 8px;
       font-size: 16px;
     }
-    /* Modal 樣式（後續階段使用） */
+    /* Modal（供後續階段使用，如有需要） */
     #modal {
       display: none;
       position: fixed;
@@ -79,7 +80,8 @@
 </head>
 <body>
   <h2>快速手寫輸入系統</h2>
-  <!-- Phase 1 建議區（僅階段 1 顯示） -->
+  
+  <!-- 第一階段即時建議區（Phase 1） -->
   <div id="phase1Suggestions"></div>
   
   <!-- 手寫畫布 -->
@@ -88,7 +90,7 @@
   <!-- 輸出欄位 -->
   <input type="text" id="outputField" placeholder="輸入欄位..." readonly>
   
-  <!-- Modal 區塊（供後續階段使用） -->
+  <!-- Modal 區塊（如需後續階段使用） -->
   <div id="modal">
     <div class="modal-content">
       <p id="modalMessage"></p>
@@ -98,10 +100,11 @@
   
   <script>
     /********** 全域變數與階段設定 **********/
-    let phase = 1; // 1、2、3 三個階段
-    let currentTags = [];  // 當前階段載入的標籤資料（例如 tags1.json，格式：陣列，每筆 { label, stroke, grid }）
+    let phase = 1; // 三個階段：1、2、3
+    let currentTags = [];  // 當前階段讀取的標籤資料（例如 tags1.json）
+    // 請注意：每筆標籤記錄格式假設為 { label, stroke, grid }
     
-    // 用來記錄筆畫方向字串與九宮格字串（每筆 stroke 為累積結果）
+    // 用來記錄筆畫方向與九宮格資料（原先系統保持不變）
     let recognizedStrokeText = "";
     let recognizedGridText = "";
     
@@ -114,17 +117,17 @@
       if(point.y > globalMaxY) globalMaxY = point.y;
     }
     
-    // 根據 phase 讀取對應的 JSON 檔（檔名 tags1.json、tags2.json、tags3.json）
+    // 根據 phase 讀取對應 JSON，檔名 tags1.json、tags2.json、tags3.json
     function loadCurrentTags(phaseNumber) {
       fetch("tags" + phaseNumber + ".json")
         .then(response => response.json())
         .then(data => { currentTags = data; })
         .catch(err => { console.error("載入 tags" + phaseNumber + ".json 失敗：", err); });
     }
-    // 初始載入 phase 1 的標籤資料
+    // 初始階段讀取 tags1.json
     loadCurrentTags(1);
     
-    /********** 手寫辨識與筆畫處理 **********/
+    /********** 手寫辨識與筆畫處理（原先系統） **********/
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     let drawing = false;
@@ -170,7 +173,7 @@
       return result;
     }
     
-    // 壓縮連續數列函式（與先前系統相同）
+    // 壓縮連續數列（與原系統相同）
     function compressConsecutiveSequence(s) {
       let temp = s.replace(/(.)\1+/g, "$1");
       let result = "";
@@ -193,7 +196,7 @@
       return result;
     }
     
-    // 畫布手寫事件
+    // 畫布事件
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mousemove", draw);
     canvas.addEventListener("mouseup", endDrawing);
@@ -221,11 +224,11 @@
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       e.preventDefault();
-      // 若處於第一階段，實時更新建議
+      // 第一階段：實時更新建議
       if(phase === 1) {
-        // 目前筆畫結果 = 已累積 recognizedStrokeText + 當前尚未結束筆畫的 processPointsByDistance()
-        let currentStroke = recognizedStrokeText + processPointsByDistance();
-        // 由於九宮格計算只有在結束時才能完整計算，這裡先傳入空字串
+        // 當前筆畫結果 = 已累積 recognizedStrokeText 加上尚未結束的取樣結果
+        const currentStroke = recognizedStrokeText + processPointsByDistance();
+        // 目前九宮格資訊因尚未結束筆畫不變（此處傳入空字串）
         updatePhase1Suggestions(currentStroke, "");
       }
     }
@@ -233,17 +236,17 @@
     function endDrawing(e) {
       if(!drawing) return;
       drawing = false;
-      let strokeStartPoint = points[0];
-      let strokeEndPoint = points[points.length-1];
-      let strokeResult = processPointsByDistance();
+      const strokeStartPoint = points[0];
+      const strokeEndPoint = points[points.length-1];
+      const strokeResult = processPointsByDistance();
       recognizedStrokeText += strokeResult;
       recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
-      // 計算九宮格區號（以全局邊界為依據）
+      // 計算九宮格區號（與原系統相同）
       if(globalMinX !== Infinity) {
-        let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
-        let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
-        let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
-        let cellSize = edgeLength/3;
+        const edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+        const centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+        const squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+        const cellSize = edgeLength/3;
         function getCell(point) {
           let col = Math.floor((point.x - squareLeft)/cellSize);
           let row = Math.floor((point.y - squareTop)/cellSize);
@@ -251,14 +254,13 @@
           if(row < 0) row = 0; if(row > 2) row = 2;
           return row * 3 + col + 1;
         }
-        let startCell = getCell(strokeStartPoint);
-        let endCell = getCell(strokeEndPoint);
-        let gridResult = startCell.toString() + endCell.toString();
+        const startCell = getCell(strokeStartPoint);
+        const endCell = getCell(strokeEndPoint);
+        const gridResult = startCell.toString() + endCell.toString();
         recognizedGridText += gridResult;
       }
-      // 更新 phase 1 建議（即使筆畫結束也更新建議區）
+      // 更新 Phase 1 建議區（筆畫結束後）
       if(phase === 1) updatePhase1Suggestions(recognizedStrokeText, "");
-      // 如果 phase 為 2 或 3，後續流程則依需求進行（此範例僅示 phase 1）
       clearCanvasAfterProcessing();
       e.preventDefault();
     }
@@ -279,9 +281,9 @@
       globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
     
-    /********** 比對函式 **********/
+    /********** 比對函式（原先系統） **********/
     function computeSequenceDifference(seq1, seq2) {
-      let maxLen = Math.max(seq1.length, seq2.length);
+      const maxLen = Math.max(seq1.length, seq2.length);
       let diff = 0;
       for(let i = 0; i < maxLen; i++){
         if(i < seq1.length && i < seq2.length) {
@@ -298,7 +300,7 @@
     }
     
     /********** Phase 1 即時建議 **********/
-    // 更新 phase 1 建議區，參數 strokeText 與 gridText 分別代表目前筆畫的方向字串與九宮格字串
+    // 更新 Phase 1 建議區：參數 strokeText 為當前筆畫方向字串，gridText 目前暫留空字串
     function updatePhase1Suggestions(strokeText, gridText) {
       if(!currentTags || currentTags.length === 0) return;
       const suggestions = currentTags.map(record => {
@@ -308,7 +310,6 @@
         };
       });
       suggestions.sort((a, b) => a.diff - b.diff);
-      // 根據要求：最佳建議在中間，第二在左，第三在右
       const best = suggestions[0] ? suggestions[0].label : "";
       const second = suggestions[1] ? suggestions[1].label : "";
       const third = suggestions[2] ? suggestions[2].label : "";
@@ -316,41 +317,36 @@
       const container = document.getElementById("phase1Suggestions");
       container.innerHTML = "";
       
-      // 建立三個區塊
       const createDiv = (label, isBest = false) => {
         const div = document.createElement("div");
         div.textContent = label;
         if(isBest) { div.style.fontWeight = "bold"; }
-        if(label) {
-          div.onclick = () => { suggestionSelected(label); };
-        }
+        if(label) { div.onclick = () => { suggestionSelected(label); }; }
         return div;
       };
-      
       container.appendChild(createDiv(second));
       container.appendChild(createDiv(best, true));
       container.appendChild(createDiv(third));
     }
     
-    // 使用者點選 Phase 1 建議後
+    // 使用者點選建議後：將選定標籤加入輸入欄位、清空暫存筆畫資料，並切換至 Phase 2（讀取 tags2.json）
     function suggestionSelected(selectedLabel) {
       appendToOutput(selectedLabel);
       recognizedStrokeText = "";
       recognizedGridText = "";
       clearCanvasAfterProcessing();
-      // 切換到 Phase 2：讀取 tags2.json（此範例僅示意 Phase 1 至 2 切換）
+      // 切換階段（示意 Phase 2，此處後續可擴充 phase 2 與 3 的流程）
       phase = 2;
       loadCurrentTags(2);
-      // 清空 Phase 1 建議區
       document.getElementById("phase1Suggestions").innerHTML = "";
     }
     
     function appendToOutput(label) {
-      let outputField = document.getElementById("outputField");
+      const outputField = document.getElementById("outputField");
       outputField.value += label;
     }
     
-    /********** Modal 工具（後續階段使用） **********/
+    /********** Modal 工具（供後續階段使用） **********/
     function openModal(message, options) {
       const modal = document.getElementById("modal");
       const modalMessage = document.getElementById("modalMessage");
@@ -360,10 +356,7 @@
       options.forEach(opt => {
         const btn = document.createElement("button");
         btn.textContent = opt.label;
-        btn.addEventListener("click", function() {
-          opt.action();
-          closeModal();
-        });
+        btn.addEventListener("click", () => { opt.action(); closeModal(); });
         modalButtons.appendChild(btn);
       });
       modal.style.display = "block";
@@ -373,8 +366,7 @@
     }
     
     /********** 初始設定 **********/
-    // 輸出欄位為唯讀
-    // 當系統載入時，phase 為 1，已載入 tags1.json
+    // 輸出欄位唯讀；系統載入時 phase 為 1（已讀取 tags1.json）
   </script>
 </body>
 </html>
