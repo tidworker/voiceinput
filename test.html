@@ -1,214 +1,475 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=390, initial-scale=1.0">
-  <title>手寫記錄與辨識 - 分軸縮小即記錄轉折點 (30px 門檻, 結尾點必記, 50×50 區域內只保留一點)</title>
+  <meta charset="utf-8">
+  <title>手持裝置手寫辨識系統 with Tagging</title>
   <style>
-    body {
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      background-color: #f5f5f5;
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    canvas { border: 1px solid #000; touch-action: none; display: block; margin-bottom: 10px; }
+    #suggestions { background: #eee; padding: 5px; border: 1px solid #000; margin-top: 10px; margin-bottom: 10px; }
+    #tagManagement { margin-top: 20px; border: 1px solid #aaa; padding: 10px; width: 400px; }
+    #tagList button { margin: 5px; }
+    /* Modal 樣式 */
+    #modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.5);
     }
-    #canvas {
-      border: 1px solid #333;
-      width: 390px;
-      height: 390px;
-      touch-action: none;
+    .modal-content {
+      background-color: #fff;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 300px;
+      text-align: center;
     }
-    #clearBtn {
-      margin-top: 10px;
-      padding: 10px 20px;
-      font-size: 16px;
-    }
+    .modal-content button { margin: 5px; }
   </style>
 </head>
 <body>
+  <h2>手寫辨識系統</h2>
+  
+  <!-- 手寫畫板 -->
   <canvas id="canvas" width="390" height="390"></canvas>
-  <button id="clearBtn">清除</button>
+  <div>
+    <button id="clearButton">清除畫布</button>
+  </div>
+  <div>
+    <p>筆畫字串：<span id="resultStroke"></span></p>
+    <p>九宮格字串：<span id="resultGrid"></span></p>
+  </div>
+  
+  <!-- 建議標籤區 -->
+  <div id="suggestions">建議標籤: (無)</div>
+  
+  <!-- 標籤管理區 -->
+  <div id="tagManagement">
+    <h3>標籤管理</h3>
+    <input type="text" id="tagInput" placeholder="輸入標籤名稱">
+    <button id="addTagButton">新增標籤</button>
+    <div id="tagList"></div>
+    <div style="margin-top:10px;">
+      <button id="optionsButton">選項</button>
+      <!-- 隱藏的上傳檔案輸入 -->
+      <input type="file" id="uploadInput" style="display:none;">
+    </div>
+  </div>
+  
+  <!-- Modal 區塊 -->
+  <div id="modal">
+    <div class="modal-content">
+      <p id="modalMessage"></p>
+      <div id="modalButtons"></div>
+    </div>
+  </div>
+  
   <script>
+    /******************************************
+     * Modal 工具函式
+     ******************************************/
+    function openModal(message, options) {
+      const modal = document.getElementById("modal");
+      const modalMessage = document.getElementById("modalMessage");
+      const modalButtons = document.getElementById("modalButtons");
+      modalMessage.textContent = message;
+      modalButtons.innerHTML = "";
+      options.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.textContent = opt.label;
+        btn.addEventListener("click", function() {
+          opt.action();
+          closeModal();
+        });
+        modalButtons.appendChild(btn);
+      });
+      modal.style.display = "block";
+    }
+    function closeModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+    
+    /******************************************
+     * 壓縮連續數列函式
+     ******************************************/
+    function compressConsecutiveSequence(s) {
+      let temp = s.replace(/(.)\1+/g, "$1");
+      let result = "";
+      let i = 0;
+      while(i < temp.length) {
+        let j = i + 1;
+        if(i < temp.length - 1) {
+          let diff = parseInt(temp[i+1]) - parseInt(temp[i]);
+          if(diff === 1 || diff === -1) {
+            while(j < temp.length && (parseInt(temp[j]) - parseInt(temp[j-1]) === diff)) { j++; }
+            if(j - i >= 3) { result += temp[i] + temp[j-1]; }
+            else { result += temp.slice(i, j); }
+            i = j;
+            continue;
+          }
+        }
+        result += temp[i];
+        i++;
+      }
+      return result;
+    }
+    
+    /******************************************
+     * 全局變數：筆畫邊界 (用於九宮格計算)
+     ******************************************/
+    let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
+    function updateGlobalBounds(point) {
+      if(point.x < globalMinX) globalMinX = point.x;
+      if(point.x > globalMaxX) globalMaxX = point.x;
+      if(point.y < globalMinY) globalMinY = point.y;
+      if(point.y > globalMaxY) globalMaxY = point.y;
+    }
+    
+    /******************************************
+     * 手寫辨識部分
+     ******************************************/
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    const clearBtn = document.getElementById("clearBtn");
     let drawing = false;
     let points = [];
-    const THRESHOLD = 30; // x 與 y 軸位移均需達到 30px 才認定為有效轉折點
-
-    // 判斷 newPoint 是否與 turningPoints 中的任何一點落在同一個 50×50 區域內
-    function isFarEnough(newPoint, turningPoints) {
-      for (let p of turningPoints) {
-        if (Math.abs(newPoint.x - p.x) < 30 && Math.abs(newPoint.y - p.y) < 30) {
-          return false;
+    let recognizedStrokeText = "";
+    let recognizedGridText = "";
+    const TAG_STORAGE_KEY = "handwriting_tags";
+    
+    function getAngle(p1, p2) {
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      let rad = Math.atan2(dy, dx);
+      let deg = rad * 180 / Math.PI;
+      if(deg < 0) deg += 360;
+      return deg;
+    }
+    
+    function processPointsByDistance() {
+      let result = "";
+      if(points.length < 2) return result;
+      let lastSample = points[0];
+      let cumulativeDistance = 0;
+      for(let i = 1; i < points.length; i++){
+        const dx = points[i].x - points[i-1].x;
+        const dy = points[i].y - points[i-1].y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        cumulativeDistance += dist;
+        if(cumulativeDistance >= 30) {
+          let angle = getAngle(lastSample, points[i]);
+          let rawIndex = Math.floor(angle/36);
+          let mappedDigit = ((rawIndex - 7 + 10) % 10).toString();
+          result += mappedDigit;
+          lastSample = points[i];
+          cumulativeDistance = 0;
         }
       }
-      return true;
+      return result;
     }
-
-    // 取得畫布上相對座標
-    function getCanvasPos(clientX, clientY) {
+    
+    function getPos(e) {
       const rect = canvas.getBoundingClientRect();
-      return { x: clientX - rect.left, y: clientY - rect.top };
+      if(e.touches && e.touches[0]){
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      } else {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
     }
-
-    // 清除畫布與點陣列
+    
+    function startDrawing(e) {
+      drawing = true;
+      points = [];
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      e.preventDefault();
+    }
+    
+    function draw(e) {
+      if(!drawing) return;
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      e.preventDefault();
+    }
+    
+    function endDrawing(e) {
+      if(!drawing) return;
+      drawing = false;
+      let strokeStartPoint = points[0];
+      let strokeEndPoint = points[points.length-1];
+      let strokeResult = processPointsByDistance();
+      recognizedStrokeText += strokeResult;
+      recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
+      if(globalMinX !== Infinity) {
+        let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+        let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+        let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+        let cellSize = edgeLength/3;
+        function getCell(point) {
+          let col = Math.floor((point.x - squareLeft)/cellSize);
+          let row = Math.floor((point.y - squareTop)/cellSize);
+          if(col < 0) col = 0; if(col > 2) col = 2;
+          if(row < 0) row = 0; if(row > 2) row = 2;
+          return row * 3 + col + 1;
+        }
+        let startCell = getCell(strokeStartPoint);
+        let endCell = getCell(strokeEndPoint);
+        let gridResult = startCell.toString() + endCell.toString();
+        recognizedGridText += gridResult;
+      }
+      document.getElementById("resultStroke").textContent = recognizedStrokeText;
+      document.getElementById("resultGrid").textContent = recognizedGridText;
+      updateSuggestions();
+      drawGrid();
+      e.preventDefault();
+    }
+    
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       points = [];
+      recognizedStrokeText = "";
+      recognizedGridText = "";
+      document.getElementById("resultStroke").textContent = recognizedStrokeText;
+      document.getElementById("resultGrid").textContent = recognizedGridText;
+      updateSuggestions();
+      globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
-
-    // 開始書寫，初始化點陣列
-    function startDrawing(pos) {
-      drawing = true;
-      clearCanvas();
-      points.push(pos);
+    
+    canvas.addEventListener("mousedown", startDrawing);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDrawing);
+    canvas.addEventListener("mouseout", endDrawing);
+    canvas.addEventListener("touchstart", startDrawing);
+    canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
+    canvas.addEventListener("touchend", endDrawing);
+    document.getElementById("clearButton").addEventListener("click", clearCanvas);
+    
+    function drawGrid() {
+      if(globalMinX === Infinity) return;
+      let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+      let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+      let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+      let cellSize = edgeLength/3;
+      ctx.save();
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(squareLeft, squareTop, edgeLength, edgeLength);
       ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    }
-
-    // 書寫過程中記錄點並畫線
-    function drawMove(pos) {
-      if (!drawing) return;
-      points.push(pos);
-      ctx.lineTo(pos.x, pos.y);
+      ctx.moveTo(squareLeft + cellSize, squareTop);
+      ctx.lineTo(squareLeft + cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft + 2*cellSize, squareTop);
+      ctx.lineTo(squareLeft + 2*cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft, squareTop + cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + cellSize);
+      ctx.moveTo(squareLeft, squareTop + 2*cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + 2*cellSize);
       ctx.stroke();
+      ctx.restore();
     }
-
-    /*
-      detectTurningPoints 函式說明：
-      - 以第一個點作為起始記錄點 lastTurning，並存入轉折點陣列。
-      - 從 lastTurning 出發，沿著筆跡逐點更新候選點 candidate，
-        並分別記錄相對於 lastTurning 的最佳 x 與 y 軸位移（bestXDist, bestYDist）。
-      - 當遇到新的點，其相對於 lastTurning 的 x 或 y 位移未能超越先前最佳值時，
-        判斷前一個 candidate 是否在 x 與 y 軸上均達到 30px（THRESHOLD）。
-        如果達標且該 candidate 與已記錄轉折點不在同一 50×50 區域內，就記錄 candidate 為轉折點，
-        並更新 lastTurning 為 candidate。
-      - 每次重置候選點時，都以 lastTurning 為新基準。
-      - 迴圈結束後，若最後候選點符合門檻且與 lastTurning 不同，則補記錄一次；
-        此外，筆畫結尾點（最後一個點）一定加入（不受 50×50 檢查限制）。
-    */
-    function detectTurningPoints(points) {
-      if (points.length === 0) return [];
-      
-      let turningPoints = [];
-      let lastTurning = points[0];
-      turningPoints.push(lastTurning);
-      
-      let candidate = lastTurning;
-      let bestXDist = 0;
-      let bestYDist = 0;
-      
-      for (let i = 1; i < points.length; i++) {
-        const current = points[i];
-        const xDist = Math.abs(current.x - lastTurning.x);
-        const yDist = Math.abs(current.y - lastTurning.y);
-        
-        // 當兩軸位移均不小於先前最佳值時，更新候選點與最佳位移
-        if (xDist >= bestXDist && yDist >= bestYDist) {
-          candidate = current;
-          bestXDist = xDist;
-          bestYDist = yDist;
+    
+    /******************************************
+     * 數字比對函式
+     ******************************************/
+    function computeSequenceDifference(seq1, seq2) {
+      let maxLen = Math.max(seq1.length, seq2.length);
+      let diff = 0;
+      for(let i = 0; i < maxLen; i++){
+        if(i < seq1.length && i < seq2.length) {
+          diff += Math.abs(parseInt(seq1[i]) - parseInt(seq2[i]));
         } else {
-          // 當任一軸位移縮小時，檢查 candidate 是否在兩軸上均達到 THRESHOLD
-          if (bestXDist >= THRESHOLD && bestYDist >= THRESHOLD) {
-            // 若 candidate 與目前轉折點集合中沒有點落在同一 50×50 區域，則記錄
-            if (isFarEnough(candidate, turningPoints)) {
-              turningPoints.push(candidate);
+          diff += 3;
+        }
+      }
+      return diff;
+    }
+    function computeRecordDifference(strokeA, gridA, strokeB, gridB) {
+      return computeSequenceDifference(strokeA, strokeB) +
+             computeSequenceDifference(gridA, gridB);
+    }
+    
+    /******************************************
+     * 標籤管理與比對模組
+     * 標籤資料格式：{ name, data }，其中 data 為陣列，每筆資料 { stroke, grid }
+     ******************************************/
+    function loadTags() {
+      const data = localStorage.getItem(TAG_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    }
+    function saveTags(tags) {
+      localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(tags));
+    }
+    function addTag(name) {
+      let tags = loadTags();
+      if(tags.find(tag => tag.name === name)){
+        alert("標籤已存在");
+        return;
+      }
+      tags.push({ name: name, data: [] });
+      saveTags(tags);
+      updateTagList();
+    }
+    
+    // 標籤按鈕點擊後開啟模態視窗，選項中「儲存資料」與「清除資料」(清除前詢問確認)
+    function openTagModal(tagName) {
+      openModal("請選擇操作 (標籤：" + tagName + ")", [
+        { label: "儲存資料", action: function(){ saveDataToTag(tagName); } },
+        { label: "清除資料", action: function(){
+            if(confirm("確定要清除該標籤的資料嗎？")){
+              clearTagData(tagName);
             }
-            lastTurning = candidate;
           }
-          // 從 lastTurning 重置候選點與最佳位移
-          candidate = current;
-          bestXDist = Math.abs(current.x - lastTurning.x);
-          bestYDist = Math.abs(current.y - lastTurning.y);
-        }
-      }
-      
-      // 迴圈結束後，若最後候選點符合門檻且與 lastTurning 不同，補記錄一次
-      if (Math.abs(candidate.x - lastTurning.x) >= THRESHOLD &&
-          Math.abs(candidate.y - lastTurning.y) >= THRESHOLD &&
-          (candidate.x !== lastTurning.x || candidate.y !== lastTurning.y)) {
-        if (isFarEnough(candidate, turningPoints)) {
-          turningPoints.push(candidate);
-        }
-      }
-      
-      // 強制記錄筆畫最後一個點（不檢查 50×50 限制）
-      const lastPoint = points[points.length - 1];
-      const lastRecorded = turningPoints[turningPoints.length - 1];
-      if (lastPoint.x !== lastRecorded.x || lastPoint.y !== lastRecorded.y) {
-        turningPoints.push(lastPoint);
-      }
-      
-      return turningPoints;
+        },
+        { label: "取消", action: function(){} }
+      ]);
     }
-
-    // 筆畫結束後偵測轉折點，並在畫布上標記
-    function endDrawing() {
-      if (!drawing) return;
-      drawing = false;
-      
-      const turningPoints = detectTurningPoints(points);
-      
-      // 用紅色圓圈與編號標示轉折點
-      ctx.fillStyle = "red";
-      ctx.font = "16px Arial";
-      for (let i = 0; i < turningPoints.length; i++) {
-        const pt = turningPoints[i];
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.fillText(i.toString(), pt.x + 6, pt.y - 6);
+    function saveDataToTag(tagName) {
+      let tags = loadTags();
+      let tag = tags.find(tag => tag.name === tagName);
+      if(!tag){
+        alert("找不到標籤");
+        return;
       }
-      
-      console.log("所有點：", points);
-      console.log("轉折點：", turningPoints);
+      if(tag.data.length >= 10){
+        alert("該標籤已達資料上限（10筆）");
+        return;
+      }
+      tag.data.push({ stroke: recognizedStrokeText, grid: recognizedGridText });
+      saveTags(tags);
+      alert("已儲存至標籤：" + tagName);
+      recognizedStrokeText = "";
+      recognizedGridText = "";
+      document.getElementById("resultStroke").textContent = recognizedStrokeText;
+      document.getElementById("resultGrid").textContent = recognizedGridText;
+      updateSuggestions();
+      updateTagList();
     }
-
-    // Touch 事件（行動裝置）
-    canvas.addEventListener("touchstart", function(e) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const pos = getCanvasPos(touch.clientX, touch.clientY);
-      startDrawing(pos);
+    function clearTagData(tagName) {
+      let tags = loadTags();
+      let tag = tags.find(tag => tag.name === tagName);
+      if(!tag){
+        alert("找不到標籤");
+        return;
+      }
+      tag.data = [];
+      saveTags(tags);
+      alert("已清除標籤「" + tagName + "」內的所有資料");
+      updateTagList();
+    }
+    
+    // 全域選項模態視窗：包含清除、下載、上傳
+    function openOptionsModal() {
+      openModal("請選擇全域操作", [
+        { label: "清除數據資料", action: function(){
+            if(confirm("確定要清除所有標籤資料嗎？")){
+              let tags = loadTags();
+              tags.forEach(tag => tag.data = []);
+              saveTags(tags);
+              alert("已清除所有標籤資料");
+              updateTagList();
+            }
+          }
+        },
+        { label: "重置", action: function(){
+            if(confirm("確定要清除所有標籤及資料嗎？")){
+              localStorage.removeItem(TAG_STORAGE_KEY);
+              alert("已清除所有標籤及資料");
+              updateTagList();
+            }
+          }
+        },
+        { label: "下載資料庫", action: function(){ downloadDatabase(); } },
+        { label: "上傳資料庫", action: function(){ document.getElementById("uploadInput").click(); } },
+        { label: "取消", action: function(){} }
+      ]);
+    }
+    
+    function updateTagList() {
+      let tags = loadTags();
+      const tagListDiv = document.getElementById("tagList");
+      tagListDiv.innerHTML = "";
+      tags.forEach(tag => {
+        const btn = document.createElement("button");
+        btn.textContent = tag.name + " (" + tag.data.length + "筆)";
+        btn.addEventListener("click", function(){ openTagModal(tag.name); });
+        tagListDiv.appendChild(btn);
+      });
+    }
+    
+    function updateSuggestions() {
+      let tags = loadTags();
+      let suggestions = [];
+      tags.forEach(tag => {
+        if(tag.data.length > 0){
+          let minDiff = Infinity;
+          let bestRecord = null;
+          tag.data.forEach(record => {
+            let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid);
+            if(diff < minDiff) { minDiff = diff; bestRecord = record; }
+          });
+          suggestions.push({ tagName: tag.name, diff: minDiff, record: bestRecord });
+        }
+      });
+      suggestions.sort((a, b) => a.diff - b.diff);
+      suggestions = suggestions.slice(0, 3);
+      const suggestionsDiv = document.getElementById("suggestions");
+      if(suggestions.length > 0){
+        suggestionsDiv.innerHTML = "建議標籤:<br>" +
+          suggestions.map(s => `<span style="display:inline-block; width:120px;">${s.tagName} (差:${s.diff})</span><span>筆畫:${s.record.stroke}，九宮:${s.record.grid}</span>`).join("<br>");
+      } else {
+        suggestionsDiv.textContent = "建議標籤: (無)";
+      }
+    }
+    
+    /******************************************
+     * 下載/上傳資料庫函式（皆放在選項中）
+     ******************************************/
+    function downloadDatabase() {
+      let data = localStorage.getItem(TAG_STORAGE_KEY) || "";
+      let blob = new Blob([data], { type: "application/json" });
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement("a");
+      a.href = url;
+      a.download = "tags.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    function uploadDatabase(file) {
+      let reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          let data = e.target.result;
+          JSON.parse(data);
+          localStorage.setItem(TAG_STORAGE_KEY, data);
+          alert("上傳成功");
+          updateTagList();
+          updateSuggestions();
+        } catch (err) {
+          alert("上傳失敗，請檢查檔案格式");
+        }
+      };
+      reader.readAsText(file);
+    }
+    
+    document.getElementById("addTagButton").addEventListener("click", function(){
+      const tagInput = document.getElementById("tagInput");
+      const name = tagInput.value.trim();
+      if(name){ addTag(name); tagInput.value = ""; }
     });
-    canvas.addEventListener("touchmove", function(e) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const pos = getCanvasPos(touch.clientX, touch.clientY);
-      drawMove(pos);
+    document.getElementById("optionsButton").addEventListener("click", openOptionsModal);
+    document.getElementById("uploadInput").addEventListener("change", function(e){
+      if(e.target.files.length > 0){ uploadDatabase(e.target.files[0]); }
     });
-    canvas.addEventListener("touchend", function(e) {
-      e.preventDefault();
-      endDrawing();
-    });
-
-    // Mouse 事件（桌面測試）
-    canvas.addEventListener("mousedown", function(e) {
-      const pos = getCanvasPos(e.clientX, e.clientY);
-      startDrawing(pos);
-    });
-    canvas.addEventListener("mousemove", function(e) {
-      if (!drawing) return;
-      const pos = getCanvasPos(e.clientX, e.clientY);
-      drawMove(pos);
-    });
-    canvas.addEventListener("mouseup", function(e) {
-      endDrawing();
-    });
-    canvas.addEventListener("mouseleave", function(e) {
-      if (drawing) endDrawing();
-    });
-
-    // 清除按鈕事件
-    clearBtn.addEventListener("click", function() {
-      clearCanvas();
-      points = [];
-    });
+    
+    updateTagList();
+    updateSuggestions();
   </script>
 </body>
 </html>
