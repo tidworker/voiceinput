@@ -20,29 +20,8 @@
       max-width: 390px;
       height: auto;
     }
-    #suggestions {
-      background: #eee;
-      padding: 5px;
-      border: 1px solid #000;
-      margin: 10px 0;
-      font-size: 14px;
-    }
-    #tagManagement {
-      margin-top: 20px;
-      border: 1px solid #aaa;
-      padding: 10px;
-      max-width: 400px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    #tagManagement input,
-    #tagManagement button {
-      font-size: 14px;
-      padding: 5px;
-      margin: 5px 0;
-    }
-    #tagList button {
-      margin: 5px;
+    /* 浮動建議按鈕區：放在畫布上方 */
+    #floatingSuggestions button {
       font-size: 14px;
       padding: 5px 10px;
     }
@@ -65,13 +44,36 @@
       text-align: center;
     }
     .modal-content button { margin: 5px; font-size: 14px; padding: 5px 10px; }
+    /* 分類按鈕區：每一筆以勾選框及按鈕呈現 */
+    #categoryButtons {
+      text-align: center;
+      margin: 10px 0;
+    }
+    .category-row {
+      display: inline-block;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    .category-row input {
+      vertical-align: middle;
+      margin-right: 3px;
+    }
+    .category-row button {
+      vertical-align: middle;
+      font-size: 14px;
+      padding: 5px 10px;
+    }
   </style>
 </head>
 <body>
   <h2 style="text-align:center;">手持裝置手寫辨識系統 with Tagging</h2>
   
-  <!-- 手寫畫板 -->
-  <canvas id="canvas" width="390" height="390"></canvas>
+  <!-- 浮動建議標籤按鈕區（放在畫布上方，不再顯示全域勾選，而是以各分類控制） -->
+  <div style="text-align:center; position: relative; max-width: 390px; margin: 0 auto;">
+    <div id="floatingSuggestions" style="position: absolute; top: 10px; left: 10px; display: flex; gap: 10px; z-index: 10;"></div>
+    <canvas id="canvas" width="390" height="390"></canvas>
+  </div>
+  
   <div style="text-align:center;">
     <button id="clearButton">清除畫布</button>
   </div>
@@ -80,20 +82,26 @@
     <p>九宮格字串：<span id="resultGrid"></span></p>
   </div>
   
-  <!-- 建議標籤區 -->
-  <div id="suggestions">建議標籤: (無)</div>
-  
-  <!-- 標籤管理區 -->
-  <div id="tagManagement">
-    <h3 style="text-align:center;">標籤管理</h3>
-    <input type="text" id="tagInput" placeholder="輸入標籤名稱" style="width:100%; box-sizing:border-box;">
-    <button id="addTagButton" style="width:100%;">新增標籤</button>
-    <div id="tagList" style="text-align:center;"></div>
-    <div style="margin-top:10px; text-align:center;">
-      <button id="optionsButton">選項</button>
-      <!-- 隱藏的上傳檔案輸入 -->
-      <input type="file" id="uploadInput" style="display:none;">
+  <!-- 分類管理區：每筆顯示一個勾選框與分類按鈕 -->
+  <div id="categoryButtons">
+    <div class="category-row">
+      <input type="checkbox" id="use_meals" checked>
+      <button onclick="openCategoryModal('meals')">Meals</button>
     </div>
+    <div class="category-row">
+      <input type="checkbox" id="use_amount" checked>
+      <button onclick="openCategoryModal('amount')">Amount</button>
+    </div>
+    <div class="category-row">
+      <input type="checkbox" id="use_custom" checked>
+      <button onclick="openCategoryModal('custom')">Custom</button>
+    </div>
+  </div>
+  
+  <!-- 全域選項（上傳/下載） -->
+  <div style="text-align:center; margin-top: 10px;">
+    <button id="optionsButton">選項</button>
+    <input type="file" id="uploadInput" style="display:none;">
   </div>
   
   <!-- Modal 區塊 -->
@@ -239,8 +247,6 @@
     function endDrawing(e) {
       if(!drawing) return;
       drawing = false;
-      let strokeStartPoint = points[0];
-      let strokeEndPoint = points[points.length-1];
       let strokeResult = processPointsByDistance();
       recognizedStrokeText += strokeResult;
       recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
@@ -256,14 +262,14 @@
           if(row < 0) row = 0; if(row > 2) row = 2;
           return row * 3 + col + 1;
         }
-        let startCell = getCell(strokeStartPoint);
-        let endCell = getCell(strokeEndPoint);
+        let startCell = getCell(points[0]);
+        let endCell = getCell(points[points.length-1]);
         let gridResult = startCell.toString() + endCell.toString();
         recognizedGridText += gridResult;
       }
       document.getElementById("resultStroke").textContent = recognizedStrokeText;
       document.getElementById("resultGrid").textContent = recognizedGridText;
-      updateSuggestions();
+      updateFloatingSuggestions();
       drawGrid();
       e.preventDefault();
     }
@@ -275,7 +281,7 @@
       recognizedGridText = "";
       document.getElementById("resultStroke").textContent = recognizedStrokeText;
       document.getElementById("resultGrid").textContent = recognizedGridText;
-      updateSuggestions();
+      updateFloatingSuggestions();
       globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
     
@@ -332,8 +338,8 @@
     }
     
     /******************************************
-     * 標籤管理與比對模組
-     * 標籤資料格式：{ name, data }，其中 data 為陣列，每筆資料 { stroke, grid }
+     * 資料庫操作（標籤管理與比對模組）
+     * 標籤資料格式：{ name, category, data }
      ******************************************/
     function loadTags() {
       const data = localStorage.getItem(TAG_STORAGE_KEY);
@@ -342,33 +348,35 @@
     function saveTags(tags) {
       localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(tags));
     }
-    function addTag(name) {
+    function addTag(name, category) {
       let tags = loadTags();
-      if(tags.find(tag => tag.name === name)){
+      if(tags.find(tag => tag.name === name && tag.category === category)){
         alert("標籤已存在");
         return;
       }
-      tags.push({ name: name, data: [] });
+      tags.push({ name: name, category: category, data: [] });
       saveTags(tags);
-      updateTagList();
     }
-    
-    // 標籤按鈕點擊後開啟模態視窗，選項中「儲存資料」與「清除資料」（清除前詢問確認）
-    function openTagModal(tagName) {
-      openModal("請選擇操作 (標籤：" + tagName + ")", [
-        { label: "儲存資料", action: function(){ saveDataToTag(tagName); } },
-        { label: "清除資料", action: function(){
-            if(confirm("確定要清除該標籤的資料嗎？")){
-              clearTagData(tagName);
-            }
-          }
-        },
-        { label: "取消", action: function(){} }
-      ]);
-    }
-    function saveDataToTag(tagName) {
+    function deleteTag(tagName, category) {
       let tags = loadTags();
-      let tag = tags.find(tag => tag.name === tagName);
+      tags = tags.filter(tag => !(tag.name === tagName && tag.category === category));
+      saveTags(tags);
+    }
+    function clearTagData(tagName, category) {
+      let tags = loadTags();
+      let tag = tags.find(tag => tag.name === tagName && tag.category === category);
+      if(!tag){
+        alert("找不到標籤");
+        return;
+      }
+      tag.data = [];
+      saveTags(tags);
+      alert("已清除標籤「" + tagName + "」內的所有資料");
+    }
+    // 儲存筆畫資料（當使用者點選浮動建議時執行），存入後自動清除畫布
+    function saveDataToTag(tagName, category) {
+      let tags = loadTags();
+      let tag = tags.find(tag => tag.name === tagName && tag.category === category);
       if(!tag){
         alert("找不到標籤");
         return;
@@ -380,27 +388,98 @@
       tag.data.push({ stroke: recognizedStrokeText, grid: recognizedGridText });
       saveTags(tags);
       alert("已儲存至標籤：" + tagName);
-      recognizedStrokeText = "";
-      recognizedGridText = "";
-      document.getElementById("resultStroke").textContent = recognizedStrokeText;
-      document.getElementById("resultGrid").textContent = recognizedGridText;
-      updateSuggestions();
-      updateTagList();
-    }
-    function clearTagData(tagName) {
-      let tags = loadTags();
-      let tag = tags.find(tag => tag.name === tagName);
-      if(!tag){
-        alert("找不到標籤");
-        return;
-      }
-      tag.data = [];
-      saveTags(tags);
-      alert("已清除標籤「" + tagName + "」內的所有資料");
-      updateTagList();
+      clearCanvas();
     }
     
-    // 全域選項模態視窗：包含清除、下載、上傳（上傳下載功能移至此處）
+    /******************************************
+     * 分類模態視窗：顯示該分類的標籤，並可新增標籤
+     ******************************************/
+    function openCategoryModal(category) {
+      let tags = loadTags().filter(tag => tag.category === category);
+      let content = `<h3>${category} 標籤管理</h3>
+                     <input type="text" id="newTagInput" placeholder="輸入標籤名稱" style="width:100%; box-sizing:border-box;">
+                     <button id="addNewTagButton" style="width:100%;">新增標籤</button>
+                     <div id="categoryTagList" style="margin-top:10px;">`;
+      if(tags.length > 0) {
+        tags.forEach(tag => {
+          content += `<button style="margin:5px;" onclick="openTagOptions('${tag.name}','${tag.category}')">${tag.name} (${tag.data.length}筆)</button>`;
+        });
+      } else {
+        content += "<p>尚無標籤</p>";
+      }
+      content += "</div>";
+      openModal("", [
+        { label: "關閉", action: function(){} }
+      ]);
+      document.getElementById("modalMessage").innerHTML = content;
+      document.getElementById("addNewTagButton").addEventListener("click", function(){
+        let newTagName = document.getElementById("newTagInput").value.trim();
+        if(newTagName) {
+          addTag(newTagName, category);
+          openCategoryModal(category);
+        }
+      });
+    }
+    
+    // 點選標籤時的操作選單，新增「清除資料」選項
+    function openTagOptions(tagName, category) {
+      openModal("請選擇操作 (標籤：" + tagName + ")", [
+        { label: "儲存資料", action: function(){ saveDataToTag(tagName, category); } },
+        { label: "清除資料", action: function(){
+            if(confirm("確定要清除該標籤的資料嗎？")){
+              clearTagData(tagName, category);
+            }
+          }
+        },
+        { label: "刪除標籤", action: function(){
+            if(confirm("確定要刪除該標籤嗎？")){
+              deleteTag(tagName, category);
+              openCategoryModal(category);
+            }
+          }
+        },
+        { label: "取消", action: function(){} }
+      ]);
+    }
+    
+    /******************************************
+     * 浮動建議標籤按鈕（不顯示分類，前置排序）
+     * 僅納入各分類勾選框為勾選的資料庫
+     ******************************************/
+    function updateFloatingSuggestions() {
+      let tags = loadTags();
+      let suggestions = [];
+      tags.forEach(tag => {
+        // 依據 tag.category 檢查對應勾選框是否勾選
+        if(tag.category === 'meals' && !document.getElementById("use_meals").checked) return;
+        if(tag.category === 'amount' && !document.getElementById("use_amount").checked) return;
+        if(tag.category === 'custom' && !document.getElementById("use_custom").checked) return;
+        if(tag.data.length > 0){
+          let minDiff = Infinity;
+          tag.data.forEach(record => {
+            let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid);
+            if(diff < minDiff) { minDiff = diff; }
+          });
+          suggestions.push({ tagName: tag.name, category: tag.category, diff: minDiff });
+        }
+      });
+      suggestions.sort((a, b) => a.diff - b.diff);
+      suggestions = suggestions.slice(0, 3);
+      const floatingDiv = document.getElementById("floatingSuggestions");
+      floatingDiv.innerHTML = "";
+      suggestions.forEach((s, idx) => {
+        let btn = document.createElement("button");
+        btn.textContent = `${idx+1}. ${s.tagName}`;
+        btn.addEventListener("click", function(){
+          saveDataToTag(s.tagName, s.category);
+        });
+        floatingDiv.appendChild(btn);
+      });
+    }
+    
+    /******************************************
+     * 全域選項模態視窗：包含清除、下載、上傳
+     ******************************************/
     function openOptionsModal() {
       openModal("請選擇全域操作", [
         { label: "清除所有標籤資料", action: function(){
@@ -409,7 +488,7 @@
               tags.forEach(tag => tag.data = []);
               saveTags(tags);
               alert("已清除所有標籤資料");
-              updateTagList();
+              updateFloatingSuggestions();
             }
           }
         },
@@ -417,7 +496,7 @@
             if(confirm("確定要清除所有標籤及資料嗎？")){
               localStorage.removeItem(TAG_STORAGE_KEY);
               alert("已清除所有標籤及資料");
-              updateTagList();
+              updateFloatingSuggestions();
             }
           }
         },
@@ -427,46 +506,6 @@
       ]);
     }
     
-    function updateTagList() {
-      let tags = loadTags();
-      const tagListDiv = document.getElementById("tagList");
-      tagListDiv.innerHTML = "";
-      tags.forEach(tag => {
-        const btn = document.createElement("button");
-        btn.textContent = tag.name + " (" + tag.data.length + "筆)";
-        btn.addEventListener("click", function(){ openTagModal(tag.name); });
-        tagListDiv.appendChild(btn);
-      });
-    }
-    
-    function updateSuggestions() {
-      let tags = loadTags();
-      let suggestions = [];
-      tags.forEach(tag => {
-        if(tag.data.length > 0){
-          let minDiff = Infinity;
-          let bestRecord = null;
-          tag.data.forEach(record => {
-            let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid);
-            if(diff < minDiff) { minDiff = diff; bestRecord = record; }
-          });
-          suggestions.push({ tagName: tag.name, diff: minDiff, record: bestRecord });
-        }
-      });
-      suggestions.sort((a, b) => a.diff - b.diff);
-      suggestions = suggestions.slice(0, 3);
-      const suggestionsDiv = document.getElementById("suggestions");
-      if(suggestions.length > 0){
-        suggestionsDiv.innerHTML = "建議標籤:<br>" +
-          suggestions.map(s => `<span style="display:inline-block; width:120px;">${s.tagName} (差:${s.diff})</span><span>筆畫:${s.record.stroke}，九宮:${s.record.grid}</span>`).join("<br>");
-      } else {
-        suggestionsDiv.textContent = "建議標籤: (無)";
-      }
-    }
-    
-    /******************************************
-     * 下載/上傳資料庫函式（均放在全域選項中）
-     ******************************************/
     function downloadDatabase() {
       let data = localStorage.getItem(TAG_STORAGE_KEY) || "";
       let blob = new Blob([data], { type: "application/json" });
@@ -487,8 +526,7 @@
           JSON.parse(data);
           localStorage.setItem(TAG_STORAGE_KEY, data);
           alert("上傳成功");
-          updateTagList();
-          updateSuggestions();
+          updateFloatingSuggestions();
         } catch (err) {
           alert("上傳失敗，請檢查檔案格式");
         }
@@ -496,18 +534,13 @@
       reader.readAsText(file);
     }
     
-    document.getElementById("addTagButton").addEventListener("click", function(){
-      const tagInput = document.getElementById("tagInput");
-      const name = tagInput.value.trim();
-      if(name){ addTag(name); tagInput.value = ""; }
-    });
     document.getElementById("optionsButton").addEventListener("click", openOptionsModal);
     document.getElementById("uploadInput").addEventListener("change", function(e){
       if(e.target.files.length > 0){ uploadDatabase(e.target.files[0]); }
     });
     
-    updateTagList();
-    updateSuggestions();
+    // 初始化更新浮動建議標籤
+    updateFloatingSuggestions();
   </script>
 </body>
 </html>
