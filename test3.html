@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- viewport 設定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手持裝置手寫辨識系統 (讀取伺服器 tags.json)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 10px;
+      padding: 0;
+    }
+    /* 畫布區 */
+    canvas {
+      display: block;
+      margin: 0 auto 10px;
+      border: 1px solid #000;
+      width: 100%;
+      max-width: 390px;
+      height: auto;
+    }
+    /* 建議標籤區 */
+    #floatingSuggestions button {
+      font-size: 14px;
+      padding: 5px 10px;
+      margin: 2px;
+    }
+    /* 不再顯示原先的標籤管理 / 選項按鈕，所以這些區塊直接省略 */
+    
+    /* 輸出欄 (改用 textarea 支援換行) */
+    #outputField {
+      width: 90%;
+      font-size: 16px;
+      padding: 5px;
+      margin-top: 10px;
+      text-align: center;
+      height: 100px;
+      resize: none;
+    }
+    #clearOutputBtn {
+      font-size: 14px;
+      padding: 5px 10px;
+      margin-top: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center;">手持裝置手寫辨識系統 (讀取伺服器 tags.json)</h2>
+  
+  <!-- 畫布與建議候選區 -->
+  <div style="text-align:center; position: relative; max-width: 390px; margin: 0 auto;">
+    <div id="floatingSuggestions" style="position: absolute; top: 10px; left: 10px; display: flex; flex-wrap: wrap; gap: 5px; z-index: 10;"></div>
+    <canvas id="canvas" width="390" height="390"></canvas>
+  </div>
+  
+  <div style="text-align:center;">
+    <button id="clearButton">清除畫布</button>
+  </div>
+  <div style="text-align:center;">
+    <p>筆畫字串：<span id="resultStroke"></span></p>
+    <p>九宮格字串：<span id="resultGrid"></span></p>
+  </div>
+  
+  <!-- 已移除「標籤管理」和「選項」等按鈕區塊 -->
+  
+  <!-- 輸出欄與清除按鈕 (textarea 支援換行) -->
+  <div style="text-align:center;">
+    <textarea id="outputField" readonly placeholder="選擇結果會顯示在此"></textarea>
+    <br>
+    <button id="clearOutputBtn">清除輸入欄</button>
+  </div>
+  
+  <script>
+    /******** 全域變數 ********/
+    // 從伺服器讀取到的全部標籤資料
+    let allTags = [];
+    
+    // dbOrder 決定循環使用的 3 個階段：meals, amount, custom
+    let dbOrder = ['meals', 'amount', 'custom'];
+    let currentDbIndex = 0;
+    // 用來存取各階段選擇的結果
+    let selectedLabels = [];
+    // 累計所有品項總金額
+    let grandTotal = 0;
+    
+    /******** 初始化：讀取伺服器上的 tags.json ********/
+    // 注意：需在伺服器（HTTP/HTTPS）環境下才能正常 fetch 當前專案中的檔案
+    fetch("tags.json")
+      .then(response => response.json())
+      .then(data => {
+        allTags = data;
+        updateFloatingSuggestions(); // 讀完後更新建議
+      })
+      .catch(err => {
+        console.error("無法取得 tags.json：", err);
+      });
+    
+    /******** 壓縮連續數列 (筆畫) ********/
+    function compressConsecutiveSequence(s) {
+      let temp = s.replace(/(.)\1+/g, "$1");
+      let result = "";
+      let i = 0;
+      while(i < temp.length) {
+        let j = i + 1;
+        if(i < temp.length - 1) {
+          let diff = parseInt(temp[i+1]) - parseInt(temp[i]);
+          if(diff === 1 || diff === -1) {
+            while(j < temp.length && (parseInt(temp[j]) - parseInt(temp[j-1]) === diff)) { j++; }
+            if(j - i >= 3) { result += temp[i] + temp[j-1]; }
+            else { result += temp.slice(i, j); }
+            i = j;
+            continue;
+          }
+        }
+        result += temp[i];
+        i++;
+      }
+      return result;
+    }
+    
+    /******** 筆畫邊界 ********/
+    let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
+    function updateGlobalBounds(point) {
+      if(point.x < globalMinX) globalMinX = point.x;
+      if(point.x > globalMaxX) globalMaxX = point.x;
+      if(point.y < globalMinY) globalMinY = point.y;
+      if(point.y > globalMaxY) globalMaxY = point.y;
+    }
+    
+    /******** 手寫畫布相關 ********/
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let points = [];
+    let recognizedStrokeText = "";
+    let recognizedGridText = "";
+    
+    function getAngle(p1, p2) {
+      const dx = p2.x - p1.x, dy = p2.y - p1.y;
+      let rad = Math.atan2(dy, dx);
+      let deg = rad * 180 / Math.PI;
+      if(deg < 0) deg += 360;
+      return deg;
+    }
+    
+    // 依距離判斷取得角度 -> 轉成 0~9 數字
+    function processPointsByDistance() {
+      let result = "";
+      if(points.length < 2) return result;
+      let lastSample = points[0];
+      let cumulativeDistance = 0;
+      for(let i = 1; i < points.length; i++){
+        const dx = points[i].x - points[i-1].x;
+        const dy = points[i].y - points[i-1].y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        cumulativeDistance += dist;
+        if(cumulativeDistance >= 30) {
+          let angle = getAngle(lastSample, points[i]);
+          let rawIndex = Math.floor(angle/36);
+          // 這裡將 angle 0度對應到數字7，可依需求自行調整
+          let mappedDigit = ((rawIndex - 7 + 10) % 10).toString();
+          result += mappedDigit;
+          lastSample = points[i];
+          cumulativeDistance = 0;
+        }
+      }
+      return result;
+    }
+    
+    // 取得滑鼠/觸控座標
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      if(e.touches && e.touches[0]){
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      } else {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+    }
+    
+    function startDrawing(e) {
+      drawing = true;
+      points = [];
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      e.preventDefault();
+    }
+    
+    function draw(e) {
+      if(!drawing) return;
+      const pos = getPos(e);
+      points.push(pos);
+      updateGlobalBounds(pos);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      e.preventDefault();
+    }
+    
+    function endDrawing(e) {
+      if(!drawing) return;
+      drawing = false;
+      // 轉換筆畫 -> 數字
+      let strokeResult = processPointsByDistance();
+      recognizedStrokeText += strokeResult;
+      recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
+      
+      if(globalMinX !== Infinity) {
+        let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+        let centerX = (globalMinX + globalMaxX)/2;
+        let centerY = (globalMinY + globalMaxY)/2;
+        let squareLeft = centerX - edgeLength/2;
+        let squareTop = centerY - edgeLength/2;
+        let cellSize = edgeLength/3;
+        
+        function getCell(point) {
+          let col = Math.floor((point.x - squareLeft)/cellSize);
+          let row = Math.floor((point.y - squareTop)/cellSize);
+          if(col < 0) col = 0; if(col > 2) col = 2;
+          if(row < 0) row = 0; if(row > 2) row = 2;
+          return row * 3 + col + 1;
+        }
+        
+        // 記錄起始 cell 與結束 cell
+        let startCell = getCell(points[0]);
+        let endCell = getCell(points[points.length-1]);
+        let gridResult = startCell.toString() + endCell.toString();
+        recognizedGridText += gridResult;
+      }
+      
+      // 顯示在下方
+      document.getElementById("resultStroke").textContent = recognizedStrokeText;
+      document.getElementById("resultGrid").textContent = recognizedGridText;
+      
+      // 更新浮動建議 & 繪製外框
+      updateFloatingSuggestions();
+      drawGrid();
+      e.preventDefault();
+    }
+    
+    // 清除畫布與相關變數
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      points = [];
+      recognizedStrokeText = "";
+      recognizedGridText = "";
+      document.getElementById("resultStroke").textContent = "";
+      document.getElementById("resultGrid").textContent = "";
+      globalMinX = Infinity; 
+      globalMaxX = -Infinity; 
+      globalMinY = Infinity; 
+      globalMaxY = -Infinity;
+      updateFloatingSuggestions();
+    }
+    
+    canvas.addEventListener("mousedown", startDrawing);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDrawing);
+    canvas.addEventListener("mouseout", endDrawing);
+    
+    // 觸控事件
+    canvas.addEventListener("touchstart", startDrawing);
+    canvas.addEventListener("touchmove", function(e){
+      e.preventDefault();
+      draw(e);
+    });
+    canvas.addEventListener("touchend", endDrawing);
+    
+    document.getElementById("clearButton").addEventListener("click", clearCanvas);
+    
+    // 顯示九宮格外框
+    function drawGrid() {
+      if(globalMinX === Infinity) return;
+      let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+      let centerX = (globalMinX + globalMaxX)/2;
+      let centerY = (globalMinY + globalMaxY)/2;
+      let squareLeft = centerX - edgeLength/2;
+      let squareTop = centerY - edgeLength/2;
+      let cellSize = edgeLength/3;
+      
+      ctx.save();
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(squareLeft, squareTop, edgeLength, edgeLength);
+      ctx.beginPath();
+      ctx.moveTo(squareLeft + cellSize, squareTop);
+      ctx.lineTo(squareLeft + cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft + 2*cellSize, squareTop);
+      ctx.lineTo(squareLeft + 2*cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft, squareTop + cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + cellSize);
+      ctx.moveTo(squareLeft, squareTop + 2*cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + 2*cellSize);
+      ctx.stroke();
+      ctx.restore();
+    }
+    
+    /******** 數字比對 ********/
+    function computeSequenceDifference(seq1, seq2) {
+      let maxLen = Math.max(seq1.length, seq2.length);
+      let diff = 0;
+      for(let i = 0; i < maxLen; i++){
+        if(i < seq1.length && i < seq2.length) {
+          diff += Math.abs(parseInt(seq1[i]) - parseInt(seq2[i]));
+        } else {
+          // 長度不一致時，差值直接 +3
+          diff += 3;
+        }
+      }
+      return diff;
+    }
+    function computeRecordDifference(strokeA, gridA, strokeB, gridB) {
+      return computeSequenceDifference(strokeA, strokeB) +
+             computeSequenceDifference(gridA, gridB);
+    }
+    
+    /******** 浮動建議標籤更新 ********/
+    function updateFloatingSuggestions() {
+      // 依目前階段 (meals, amount, custom) 取得對應的標籤
+      let currentCategory = dbOrder[currentDbIndex];
+      const floatingDiv = document.getElementById("floatingSuggestions");
+      floatingDiv.innerHTML = "";
+      
+      // 針對目前分類 (meals / amount / custom) 從 allTags 過濾出對應的標籤
+      let tags = allTags.filter(tag => tag.category === currentCategory);
+      
+      // 若沒有任何 tag，則不顯示
+      if(tags.length === 0) return;
+      
+      // 計算與目前筆畫的相似度
+      let suggestions = [];
+      tags.forEach(tag => {
+        // 確保該標籤至少有一筆 data
+        if(tag.data && tag.data.length > 0){
+          let minDiff = Infinity;
+          tag.data.forEach(record => {
+            let diff = computeRecordDifference(
+              recognizedStrokeText, recognizedGridText,
+              record.stroke, record.grid
+            );
+            if(diff < minDiff) { minDiff = diff; }
+          });
+          // 如果標籤名稱含有 "/"，代表此標籤有多個「可選名稱」
+          if(tag.name.indexOf("/") !== -1) {
+            let nameParts = tag.name.split("/");
+            let priceParts = [];
+            // 價錢欄位也可能含 "/"
+            if(typeof tag.price === "string" && tag.price.indexOf("/") !== -1) {
+              priceParts = tag.price.split("/");
+            }
+            nameParts.forEach((part, idx) => {
+              let trimmed = part.trim();
+              // 依序對應價錢
+              let candidatePrice = (priceParts.length > idx) ? parseFloat(priceParts[idx]) : tag.price;
+              suggestions.push({
+                tagName: trimmed,
+                category: tag.category,
+                diff: minDiff,
+                candidatePrice: candidatePrice
+              });
+            });
+          } else {
+            suggestions.push({
+              tagName: tag.name,
+              category: tag.category,
+              diff: minDiff,
+              candidatePrice: tag.price
+            });
+          }
+        }
+      });
+      
+      // 排序取前三筆
+      suggestions.sort((a, b) => a.diff - b.diff);
+      suggestions = suggestions.slice(0, 3);
+      
+      // 產生候選按鈕 (只顯示標籤名稱，不顯示價錢與排序編號)
+      suggestions.forEach(s => {
+        let btn = document.createElement("button");
+        btn.textContent = s.tagName;  // 只顯示標籤名稱
+        btn.addEventListener("click", function(){
+          let outputField = document.getElementById("outputField");
+          let currentOutput = outputField.value;
+          if(currentOutput !== "") currentOutput += " / ";
+          currentOutput += s.tagName;
+          outputField.value = currentOutput;
+          
+          // 記錄該階段的選擇
+          selectedLabels[currentDbIndex] = s;
+          // 進入下一階段
+          currentDbIndex++;
+          clearCanvas(); // 清除畫布
+          
+          // 如果所有階段都走完
+          if(currentDbIndex >= dbOrder.length) {
+            // meals -> selectedLabels[0]
+            // amount -> selectedLabels[1]
+            let mealLabel = selectedLabels[0];
+            let amountLabel = selectedLabels[1];
+            let total = 0;
+            if(mealLabel && mealLabel.candidatePrice !== undefined && mealLabel.candidatePrice !== null) {
+              let mealPrice = parseFloat(mealLabel.candidatePrice);
+              let amount = parseFloat(amountLabel?.tagName);
+              if(!isNaN(mealPrice) && !isNaN(amount)) {
+                total = mealPrice * amount;
+              }
+            }
+            // 直接顯示該次的總金額
+            outputField.value += " = 總金額: " + total;
+            
+            // 重置
+            currentDbIndex = 0;
+            selectedLabels = [];
+          }
+          updateFloatingSuggestions();
+        });
+        floatingDiv.appendChild(btn);
+      });
+      
+      // 如果是 custom 階段，另外在最後放一個「確定」按鈕，用來累計 grandTotal
+      if(currentCategory === "custom") {
+        let confirmBtn = document.createElement("button");
+        confirmBtn.textContent = "確定"; 
+        confirmBtn.addEventListener("click", function(){
+          let outputField = document.getElementById("outputField");
+          let mealLabel = selectedLabels[0];
+          let amountLabel = selectedLabels[1];
+          let total = 0;
+          // meals, amount 都必須存在才能計算
+          if(mealLabel && mealLabel.candidatePrice !== undefined && mealLabel.candidatePrice !== null) {
+            let mealPrice = parseFloat(mealLabel.candidatePrice);
+            let amount = parseFloat(amountLabel?.tagName);
+            if(!isNaN(mealPrice) && !isNaN(amount)) {
+              total = mealPrice * amount;
+            }
+          }
+          // 加到累計總金額
+          grandTotal += total;
+          
+          let currentOutput = outputField.value;
+          // 換行顯示該品項金額 + 累計總金額
+          currentOutput += "\n= 該品項金額: " + total;
+          currentOutput += "\n----------------\n累計總金額: " + grandTotal;
+          outputField.value = currentOutput;
+          
+          // 重置流程到第一階段
+          currentDbIndex = 0;
+          selectedLabels = [];
+          clearCanvas();
+          updateFloatingSuggestions();
+        });
+        floatingDiv.appendChild(confirmBtn);
+      }
+    }
+    
+    /******** 清除輸入欄 ********/
+    document.getElementById("clearOutputBtn").addEventListener("click", function(){
+      document.getElementById("outputField").value = "";
+      grandTotal = 0; // 重置累計總金額
+      currentDbIndex = 0;
+      selectedLabels = [];
+      updateFloatingSuggestions();
+    });
+  </script>
+</body>
+</html>
