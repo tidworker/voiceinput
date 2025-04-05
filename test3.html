@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <!-- 須確保在手機上可正常顯示與縮放 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手持裝置手寫辨識系統 (累積品項 + 輸出欄高500px)</title>
+  <title>手持裝置手寫辨識系統 (已完成清單 + 總金額 + 當前輸入)</title>
   <style>
     html, body {
       margin: 0; 
@@ -33,7 +33,7 @@
     /* 備選按鈕：水平置中，top: 20%。 若沒超過 95%螢幕寬，不換行；超過則橫向捲動 */
     #floatingSuggestions {
       position: absolute;
-      top: 20%;
+      top: 60%;
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -44,7 +44,7 @@
       z-index: 10; 
     }
     #floatingSuggestions button {
-      font-size: 14px;
+      font-size: 18px;
       padding: 5px 10px;
       margin: 2px;
       white-space: nowrap; /* 文字不換行 */
@@ -53,7 +53,7 @@
     #outputField {
       position: absolute;
       left: 50%;
-      top: 60%;
+      top: 10%;
       transform: translate(-50%, -50%);
       width: auto;
       min-width: 390px; 
@@ -79,20 +79,23 @@
   <canvas id="canvas"></canvas>
 
   <!-- 輸出欄位：在畫布之下，重疊於螢幕中央，高度500px -->
-  <textarea id="outputField" readonly placeholder="?"></textarea>
+  <textarea id="outputField" readonly placeholder="選擇結果會顯示在此"></textarea>
 </div>
 
 <script>
 /************************************************
- * 一、三階段 (meals → amount → custom) + 讀取 tags.json
+ * 一、三階段 (meals→amount→custom) + 讀取 tags.json
  ************************************************/
 let dbOrder = ['meals','amount','custom'];
-let currentDbIndex = 0;  // 0=meals,1=amount,2=custom
-let selectedLabels = []; // 暫存單一品項的三階段結果
-let grandTotal = 0;      // 累計總金額
+let currentDbIndex = 0;   // 0=meals,1=amount,2=custom
 
-// 用來累積品項 (每完成一輪三階段就放入這裡)
+// 用來儲存所有「完成三階段」的品項：["牛肉麵 × 2 加辣","陽春麵 × 1"]
 let itemLines = [];
+// 用來紀錄正在輸入的「尚未完成三階段」字串，例如 "牛肉麵 / 2"
+let partialInput = "";
+
+// 每次完成一個品項，就把金額累加
+let grandTotal = 0;
 
 let allTags = [];
 
@@ -313,13 +316,17 @@ function clearCanvasOnly(){
 }
 function clearOutputAndCanvas(){
   // 清掉輸出欄與所有累積
-  document.getElementById("outputField").value= "";
+  partialInput= "";
+  itemLines= [];
   grandTotal=0;
   currentDbIndex=0;
-  selectedLabels=[];
-  itemLines= [];
+  recognizedStrokeText="";
+  recognizedGridText="";
+  resetBounds();
 
-  clearCanvasOnly();
+  document.getElementById("outputField").value= "";
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  updateFloatingSuggestions();
 }
 
 document.addEventListener("mousedown", onPressStart, {passive:false});
@@ -331,7 +338,9 @@ document.addEventListener("touchmove",  onPressMove,  {passive:false});
 document.addEventListener("touchend",   onPressEnd,   {passive:false});
 
 /************************************************
- * 四、只顯示前三備選標籤 + 三階段運作 (累積多項)
+ * 四、只顯示前三備選標籤 + 三階段運作
+ *    - itemLines[] 儲存已完成品項
+ *    - partialInput 代表尚未完成的三階段
  ************************************************/
 function computeRecordDifference(sa,ga, sb,gb){
   return computeSequenceDifference(sa,sb)+ computeSequenceDifference(ga,gb);
@@ -405,89 +414,107 @@ function updateFloatingSuggestions(){
     let btn= document.createElement("button");
     btn.textContent= s.tagName;
     btn.addEventListener("click", ()=>{
-      // 選擇後 -> 拼到輸出欄
-      let output= document.getElementById("outputField");
-      let curVal= output.value;
-      if(curVal!=="") curVal+= " / ";
-      curVal+= s.tagName;
-      output.value= curVal;
+      // 將此標籤文字加到 partialInput
+      if(partialInput!=="") partialInput+= " / ";
+      partialInput+= s.tagName;
 
-      selectedLabels[currentDbIndex]= s;
+      // 完成此階段
       currentDbIndex++;
       clearCanvasOnly();
 
-      // 若已超過 3 階段 => 計算當前品項 => 加到累積
+      // 若已超過 3 階段 => 表示完成一個品項
       if(currentDbIndex>= dbOrder.length){
-        let mealLabel= selectedLabels[0];
+        // 計算此次品項金額
+        let mealLabel  = selectedLabels[0]; // 先前階段保存
         let amountLabel= selectedLabels[1];
         let customLabel= selectedLabels[2];
+
+        // 其實我們不一定要讀 selectedLabels，因為 partialInput 裡已存三階段文字
+        // 但還是要計算數字:
         let totalPrice=0;
-        if(mealLabel && mealLabel.candidatePrice!=null){
-          let mealPrice= mealLabel.candidatePrice;
-          let amtVal= parseFloat(amountLabel?.tagName|| "0");
+        if(selectedLabels[0] && selectedLabels[0].candidatePrice!=null){
+          let mealPrice= selectedLabels[0].candidatePrice;
+          let amtVal   = parseFloat(selectedLabels[1]?.tagName||"0");
           if(!isNaN(mealPrice) && !isNaN(amtVal)){
             totalPrice= mealPrice* amtVal;
           }
         }
         grandTotal+= totalPrice;
-        
-        // 單筆品項行: "meals × amount custom"
-        let line= mealLabel?.tagName + " × " + amountLabel?.tagName;
-        if(customLabel) {
-          line+= " " + customLabel.tagName;
-        }
-        // 放到 itemLines
-        itemLines.push(line);
 
-        // 更新輸出欄 => 顯示所有品項 + "----------\n總金額: ???"
-        let textToShow= itemLines.join("\n") + "\n----------\n總金額: " + grandTotal;
-        output.value= textToShow;
+        // 將 partialInput 視為「已完成的品項」
+        itemLines.push(partialInput);
 
-        // 重置階段
-        currentDbIndex=0;
+        // 重置 partialInput, selectedLabels, currentDbIndex
+        partialInput="";
         selectedLabels=[];
+        currentDbIndex=0;
+      } else {
+        // 尚未完成三階段 -> 暫存本階段標籤資訊(用於計算金額)
+        selectedLabels[currentDbIndex-1] = s;
       }
 
+      // 更新輸出欄 & 建議
+      updateOutputField();
       updateFloatingSuggestions();
     });
     floatingDiv.appendChild(btn);
   });
 
-  // 若是 custom 階段，維持 "確定" 按鈕 (可重複累積)
+  // custom 階段 ->「確定」按鈕 (可多次累計)
   if(currentCategory==="custom"){
     let confirmBtn= document.createElement("button");
     confirmBtn.textContent="確定";
     confirmBtn.addEventListener("click", ()=>{
-      let output= document.getElementById("outputField");
-      let mealLabel= selectedLabels[0];
+      // 完成此品項
+      let mealLabel  = selectedLabels[0];
       let amountLabel= selectedLabels[1];
       let customLabel= selectedLabels[2];
       let totalPrice=0;
       if(mealLabel && mealLabel.candidatePrice!=null){
         let mealPrice= mealLabel.candidatePrice;
-        let amtVal= parseFloat(amountLabel?.tagName||"0");
+        let amtVal   = parseFloat(amountLabel?.tagName||"0");
         if(!isNaN(mealPrice) && !isNaN(amtVal)){
-          totalPrice= mealPrice*amtVal;
+          totalPrice= mealPrice* amtVal;
         }
       }
       grandTotal+= totalPrice;
 
-      let line= mealLabel?.tagName + " × " + amountLabel?.tagName;
-      if(customLabel){
-        line+= " " + customLabel.tagName;
-      }
-      itemLines.push(line);
+      // 將 partialInput 視為完成品項
+      itemLines.push(partialInput);
 
-      let textToShow= itemLines.join("\n") + "\n----------\n總金額: " + grandTotal;
-      output.value= textToShow;
-
-      currentDbIndex=0;
+      partialInput="";
       selectedLabels=[];
+      currentDbIndex=0;
       clearCanvasOnly();
+
+      updateOutputField();
       updateFloatingSuggestions();
     });
     floatingDiv.appendChild(confirmBtn);
   }
+}
+
+// 依「itemLines + grandTotal + partialInput」組合 output 欄內容
+function updateOutputField(){
+  let lines = [];
+
+  // 1. 已完成品項
+  lines = lines.concat(itemLines);
+
+  // 2. 若有已完成品項，顯示「----------」與「總金額: ???」
+  if(itemLines.length>0){
+    lines.push("----------");
+    lines.push("總金額: " + grandTotal);
+  }
+
+  // 3. 若有 partialInput，則在最後再加一個空行 + partialInput
+  if(partialInput.trim()!==""){
+    lines.push("");
+    lines.push(partialInput);
+  }
+
+  // 塞回輸出欄
+  document.getElementById("outputField").value = lines.join("\n");
 }
 </script>
 </body>
