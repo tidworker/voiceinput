@@ -41,7 +41,7 @@
       flex-wrap: nowrap; /* 不換行；若超出則橫向捲動 */
       overflow-x: auto;
       max-width: 95vw;
-      gap: 10px;   /* 改為 10px */
+      gap: 10px;  /* 修改為 10px */
       z-index: 10;
     }
     #floatingSuggestions button {
@@ -50,7 +50,7 @@
       border-radius: 3px;
       font-size: 23px;
       padding: 5px 10px;
-      margin: 0;  /* 改為 0，間距交給 gap 控制 */
+      margin: 2px; /* 原註解保留，可視需要自行調整或移除 */
       white-space: nowrap; /* 不換行 */
     }
     /* 輸出欄 (textarea)：固定高度 500px，畫布下方，置中顯示 */
@@ -220,7 +220,7 @@ function endDrawing(e){
   e.preventDefault();
 }
 
-// 綁定畫布的滑鼠/觸控事件
+// 綁定滑鼠/觸控
 canvas.addEventListener("mousedown", startDrawing);
 canvas.addEventListener("mousemove", draw);
 canvas.addEventListener("mouseup",   endDrawing);
@@ -249,7 +249,8 @@ function processPointsByDistance(pts){
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
       let raw  = Math.floor(angle/36);
-      let mapped= ((raw-7+10)%10).toString(); 
+      // map: 7~9, 0~6 => 0~9
+      let mapped= ((raw-7+10)%10).toString();
       result+=mapped;
       lastSample= pts[i];
       distSum=0;
@@ -290,69 +291,55 @@ function getCell(p){
 }
 
 /************************************************
- * 三、清除規則:
- *   1) 0.5秒內 + 距離50px 內「連點兩下」=> 清空畫布
- *   2) 長按 1 秒後放開 => 清除全部輸入 (含畫布)
+ * 三、長按 (1s/2s) 清除 (此處修改 => 1秒清除全部、連點清空畫布)
  ************************************************/
 let pressStartTime=0, pressStartPos={x:0,y:0}, movedDuringPress=false;
 
-let lastTapTime = 0, lastTapPos={x:0,y:0}; // 用於判斷雙擊
+// 新增用於雙擊判斷
+let lastTapTime = 0, lastTapPos = {x:0,y:0};
 
 function onPressStart(e){
   pressStartTime= Date.now();
   pressStartPos= getPos(e);
   movedDuringPress=false;
 }
-
 function onPressMove(e){
   let pos= getPos(e);
-  let dx= pos.x- pressStartPos.x;
-  let dy= pos.y- pressStartPos.y;
+  let dx= pos.x- pressStartPos.x, dy= pos.y- pressStartPos.y;
   if(Math.sqrt(dx*dx+dy*dy)>10){
     movedDuringPress=true;
   }
 }
-
 function onPressEnd(e){
-  // 先檢查是否為雙擊
+  if(movedDuringPress) return;
+
+  // 計算本次按壓時間
+  let dur= Date.now()- pressStartTime;
+
+  // 先判斷是否為短時間(0.5秒內) + 50px範圍內 的「連點第二下」
   let now = Date.now();
   let pos = getPos(e);
-  let dt  = now - lastTapTime;
+  let dt  = now - lastTapTime;  // 與上一次點擊的時間差
   let dx  = pos.x - lastTapPos.x;
   let dy  = pos.y - lastTapPos.y;
   let dist= Math.sqrt(dx*dx + dy*dy);
 
-  // 若在 0.5 秒內且距離 < 50px => 視為雙擊 => 清空畫布
   if(dt < 500 && dist < 50){
+    // 符合「0.5秒 + 50px」 => 雙擊 => 清空畫布
     clearCanvasOnly();
-    lastTapTime = 0; // 重置，避免後續多次觸發
+    // 重置，避免連續多次
+    lastTapTime = 0;
   } else {
-    // 否則更新 lastTap 資訊
+    // 不符合雙擊條件 => 更新 lastTap
     lastTapTime = now;
     lastTapPos  = pos;
-  }
 
-  // 如果沒有移動過，且長按時間 >= 1 秒 => 清除全部輸入(含畫布)
-  if(!movedDuringPress){
-    let pressDuration = now - pressStartTime;
-    if(pressDuration >= 1000){
+    // 接著判斷長按 >=1 秒 => 清除全部
+    if(dur >= 1000){
       clearOutputAndCanvas();
     }
   }
 }
-
-// 在整個 document 綁定，用來偵測長按
-document.addEventListener("mousedown", onPressStart, {passive:false});
-document.addEventListener("mousemove", onPressMove,  {passive:false});
-document.addEventListener("mouseup",   onPressEnd,   {passive:false});
-
-document.addEventListener("touchstart", onPressStart, {passive:false});
-document.addEventListener("touchmove",  onPressMove,  {passive:false});
-document.addEventListener("touchend",   onPressEnd,   {passive:false});
-
-/************************************************
- * 四、清除畫布/清除全部輸入的函式
- ************************************************/
 function clearCanvasOnly(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   recognizedStrokeText="";
@@ -376,8 +363,17 @@ function clearOutputAndCanvas(){
   updateFloatingSuggestions();
 }
 
+// 綁定整個 document，用於「長按」與「雙擊」偵測
+document.addEventListener("mousedown", onPressStart, {passive:false});
+document.addEventListener("mousemove", onPressMove,  {passive:false});
+document.addEventListener("mouseup",   onPressEnd,   {passive:false});
+
+document.addEventListener("touchstart", onPressStart, {passive:false});
+document.addEventListener("touchmove",  onPressMove,  {passive:false});
+document.addEventListener("touchend",   onPressEnd,   {passive:false});
+
 /************************************************
- * 五、只顯示前3個備選標籤 + 累計品項 + 總金額 + 當前輸入
+ * 四、只顯示前3個備選標籤 + 累計品項 + 總金額 + 當前輸入
  ************************************************/
 function computeRecordDifference(sa,ga,sb,gb){
   return computeSequenceDifference(sa,sb)+ computeSequenceDifference(ga,gb);
@@ -414,7 +410,7 @@ function updateFloatingSuggestions(){
         );
         if(diff<minDiff) minDiff= diff;
       });
-      // 若有用 "/" 分隔多個名稱
+      // 處理多子名稱
       if(tag.name.indexOf("/")!==-1){
         let nameParts= tag.name.split("/");
         let priceParts=[];
@@ -452,8 +448,13 @@ function updateFloatingSuggestions(){
     btn.addEventListener("click", ()=>{
       // 選到後，把文字累加進 currentLine
       if(currentLine!=="") currentLine+=" ";
+      // meals, amount, custom 之間用不同格式？
+      // 這裡統一用「/」或直接用空格/×
+      // 依需求可自行改
       if(currentCategory==="amount"){
         currentLine+="× "+ s.tagName; 
+      } else if(currentCategory==="custom"){
+        currentLine+= s.tagName;
       } else {
         currentLine+= s.tagName;
       }
@@ -470,12 +471,13 @@ function updateFloatingSuggestions(){
         // 計算金額 => (mealsPrice × amount)
         let mealLabel  = selectedLabels[0];
         let amountLabel= selectedLabels[1];
+        // custom 不一定影響價格，但只負責顯示
         let totalPrice=0;
         if(mealLabel && mealLabel.candidatePrice!=null){
           let mealPrice= mealLabel.candidatePrice;
           let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
           if(!isNaN(mealPrice) && !isNaN(amtVal)){
-            totalPrice= mealPrice * amtVal;
+            totalPrice= mealPrice* amtVal;
           }
         }
         grandTotal+= totalPrice;
@@ -485,6 +487,8 @@ function updateFloatingSuggestions(){
 
         // 清空 currentLine
         currentLine="";
+
+        // 重置
         currentDbIndex=0;
         selectedLabels=[];
       }
@@ -501,7 +505,7 @@ function updateFloatingSuggestions(){
     let confirmBtn= document.createElement("button");
     confirmBtn.textContent="確定";
     confirmBtn.addEventListener("click", ()=>{
-      // user 不點自動候選，而直接「確定」結束
+      // 表示 user 不點自動候選，而直接「確定」完成
       let mealLabel  = selectedLabels[0];
       let amountLabel= selectedLabels[1];
       let totalPrice=0;
@@ -514,7 +518,7 @@ function updateFloatingSuggestions(){
       }
       grandTotal+= totalPrice;
 
-      // 完成 => 加到 itemList
+      // 完成 => 加入 itemList
       itemList.push(currentLine);
       currentLine="";
       currentDbIndex=0;
@@ -529,7 +533,7 @@ function updateFloatingSuggestions(){
 }
 
 /************************************************
- * 六、更新輸出欄
+ * 五、更新輸出欄
  *    格式：
  *    (已完成) itemList 每行1品項
  *    ----------
