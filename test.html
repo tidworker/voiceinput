@@ -43,8 +43,12 @@
       max-width: 300px;
       text-align: center;
     }
-    .modal-content button { margin: 5px; font-size: 14px; padding: 5px 10px; }
-    /* 分類按鈕區：每一筆以勾選框及按鈕呈現 */
+    .modal-content button { 
+      margin: 5px; 
+      font-size: 14px; 
+      padding: 5px 10px; 
+    }
+    /* 分類按鈕區：每筆以勾選框及按鈕呈現 */
     #categoryButtons {
       text-align: center;
       margin: 10px 0;
@@ -62,6 +66,18 @@
       vertical-align: middle;
       font-size: 14px;
       padding: 5px 10px;
+    }
+    /* 分頁控制樣式 */
+    #paginationControls {
+      margin-top: 10px;
+    }
+    #paginationControls a, #paginationControls span {
+      margin: 0 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #paginationControls span {
+      font-weight: bold;
     }
   </style>
 </head>
@@ -86,15 +102,15 @@
   <div id="categoryButtons">
     <div class="category-row">
       <input type="checkbox" id="use_meals" checked>
-      <button onclick="openCategoryModal('meals')">Meals</button>
+      <button onclick="openCategoryModal('meals', 1)">Meals</button>
     </div>
     <div class="category-row">
       <input type="checkbox" id="use_amount" checked>
-      <button onclick="openCategoryModal('amount')">Amount</button>
+      <button onclick="openCategoryModal('amount', 1)">Amount</button>
     </div>
     <div class="category-row">
       <input type="checkbox" id="use_custom" checked>
-      <button onclick="openCategoryModal('custom')">Custom</button>
+      <button onclick="openCategoryModal('custom', 1)">Custom</button>
     </div>
   </div>
   
@@ -339,22 +355,16 @@
     
     /******************************************
      * 資料庫操作（標籤管理與比對模組）
-     * 標籤資料格式：{ name, category, data }
+     * 標籤資料格式：{ name, category, data, price }
      ******************************************/
-    function loadTags() {
-      const data = localStorage.getItem(TAG_STORAGE_KEY);
-      return data ? JSON.parse(data) : [];
-    }
-    function saveTags(tags) {
-      localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(tags));
-    }
-    function addTag(name, category) {
+    // 新增標籤時，若分類為 amount 則不設定價錢，否則預設為 0
+    function addTag(name, category, price = 0) {
       let tags = loadTags();
       if(tags.find(tag => tag.name === name && tag.category === category)){
         alert("標籤已存在");
         return;
       }
-      tags.push({ name: name, category: category, data: [] });
+      tags.push({ name: name, category: category, data: [], price: price });
       saveTags(tags);
     }
     function deleteTag(tagName, category) {
@@ -390,40 +400,95 @@
       alert("已儲存至標籤：" + tagName);
       clearCanvas();
     }
+    function loadTags() {
+      const data = localStorage.getItem(TAG_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    }
+    function saveTags(tags) {
+      localStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(tags));
+    }
+    
+    /******************************************
+     * 修改標籤價錢（僅適用非 amount 分類）
+     ******************************************/
+    function modifyTagPrice(tagName, category) {
+      let tags = loadTags();
+      let tag = tags.find(tag => tag.name === tagName && tag.category === category);
+      if(!tag){
+         alert("找不到標籤");
+         return;
+      }
+      let newPrice = prompt("請輸入新價錢（預設0）：", tag.price);
+      if(newPrice !== null) {
+         tag.price = parseFloat(newPrice) || 0;
+         saveTags(tags);
+         alert("已更新價錢為：" + tag.price);
+         openCategoryModal(category, 1);
+      }
+    }
     
     /******************************************
      * 分類模態視窗：顯示該分類的標籤，並可新增標籤
+     * 若標籤數量超過 10 筆，則分頁顯示，下方顯示頁碼供切換
      ******************************************/
-    function openCategoryModal(category) {
+    function openCategoryModal(category, page = 1) {
       let tags = loadTags().filter(tag => tag.category === category);
+      let itemsPerPage = 10;
+      let totalPages = Math.ceil(tags.length / itemsPerPage);
+      let startIndex = (page - 1) * itemsPerPage;
+      let paginatedTags = tags.slice(startIndex, startIndex + itemsPerPage);
+      
       let content = `<h3>${category} 標籤管理</h3>
-                     <input type="text" id="newTagInput" placeholder="輸入標籤名稱" style="width:100%; box-sizing:border-box;">
-                     <button id="addNewTagButton" style="width:100%;">新增標籤</button>
+                     <input type="text" id="newTagInput" placeholder="輸入標籤名稱" style="width:100%; box-sizing:border-box;">`;
+      if(category !== 'amount'){
+        content += `<input type="text" id="newTagPriceInput" placeholder="輸入標籤價錢 (若有共用則以/分隔，預設0)" style="width:100%; box-sizing:border-box;">`;
+      }
+      content += `<button id="addNewTagButton" style="width:100%;">新增標籤</button>
                      <div id="categoryTagList" style="margin-top:10px;">`;
-      if(tags.length > 0) {
-        tags.forEach(tag => {
-          content += `<button style="margin:5px;" onclick="openTagOptions('${tag.name}','${tag.category}')">${tag.name} (${tag.data.length}筆)</button>`;
+      if(paginatedTags.length > 0) {
+        paginatedTags.forEach(tag => {
+          if(category === 'amount'){
+            content += `<button style="margin:5px;" onclick="openTagOptions('${tag.name}','${tag.category}')">${tag.name} (${tag.data.length}筆)</button>`;
+          } else {
+            content += `<button style="margin:5px;" onclick="openTagOptions('${tag.name}','${tag.category}')">${tag.name} (價錢: ${tag.price}, ${tag.data.length}筆)</button>`;
+          }
         });
       } else {
         content += "<p>尚無標籤</p>";
       }
       content += "</div>";
+      if(totalPages > 1) {
+        content += `<div id="paginationControls">`;
+        for(let p = 1; p <= totalPages; p++){
+          if(p === page) {
+            content += `<span>${p}</span>`;
+          } else {
+            content += `<a href="javascript:void(0)" onclick="openCategoryModal('${category}', ${p})">${p}</a>`;
+          }
+        }
+        content += `</div>`;
+      }
       openModal("", [
-        { label: "關閉", action: function(){} }
+         { label: "關閉", action: function(){} }
       ]);
       document.getElementById("modalMessage").innerHTML = content;
       document.getElementById("addNewTagButton").addEventListener("click", function(){
-        let newTagName = document.getElementById("newTagInput").value.trim();
-        if(newTagName) {
-          addTag(newTagName, category);
-          openCategoryModal(category);
-        }
+          let newTagName = document.getElementById("newTagInput").value.trim();
+          let newTagPrice = 0;
+          if(category !== 'amount'){
+              let newTagPriceValue = document.getElementById("newTagPriceInput").value.trim();
+              newTagPrice = newTagPriceValue ? newTagPriceValue : "0";
+          }
+          if(newTagName) {
+              addTag(newTagName, category, newTagPrice);
+              openCategoryModal(category, page);
+          }
       });
     }
     
-    // 點選標籤時的操作選單，新增「清除資料」選項
+    // 點選標籤時的操作選單，若非 amount 類別則可修改價錢
     function openTagOptions(tagName, category) {
-      openModal("請選擇操作 (標籤：" + tagName + ")", [
+      let options = [
         { label: "儲存資料", action: function(){ saveDataToTag(tagName, category); } },
         { label: "清除資料", action: function(){
             if(confirm("確定要清除該標籤的資料嗎？")){
@@ -434,23 +499,28 @@
         { label: "刪除標籤", action: function(){
             if(confirm("確定要刪除該標籤嗎？")){
               deleteTag(tagName, category);
-              openCategoryModal(category);
+              openCategoryModal(category, 1);
             }
           }
-        },
-        { label: "取消", action: function(){} }
-      ]);
+        }
+      ];
+      if(category !== 'amount'){
+         options.push({ label: "修改價錢", action: function(){ modifyTagPrice(tagName, category); } });
+      }
+      options.push({ label: "取消", action: function(){} });
+      openModal("請選擇操作 (標籤：" + tagName + ")", options);
     }
     
     /******************************************
-     * 浮動建議標籤按鈕（不顯示分類，前置排序）
-     * 僅納入各分類勾選框為勾選的資料庫
+     * 浮動建議標籤按鈕
+     * （不顯示分類，前置排序；僅納入各分類勾選框為勾選的資料庫）
+     * 共用標籤若名稱包含 "/"，則拆分候選項；若價錢也以 "/" 分隔則依序匹配
      ******************************************/
     function updateFloatingSuggestions() {
       let tags = loadTags();
       let suggestions = [];
       tags.forEach(tag => {
-        // 依據 tag.category 檢查對應勾選框是否勾選
+        // 檢查對應勾選框是否啟用
         if(tag.category === 'meals' && !document.getElementById("use_meals").checked) return;
         if(tag.category === 'amount' && !document.getElementById("use_amount").checked) return;
         if(tag.category === 'custom' && !document.getElementById("use_custom").checked) return;
@@ -460,7 +530,21 @@
             let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid);
             if(diff < minDiff) { minDiff = diff; }
           });
-          suggestions.push({ tagName: tag.name, category: tag.category, diff: minDiff });
+          // 若標籤名稱包含 "/"，拆分候選項
+          if(tag.name.indexOf("/") !== -1) {
+            let nameParts = tag.name.split("/");
+            let priceParts = [];
+            if(tag.category !== "amount" && typeof tag.price === "string" && tag.price.indexOf("/") !== -1) {
+              priceParts = tag.price.split("/");
+            }
+            nameParts.forEach((part, idx) => {
+              let trimmed = part.trim();
+              let candidatePrice = (priceParts.length > idx) ? priceParts[idx].trim() : 0;
+              suggestions.push({ tagName: trimmed, category: tag.category, diff: minDiff, originalName: tag.name, candidatePrice: candidatePrice });
+            });
+          } else {
+            suggestions.push({ tagName: tag.name, category: tag.category, diff: minDiff, candidatePrice: (tag.category !== "amount") ? tag.price : null });
+          }
         }
       });
       suggestions.sort((a, b) => a.diff - b.diff);
@@ -469,9 +553,17 @@
       floatingDiv.innerHTML = "";
       suggestions.forEach((s, idx) => {
         let btn = document.createElement("button");
-        btn.textContent = `${idx+1}. ${s.tagName}`;
+        let text = `${idx+1}. ${s.tagName}`;
+        if(s.candidatePrice !== null && s.candidatePrice !== undefined && s.candidatePrice !== "") {
+          text += ` (價錢: ${s.candidatePrice})`;
+        }
+        btn.textContent = text;
         btn.addEventListener("click", function(){
-          saveDataToTag(s.tagName, s.category);
+          if(s.originalName) {
+            saveDataToTag(s.originalName, s.category);
+          } else {
+            saveDataToTag(s.tagName, s.category);
+          }
         });
         floatingDiv.appendChild(btn);
       });
