@@ -35,7 +35,7 @@
     }
     /* 畫布：背景透明且位於中間 */
     #canvas {
-      border: 1px solid #000;
+      border: 0px solid #000;
       width: 100%;
       max-width: 390px;
       height: auto;
@@ -95,7 +95,7 @@
   <!-- canvasContainer：包含輸出標籤層、畫布及浮動建議 -->
   <div id="canvasContainer">
     <!-- 輸出標籤圖層，顯示累積輸出的標籤內容 -->
-    <div id="outputLayer">(未選擇任何標籤)</div>
+    <div id="outputLayer"></div>
     <canvas id="canvas" width="390" height="390"></canvas>
     <div id="floatingSuggestions"></div>
   </div>
@@ -383,9 +383,9 @@
       const outputLayer = document.getElementById("outputLayer");
       const inputField = document.getElementById("tagInput");
       if(inputField.value.trim() === "") {
-        outputLayer.textContent = "(未選擇任何標籤)";
+        outputLayer.textContent = "";
       } else {
-        outputLayer.textContent = "已選擇: " + inputField.value;
+        outputLayer.textContent = "" + inputField.value;
       }
     }
     
