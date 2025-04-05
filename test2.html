@@ -11,7 +11,6 @@
       font-family: Arial, sans-serif;
       margin: 10px;
       padding: 0;
-      background: black;
     }
     /* canvasContainer：用於定位內部的輸出層、畫布與浮動建議 */
     #canvasContainer {
@@ -32,11 +31,11 @@
       align-items: center;
       font-size: 16px;
       font-weight: bold;
-      color: white;
+      color: black;
     }
     /* 畫布：背景透明且位於中間 */
     #canvas {
-      border: px solid #000;
+      border: 1px solid #000;
       width: 100%;
       max-width: 390px;
       height: auto;
@@ -84,6 +83,28 @@
       font-size: 16px;
       padding: 6px 12px;
     }
+    /* 畫布下方按鈕 */
+    #canvasButtons {
+      margin-top: 5px;
+    }
+    #canvasButtons button {
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+    /* 輸入區 */
+    #inputArea {
+      max-width: 400px;
+      margin: 20px auto;
+    }
+    #tagInput {
+      width: 80%;
+      padding: 5px;
+      font-size: 14px;
+    }
+    #clearInputButton {
+      padding: 5px 10px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -97,9 +118,14 @@
     <div id="floatingSuggestions"></div>
   </div>
   
-  <!-- 下方輸入區隱藏，但保留在 DOM 內供程式存取 -->
-  <div id="inputArea" style="display: none;">
+  <div id="canvasButtons">
+    <button id="clearCanvasButton">清除畫布</button>
+  </div>
+  
+  <!-- 輸入區：可手動累積輸入，並有清除鍵 -->
+  <div id="inputArea">
     <input type="text" id="tagInput" placeholder="輸入標籤或從上方選擇">
+    <button id="clearInputButton">清除輸入欄</button>
   </div>
   
   <script>
@@ -379,14 +405,14 @@
       const outputLayer = document.getElementById("outputLayer");
       const inputField = document.getElementById("tagInput");
       if(inputField.value.trim() === "") {
-        outputLayer.textContent = "";
+        outputLayer.textContent = "(未選擇任何標籤)";
       } else {
-        outputLayer.textContent = "" + inputField.value;
+        outputLayer.textContent = "已選擇: " + inputField.value;
       }
     }
     
     /******************************************
-     * 事件綁定（保留畫布手寫辨識）
+     * 事件綁定
      ******************************************/
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mousemove", draw);
@@ -395,6 +421,12 @@
     canvas.addEventListener("touchstart", startDrawing);
     canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
     canvas.addEventListener("touchend", endDrawing);
+    
+    document.getElementById("clearCanvasButton").addEventListener("click", clearCanvas);
+    document.getElementById("clearInputButton").addEventListener("click", function(){
+      document.getElementById("tagInput").value = "";
+      updateOutputLayer();
+    });
     
     /******************************************
      * 全螢幕長按 1 秒清除輸入內容
