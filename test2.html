@@ -41,7 +41,7 @@
       flex-wrap: nowrap; /* 不換行；若超出則橫向捲動 */
       overflow-x: auto;
       max-width: 95vw;
-      gap: 10px; /* 按鈕之間距改為 10px */
+      gap: 10px;  /* 按鈕間距改為10px */
       z-index: 10;
     }
     #floatingSuggestions button {
@@ -50,7 +50,7 @@
       border-radius: 3px;
       font-size: 23px;
       padding: 5px 10px;
-      margin: 2px;  /* 原設定保留，實際間距由 gap 控制 */
+      margin: 2px;  /* 原設定保留，可視需求自行調整 */
       white-space: nowrap; /* 不換行 */
     }
     /* 輸出欄 (textarea)：固定高度 500px，畫布下方，置中顯示 */
@@ -220,7 +220,7 @@ function endDrawing(e){
   e.preventDefault();
 }
 
-// 綁定畫布繪圖事件
+// 綁定滑鼠/觸控
 canvas.addEventListener("mousedown", startDrawing);
 canvas.addEventListener("mousemove", draw);
 canvas.addEventListener("mouseup",   endDrawing);
@@ -291,16 +291,23 @@ function getCell(p){
 }
 
 /************************************************
- * 三、改為 (連點0.5秒內+50px內) 清空畫布、(長按1秒) 清除輸入欄
+ * 三、操作方式：
+ *   (1) 長按滿1秒 => 直接清除畫布
+ *   (2) 若在長按滿1秒後，左右滑 >=90px => 刪除輸入欄
  ************************************************/
-let pressStartTime=0, pressStartPos={x:0,y:0}, movedDuringPress=false;
+let pressStartTime=0, pressTimer=null;
+let pressStartPos={x:0,y:0};
+let hasClearedCanvas = false;  // 是否已經清除過畫布
+let hasClearedOutput = false;  // 是否已經刪除過輸入欄
 
-// 用於雙擊判斷
-let lastTapTime = 0, lastTapPos = {x:0,y:0};
+// 綁定在 canvas 上
+canvas.addEventListener("pointerdown", onPointerDown, {passive:false});
+canvas.addEventListener("pointermove", onPointerMove, {passive:false});
+canvas.addEventListener("pointerup",   onPointerUp,   {passive:false});
+canvas.addEventListener("pointercancel", onPointerUp, {passive:false});
 
 /**
- * 只清空畫布 + 清除「已辨識筆畫」，
- * 但不清除輸入欄紀錄。
+ * 只清空畫布(含筆跡、recognizedStrokeText / recognizedGridText)
  */
 function clearCanvasOnly(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -311,78 +318,59 @@ function clearCanvasOnly(){
 }
 
 /**
- * 只清除「輸入欄」相關資料 (已完成品項、當前輸入、總金額等)；
- * 但不清除畫布與畫布上的筆畫。
+ * 刪除輸入欄 (包含已完成品項、當前輸入、金額等)
+ * 但不動畫布
  */
 function clearOutputOnly(){
-  // 重置輸入資料 (itemList、currentLine、總金額等)
+  // 重置所有輸入資料
   itemList=[];
   currentLine="";
   grandTotal=0;
   currentDbIndex=0;
   selectedLabels=[];
-
-  // 保留 recognizedStrokeText / recognizedGridText / Canvas 畫面
-  // 只清除 textarea 的顯示
-  document.getElementById("outputField").value="";
-  // 同步更新建議
+  // 不清除畫布
+  // 同步清除輸出欄
+  document.getElementById("outputField").value = "";
   updateFloatingSuggestions();
 }
 
-// ---------------------------------------------------
-// 以下三個事件掛在 canvas 上 (而非 document)
-// ---------------------------------------------------
-function onPressStart(e){
-  pressStartTime= Date.now();
-  pressStartPos= getPos(e);
-  movedDuringPress=false;
-}
-function onPressMove(e){
-  let pos= getPos(e);
-  let dx= pos.x- pressStartPos.x;
-  let dy= pos.y- pressStartPos.y;
-  if(Math.sqrt(dx*dx+dy*dy)>10){
-    movedDuringPress=true;
-  }
-}
-function onPressEnd(e){
-  // 若使用者已經拖曳繪圖，就不做後續(雙擊 / 長按)判斷
-  if(movedDuringPress) return;
+function onPointerDown(e){
+  // 記錄按下時資訊
+  pressStartTime = Date.now();
+  hasClearedCanvas = false;
+  hasClearedOutput = false;
+  pressStartPos = getPos(e);
 
-  let now = Date.now();
-  let dur= now - pressStartTime;
-
-  // 1) 先檢查是否「連點」 => 0.5秒內 + 50px內
-  let pos = getPos(e);
-  let dt  = now - lastTapTime;
-  let dx  = pos.x - lastTapPos.x;
-  let dy  = pos.y - lastTapPos.y;
-  let dist= Math.sqrt(dx*dx + dy*dy);
-
-  if(dt < 500 && dist < 50){
-    // 符合雙擊 => 清空畫布
+  // 開始1秒計時 => 時到就清除畫布
+  pressTimer = setTimeout(()=>{
     clearCanvasOnly();
-    lastTapTime = 0; // 避免連續判斷
-  } else {
-    // 不符合雙擊 => 更新 lastTap 訊息
-    lastTapTime = now;
-    lastTapPos  = pos;
+    hasClearedCanvas = true;
+  }, 1000);
+}
 
-    // 2) 若長按 >= 1 秒 => 清除輸入欄
-    if(dur >= 1000){
+function onPointerMove(e){
+  // 如果還沒清除畫布，就不用判斷任何事
+  if(!hasClearedCanvas) return;
+
+  // 如果已清除畫布，但尚未刪除輸入欄 => 偵測水平滑 90px
+  if(!hasClearedOutput){
+    let currentPos = getPos(e);
+    let dx = currentPos.x - pressStartPos.x;
+    if(Math.abs(dx) >= 90){
       clearOutputOnly();
+      hasClearedOutput = true;
     }
   }
 }
 
-// 綁定在 canvas，而非 document
-canvas.addEventListener("mousedown", onPressStart, {passive:false});
-canvas.addEventListener("mousemove", onPressMove,  {passive:false});
-canvas.addEventListener("mouseup",   onPressEnd,   {passive:false});
-
-canvas.addEventListener("touchstart", onPressStart, {passive:false});
-canvas.addEventListener("touchmove",  onPressMove,  {passive:false});
-canvas.addEventListener("touchend",   onPressEnd,   {passive:false});
+function onPointerUp(e){
+  // 若按上去不到1秒就放開 => 取消計時(不清除畫布)
+  if(!hasClearedCanvas){
+    clearTimeout(pressTimer);
+  }
+  // 指釋放後，不做額外處理
+  // (若已清除畫布, 也有可能在 move 時已刪除輸入欄)
+}
 
 /************************************************
  * 四、只顯示前3個備選標籤 + 累計品項 + 總金額 + 當前輸入
