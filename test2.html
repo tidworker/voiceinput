@@ -2,36 +2,12 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <!-- 使畫面在手機上自適應 -->
+  <!-- 新增 viewport 設定，確保在手機上正確縮放 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>快速手寫輸入系統</title>
+  <title>快速輸入系統 - 手持裝置手寫辨識 with Tagging</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 10px;
-      padding: 0;
-    }
-    h2 { text-align: center; }
-    /* Phase 1 建議區：分為三欄 */
-    #phase1Suggestions {
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      margin: 10px auto;
-      max-width: 390px;
-      font-size: 18px;
-    }
-    #phase1Suggestions div {
-      flex: 1;
-      text-align: center;
-      cursor: pointer;
-      border: 1px solid #ccc;
-      padding: 5px;
-      margin: 0 5px;
-      border-radius: 5px;
-      min-height: 30px;
-    }
-    /* 畫布設定 */
+    body { font-family: Arial, sans-serif; margin: 10px; padding: 0; }
+    /* 畫布置中，最大寬度 390px，但寬度會自適應小裝置 */
     canvas {
       display: block;
       margin: 0 auto 10px;
@@ -40,38 +16,32 @@
       max-width: 390px;
       height: auto;
     }
-    #clearButton {
-      display: block;
-      margin: 0 auto 10px;
-      font-size: 16px;
-    }
-    #outputField {
-      display: block;
-      margin: 10px auto;
-      width: 90%;
-      max-width: 390px;
-      padding: 8px;
-      font-size: 16px;
-    }
-    /* Modal（供後續階段使用，如有需要） */
-    #modal {
-      display: none;
-      position: fixed;
-      z-index: 1000;
-      left: 0; top: 0;
-      width: 100%; height: 100%;
-      background-color: rgba(0,0,0,0.5);
-    }
-    .modal-content {
-      background-color: #fff;
-      margin: 20% auto;
-      padding: 20px;
-      border: 1px solid #888;
-      width: 80%;
-      max-width: 300px;
+    #suggestions {
+      background: #eee;
+      padding: 5px;
+      border: 1px solid #000;
+      margin: 10px 0;
+      font-size: 14px;
       text-align: center;
     }
-    .modal-content button {
+    /* 快速輸入區 */
+    #quickInput {
+      margin-top: 20px;
+      border: 1px solid #aaa;
+      padding: 10px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+    #quickInput input {
+      font-size: 14px;
+      padding: 5px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    #tagList button {
       margin: 5px;
       font-size: 14px;
       padding: 5px 10px;
@@ -79,67 +49,45 @@
   </style>
 </head>
 <body>
-  <h2>快速手寫輸入系統</h2>
+  <h2 style="text-align:center;">手持裝置手寫辨識系統 with Tagging</h2>
   
-  <!-- 第一階段即時建議區（Phase 1） -->
-  <div id="phase1Suggestions"></div>
-  
-  <!-- 手寫畫布 -->
+  <!-- 手寫畫板 -->
   <canvas id="canvas" width="390" height="390"></canvas>
-  <button id="clearButton">清除畫布</button>
-  <!-- 輸出欄位 -->
-  <input type="text" id="outputField" placeholder="輸入欄位..." readonly>
+  <div style="text-align:center;">
+    <button id="clearButton">清除畫布</button>
+  </div>
+  <div style="text-align:center;">
+    <p>筆畫字串：<span id="resultStroke"></span></p>
+    <p>九宮格字串：<span id="resultGrid"></span></p>
+  </div>
   
-  <!-- Modal 區塊（如需後續階段使用） -->
-  <div id="modal">
-    <div class="modal-content">
-      <p id="modalMessage"></p>
-      <div id="modalButtons"></div>
-    </div>
+  <!-- 建議標籤區 -->
+  <div id="suggestions">建議標籤: (無)</div>
+  
+  <!-- 快速輸入區 -->
+  <div id="quickInput">
+    <h3>快速輸入</h3>
+    <input type="text" id="tagInput" placeholder="輸入標籤或點選建議標籤">
+    <div id="tagList"></div>
   </div>
   
   <script>
-    /********** 全域變數與階段設定 **********/
-    let phase = 1; // 三個階段：1、2、3
-    let currentTags = [];  // 當前階段讀取的標籤資料（例如 tags1.json）
-    // 請注意：每筆標籤記錄格式假設為 { label, stroke, grid }
-    
-    // 用來記錄筆畫方向與九宮格資料（原先系統保持不變）
+    /******************************************
+     * 手寫辨識與九宮格計算功能
+     ******************************************/
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let drawing = false;
+    let points = [];
     let recognizedStrokeText = "";
     let recognizedGridText = "";
-    
-    // 全局筆畫邊界（用於計算九宮格區號）
     let globalMinX = Infinity, globalMaxX = -Infinity, globalMinY = Infinity, globalMaxY = -Infinity;
+    
     function updateGlobalBounds(point) {
       if(point.x < globalMinX) globalMinX = point.x;
       if(point.x > globalMaxX) globalMaxX = point.x;
       if(point.y < globalMinY) globalMinY = point.y;
       if(point.y > globalMaxY) globalMaxY = point.y;
-    }
-    
-    // 根據 phase 讀取對應 JSON，檔名 tags1.json、tags2.json、tags3.json
-    function loadCurrentTags(phaseNumber) {
-      fetch("tags" + phaseNumber + ".json")
-        .then(response => response.json())
-        .then(data => { currentTags = data; })
-        .catch(err => { console.error("載入 tags" + phaseNumber + ".json 失敗：", err); });
-    }
-    // 初始階段讀取 tags1.json
-    loadCurrentTags(1);
-    
-    /********** 手寫辨識與筆畫處理（原先系統） **********/
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    let drawing = false;
-    let points = [];
-    
-    function getPos(e) {
-      const rect = canvas.getBoundingClientRect();
-      if(e.touches && e.touches[0]){
-        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
-      } else {
-        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      }
     }
     
     function getAngle(p1, p2) {
@@ -150,7 +98,6 @@
       return deg;
     }
     
-    // 每累積 30px 取樣一次，產生筆畫方向字串
     function processPointsByDistance() {
       let result = "";
       if(points.length < 2) return result;
@@ -173,7 +120,6 @@
       return result;
     }
     
-    // 壓縮連續數列（與原系統相同）
     function compressConsecutiveSequence(s) {
       let temp = s.replace(/(.)\1+/g, "$1");
       let result = "";
@@ -196,14 +142,14 @@
       return result;
     }
     
-    // 畫布事件
-    canvas.addEventListener("mousedown", startDrawing);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", endDrawing);
-    canvas.addEventListener("mouseout", endDrawing);
-    canvas.addEventListener("touchstart", startDrawing);
-    canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
-    canvas.addEventListener("touchend", endDrawing);
+    function getPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      if(e.touches && e.touches[0]){
+        return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      } else {
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      }
+    }
     
     function startDrawing(e) {
       drawing = true;
@@ -224,29 +170,20 @@
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       e.preventDefault();
-      // 第一階段：實時更新建議
-      if(phase === 1) {
-        // 當前筆畫結果 = 已累積 recognizedStrokeText 加上尚未結束的取樣結果
-        const currentStroke = recognizedStrokeText + processPointsByDistance();
-        // 目前九宮格資訊因尚未結束筆畫不變（此處傳入空字串）
-        updatePhase1Suggestions(currentStroke, "");
-      }
     }
     
     function endDrawing(e) {
       if(!drawing) return;
       drawing = false;
-      const strokeStartPoint = points[0];
-      const strokeEndPoint = points[points.length-1];
-      const strokeResult = processPointsByDistance();
+      let strokeResult = processPointsByDistance();
       recognizedStrokeText += strokeResult;
       recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
-      // 計算九宮格區號（與原系統相同）
+      
       if(globalMinX !== Infinity) {
-        const edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
-        const centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
-        const squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
-        const cellSize = edgeLength/3;
+        let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+        let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+        let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+        let cellSize = edgeLength/3;
         function getCell(point) {
           let col = Math.floor((point.x - squareLeft)/cellSize);
           let row = Math.floor((point.y - squareTop)/cellSize);
@@ -254,22 +191,17 @@
           if(row < 0) row = 0; if(row > 2) row = 2;
           return row * 3 + col + 1;
         }
-        const startCell = getCell(strokeStartPoint);
-        const endCell = getCell(strokeEndPoint);
-        const gridResult = startCell.toString() + endCell.toString();
+        let startCell = getCell(points[0]);
+        let endCell = getCell(points[points.length-1]);
+        let gridResult = startCell.toString() + endCell.toString();
         recognizedGridText += gridResult;
       }
-      // 更新 Phase 1 建議區（筆畫結束後）
-      if(phase === 1) updatePhase1Suggestions(recognizedStrokeText, "");
-      clearCanvasAfterProcessing();
+      
+      document.getElementById("resultStroke").textContent = recognizedStrokeText;
+      document.getElementById("resultGrid").textContent = recognizedGridText;
+      updateSuggestions();
+      drawGrid();
       e.preventDefault();
-    }
-    
-    function clearCanvasAfterProcessing() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      points = [];
-      // 重置全局邊界
-      globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
     
     function clearCanvas() {
@@ -277,13 +209,40 @@
       points = [];
       recognizedStrokeText = "";
       recognizedGridText = "";
-      document.getElementById("outputField").value = "";
+      document.getElementById("resultStroke").textContent = "";
+      document.getElementById("resultGrid").textContent = "";
+      updateSuggestions();
       globalMinX = Infinity; globalMaxX = -Infinity; globalMinY = Infinity; globalMaxY = -Infinity;
     }
     
-    /********** 比對函式（原先系統） **********/
+    function drawGrid() {
+      if(globalMinX === Infinity) return;
+      let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
+      let centerX = (globalMinX + globalMaxX)/2, centerY = (globalMinY + globalMaxY)/2;
+      let squareLeft = centerX - edgeLength/2, squareTop = centerY - edgeLength/2;
+      let cellSize = edgeLength/3;
+      ctx.save();
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(squareLeft, squareTop, edgeLength, edgeLength);
+      ctx.beginPath();
+      ctx.moveTo(squareLeft + cellSize, squareTop);
+      ctx.lineTo(squareLeft + cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft + 2*cellSize, squareTop);
+      ctx.lineTo(squareLeft + 2*cellSize, squareTop + edgeLength);
+      ctx.moveTo(squareLeft, squareTop + cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + cellSize);
+      ctx.moveTo(squareLeft, squareTop + 2*cellSize);
+      ctx.lineTo(squareLeft + edgeLength, squareTop + 2*cellSize);
+      ctx.stroke();
+      ctx.restore();
+    }
+    
+    /******************************************
+     * 差異計算功能
+     ******************************************/
     function computeSequenceDifference(seq1, seq2) {
-      const maxLen = Math.max(seq1.length, seq2.length);
+      let maxLen = Math.max(seq1.length, seq2.length);
       let diff = 0;
       for(let i = 0; i < maxLen; i++){
         if(i < seq1.length && i < seq2.length) {
@@ -299,74 +258,91 @@
              computeSequenceDifference(gridA, gridB);
     }
     
-    /********** Phase 1 即時建議 **********/
-    // 更新 Phase 1 建議區：參數 strokeText 為當前筆畫方向字串，gridText 目前暫留空字串
-    function updatePhase1Suggestions(strokeText, gridText) {
-      if(!currentTags || currentTags.length === 0) return;
-      const suggestions = currentTags.map(record => {
-        return {
-          label: record.label,
-          diff: computeRecordDifference(strokeText, gridText, record.stroke, record.grid)
-        };
+    /******************************************
+     * 從伺服器讀取 tags1.json 作為資料庫
+     ******************************************/
+    let serverTags = [];
+    function loadServerTags() {
+      fetch('tags1.json')
+        .then(response => response.json())
+        .then(data => {
+          serverTags = data;
+          updateTagList();
+          updateSuggestions();
+        })
+        .catch(error => {
+          console.error("無法讀取 tags1.json:", error);
+        });
+    }
+    
+    /******************************************
+     * 快速輸入區：更新標籤列表與建議標籤
+     ******************************************/
+    // 更新下方標籤列表，點選後將標籤名稱填入輸入欄
+    function updateTagList() {
+      const tagListDiv = document.getElementById("tagList");
+      tagListDiv.innerHTML = "";
+      serverTags.forEach(tag => {
+        const btn = document.createElement("button");
+        btn.textContent = tag.name;
+        btn.addEventListener("click", function(){
+          document.getElementById("tagInput").value = tag.name;
+        });
+        tagListDiv.appendChild(btn);
+      });
+    }
+    
+    // 依據手寫辨識結果，計算每個標籤的差異，並顯示最接近的三個建議標籤
+    function updateSuggestions() {
+      const suggestionsDiv = document.getElementById("suggestions");
+      if(recognizedStrokeText === "" && recognizedGridText === "") {
+        suggestionsDiv.textContent = "建議標籤: (無)";
+        return;
+      }
+      let suggestions = [];
+      serverTags.forEach(tag => {
+        if(tag.data && tag.data.length > 0){
+          let minDiff = Infinity;
+          let bestRecord = null;
+          tag.data.forEach(record => {
+            let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText, record.stroke, record.grid);
+            if(diff < minDiff) { minDiff = diff; bestRecord = record; }
+          });
+          suggestions.push({ tagName: tag.name, diff: minDiff, record: bestRecord });
+        }
       });
       suggestions.sort((a, b) => a.diff - b.diff);
-      const best = suggestions[0] ? suggestions[0].label : "";
-      const second = suggestions[1] ? suggestions[1].label : "";
-      const third = suggestions[2] ? suggestions[2].label : "";
-      
-      const container = document.getElementById("phase1Suggestions");
-      container.innerHTML = "";
-      
-      const createDiv = (label, isBest = false) => {
-        const div = document.createElement("div");
-        div.textContent = label;
-        if(isBest) { div.style.fontWeight = "bold"; }
-        if(label) { div.onclick = () => { suggestionSelected(label); }; }
-        return div;
-      };
-      container.appendChild(createDiv(second));
-      container.appendChild(createDiv(best, true));
-      container.appendChild(createDiv(third));
+      suggestions = suggestions.slice(0, 3);
+      suggestionsDiv.innerHTML = "";
+      if(suggestions.length > 0){
+        suggestions.forEach(s => {
+          let btn = document.createElement("button");
+          btn.style.margin = "5px";
+          btn.textContent = s.tagName + " (差:" + s.diff + ")";
+          btn.addEventListener("click", function(){
+            document.getElementById("tagInput").value = s.tagName;
+          });
+          suggestionsDiv.appendChild(btn);
+        });
+      } else {
+        suggestionsDiv.textContent = "建議標籤: (無)";
+      }
     }
     
-    // 使用者點選建議後：將選定標籤加入輸入欄位、清空暫存筆畫資料，並切換至 Phase 2（讀取 tags2.json）
-    function suggestionSelected(selectedLabel) {
-      appendToOutput(selectedLabel);
-      recognizedStrokeText = "";
-      recognizedGridText = "";
-      clearCanvasAfterProcessing();
-      // 切換階段（示意 Phase 2，此處後續可擴充 phase 2 與 3 的流程）
-      phase = 2;
-      loadCurrentTags(2);
-      document.getElementById("phase1Suggestions").innerHTML = "";
-    }
+    /******************************************
+     * 事件綁定
+     ******************************************/
+    canvas.addEventListener("mousedown", startDrawing);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDrawing);
+    canvas.addEventListener("mouseout", endDrawing);
+    canvas.addEventListener("touchstart", startDrawing);
+    canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
+    canvas.addEventListener("touchend", endDrawing);
+    document.getElementById("clearButton").addEventListener("click", clearCanvas);
     
-    function appendToOutput(label) {
-      const outputField = document.getElementById("outputField");
-      outputField.value += label;
-    }
-    
-    /********** Modal 工具（供後續階段使用） **********/
-    function openModal(message, options) {
-      const modal = document.getElementById("modal");
-      const modalMessage = document.getElementById("modalMessage");
-      const modalButtons = document.getElementById("modalButtons");
-      modalMessage.textContent = message;
-      modalButtons.innerHTML = "";
-      options.forEach(opt => {
-        const btn = document.createElement("button");
-        btn.textContent = opt.label;
-        btn.addEventListener("click", () => { opt.action(); closeModal(); });
-        modalButtons.appendChild(btn);
-      });
-      modal.style.display = "block";
-    }
-    function closeModal() {
-      document.getElementById("modal").style.display = "none";
-    }
-    
-    /********** 初始設定 **********/
-    // 輸出欄位唯讀；系統載入時 phase 為 1（已讀取 tags1.json）
+    // 頁面載入時，從伺服器讀取 tags1.json
+    loadServerTags();
   </script>
 </body>
 </html>
