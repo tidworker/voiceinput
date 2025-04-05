@@ -130,16 +130,18 @@
   
   <script>
     /******************************************
-     * 內建資料庫（測試用）
+     * 讀取標籤內容：從 tags1.json 讀取
      ******************************************/
-    const builtInTags = [
-      {
-        "name": "蛋餅",
-        "data": [
-          { "stroke": "2565", "grid": "4928" }
-        ]
-      }
-    ];
+    let builtInTags = [];
+    fetch('tags1.json')
+      .then(response => response.json())
+      .then(data => {
+        builtInTags = data;
+        // 若資料讀取完成後需立即更新建議，可考慮在此呼叫 updateFloatingSuggestions()
+      })
+      .catch(error => {
+        console.error('Error loading tags1.json:', error);
+      });
     
     /******************************************
      * 畫布與手寫辨識相關設定
