@@ -7,7 +7,6 @@
   <title>手寫辨識系統 (累計品項 + 總金額 + 當前輸入於下一行)</title>
   <style>
     html, body {
-      color: white;
       margin: 0;
       padding: 0;
       width: 100%;
@@ -46,6 +45,7 @@
       z-index: 10;
     }
     #floatingSuggestions button {
+      background: white;
       font-size: 18px;
       padding: 5px 10px;
       margin: 2px;
@@ -67,7 +67,7 @@
       background: transparent;
       border: none;
       outline: none;
-      color: #000;
+      color: white;
       z-index: 1; /* 低於 canvas => 螢幕上顯示在後面 */
     }
   </style>
