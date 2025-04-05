@@ -11,13 +11,14 @@
       font-family: Arial, sans-serif;
       margin: 10px;
       padding: 0;
+      background: black;
     }
-    /* canvasContainer：用於定位輸出層、畫布與浮動建議 */
+    /* canvasContainer：用於定位內部的輸出層、畫布與浮動建議 */
     #canvasContainer {
       position: relative;
       display: inline-block;
     }
-    /* 輸出標籤圖層，位於畫布下層，只顯示標籤文字 */
+    /* 輸出標籤圖層，位於畫布下層 */
     #outputLayer {
       position: absolute;
       top: 0;
@@ -31,11 +32,11 @@
       align-items: center;
       font-size: 16px;
       font-weight: bold;
-      color: black;
+      color: white;
     }
-    /* 畫布：完全透明背景、位於中間 */
+    /* 畫布：背景透明且位於中間 */
     #canvas {
-      border: 1px solid #000;
+      border: px solid #000;
       width: 100%;
       max-width: 390px;
       height: auto;
@@ -43,7 +44,7 @@
       z-index: 1;
       background: transparent;
     }
-    /* 浮動建議標籤，置於畫布上層 */
+    /* 浮動建議標籤，置於畫布之上 */
     #floatingSuggestions {
       position: absolute;
       top: 5px;
@@ -83,73 +84,43 @@
       font-size: 16px;
       padding: 6px 12px;
     }
-    /* 畫布下方按鈕 */
-    #canvasButtons {
-      margin-top: 5px;
-    }
-    #canvasButtons button {
-      padding: 5px 10px;
-      font-size: 14px;
-    }
-    /* 輸入區：可手動累積輸入 */
-    #inputArea {
-      max-width: 400px;
-      margin: 20px auto;
-    }
-    #tagInput {
-      width: 80%;
-      padding: 5px;
-      font-size: 14px;
-    }
-    #clearInputButton {
-      padding: 5px 10px;
-      font-size: 14px;
-    }
   </style>
 </head>
 <body>
   <h2>手持裝置手寫辨識系統 with Tagging</h2>
   
-  <!-- canvasContainer：包含輸出層、畫布與浮動建議 -->
+  <!-- canvasContainer：包含輸出標籤層、畫布及浮動建議 -->
   <div id="canvasContainer">
-    <div id="outputLayer"></div>
+    <!-- 輸出標籤圖層，顯示累積輸出的標籤內容 -->
+    <div id="outputLayer">(未選擇任何標籤)</div>
     <canvas id="canvas" width="390" height="390"></canvas>
     <div id="floatingSuggestions"></div>
   </div>
   
-  <div id="canvasButtons">
-    <button id="clearCanvasButton">清除畫布</button>
-  </div>
-  
-  <!-- 輸入區：可手動累積輸入標籤 -->
-  <div id="inputArea">
+  <!-- 下方輸入區隱藏，但保留在 DOM 內供程式存取 -->
+  <div id="inputArea" style="display: none;">
     <input type="text" id="tagInput" placeholder="輸入標籤或從上方選擇">
-    <button id="clearInputButton">清除輸入欄</button>
   </div>
   
   <script>
     /******************************************
-     * 讀取 tags1.json（伺服器資料庫）
+     * 內建資料庫（測試用）
      ******************************************/
-    let serverTags = [];
-    function loadServerTags() {
-      fetch('tags1.json')
-        .then(response => response.json())
-        .then(data => {
-          serverTags = data;
-          updateFloatingSuggestions();
-        })
-        .catch(error => {
-          console.error("無法讀取 tags1.json:", error);
-        });
-    }
+    const builtInTags = [
+      {
+        "name": "蛋餅",
+        "data": [
+          { "stroke": "2565", "grid": "4928" }
+        ]
+      }
+    ];
     
     /******************************************
      * 畫布與手寫辨識相關設定
      ******************************************/
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    // 全透明設定：筆跡與九宮格
+    // 全透明設定：筆畫與九宮格完全透明
     const handwritingColor = "rgba(0, 0, 0, 0)";
     const gridColor = "rgba(0, 0, 0, 0)";
     ctx.strokeStyle = handwritingColor;
@@ -175,7 +146,7 @@
       return deg;
     }
     
-    // 根據點間距離計算筆畫字串
+    // 根據點距離計算筆畫字串
     function processPointsByDistance() {
       let result = "";
       if(points.length < 2) return result;
@@ -258,7 +229,7 @@
       recognizedStrokeText += strokeResult;
       recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
       
-      // 九宮格計算：以第一個點與最後一個點判斷所落區域
+      // 九宮格計算：以第一個點與最後一個點計算所屬區域
       if(globalMinX !== Infinity) {
         let edgeLength = Math.max(globalMaxX - globalMinX, globalMaxY - globalMinY);
         let centerX = (globalMinX + globalMaxX) / 2, centerY = (globalMinY + globalMaxY) / 2;
@@ -316,7 +287,7 @@
     }
     
     /******************************************
-     * 差異計算（用於比對建議標籤）
+     * 差異計算函式（用於比對建議標籤）
      ******************************************/
     function computeSequenceDifference(seq1, seq2) {
       let maxLen = Math.max(seq1.length, seq2.length);
@@ -335,14 +306,16 @@
              computeSequenceDifference(gridA, gridB);
     }
     
-    // 更新浮動建議標籤，使用讀取到的 serverTags
+    /******************************************
+     * 更新浮動建議標籤
+     ******************************************/
     function updateFloatingSuggestions() {
       const container = document.getElementById("floatingSuggestions");
       container.innerHTML = "";
       if(recognizedStrokeText === "" && recognizedGridText === "") return;
       
       let suggestions = [];
-      serverTags.forEach(tag => {
+      builtInTags.forEach(tag => {
         if(tag.data && tag.data.length > 0){
           let minDiff = Infinity;
           tag.data.forEach(record => {
@@ -387,7 +360,9 @@
       }
     }
     
-    // 點選建議標籤：累積至輸入欄，清除畫布，並更新輸出層（輸出層僅顯示標籤文字）
+    /******************************************
+     * 點選建議標籤：累積至輸入欄，清除畫布並更新輸出層
+     ******************************************/
     function addTagToInput(tagName) {
       const inputField = document.getElementById("tagInput");
       if(inputField.value.trim() !== "") {
@@ -399,15 +374,19 @@
       updateOutputLayer();
     }
     
-    // 更新輸出層內容（僅顯示輸入欄內容，不加任何其他文字）
+    // 更新「outputLayer」內容，作為畫布下層的標籤輸出
     function updateOutputLayer() {
       const outputLayer = document.getElementById("outputLayer");
       const inputField = document.getElementById("tagInput");
-      outputLayer.textContent = inputField.value.trim();
+      if(inputField.value.trim() === "") {
+        outputLayer.textContent = "";
+      } else {
+        outputLayer.textContent = "" + inputField.value;
+      }
     }
     
     /******************************************
-     * 事件綁定
+     * 事件綁定（保留畫布手寫辨識）
      ******************************************/
     canvas.addEventListener("mousedown", startDrawing);
     canvas.addEventListener("mousemove", draw);
@@ -417,13 +396,32 @@
     canvas.addEventListener("touchmove", function(e){ e.preventDefault(); draw(e); });
     canvas.addEventListener("touchend", endDrawing);
     
-    document.getElementById("clearCanvasButton").addEventListener("click", clearCanvas);
-    document.getElementById("clearInputButton").addEventListener("click", function(){
+    /******************************************
+     * 全螢幕長按 1 秒清除輸入內容
+     ******************************************/
+    let longPressTimer = null;
+    function clearInputContent() {
       document.getElementById("tagInput").value = "";
       updateOutputLayer();
+    }
+    // 針對行動裝置
+    document.addEventListener("touchstart", function(e) {
+      longPressTimer = setTimeout(function() {
+        if(!drawing) clearInputContent();
+      }, 1000);
     });
-    
-    loadServerTags();
+    document.addEventListener("touchend", function(e) {
+      clearTimeout(longPressTimer);
+    });
+    // 針對桌面環境
+    document.addEventListener("mousedown", function(e) {
+      longPressTimer = setTimeout(function() {
+        if(!drawing) clearInputContent();
+      }, 1000);
+    });
+    document.addEventListener("mouseup", function(e) {
+      clearTimeout(longPressTimer);
+    });
   </script>
 </body>
 </html>
