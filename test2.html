@@ -168,8 +168,12 @@ function updateBounds(pt){
   if(pt.y>maxY) maxY=pt.y;
 }
 
-// 開始繪圖
+/**
+ * 繪圖邏輯：只有「未鎖定」狀態下才可繪圖
+ */
 function startDrawing(e){
+  if(canvasLocked) return; // 如果畫布鎖定，不可開始繪圖
+
   drawing = true;
   lastCanvasImage = ctx.getImageData(0,0,canvas.width,canvas.height);
   points=[];
@@ -185,7 +189,8 @@ function startDrawing(e){
   e.preventDefault();
 }
 function draw(e){
-  if(!drawing) return;
+  if(!drawing || canvasLocked) return;
+
   const pos = getPos(e);
   points.push(pos);
   updateBounds(pos);
@@ -195,7 +200,7 @@ function draw(e){
   e.preventDefault();
 }
 function endDrawing(e){
-  if(!drawing) return;
+  if(!drawing || canvasLocked) return;
   drawing=false;
 
   let boxW = maxX-minX;
@@ -249,7 +254,6 @@ function processPointsByDistance(pts){
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
       let raw  = Math.floor(angle/36);
-      // map: 7~9, 0~6 => 0~9
       let mapped= ((raw-7+10)%10).toString();
       result+=mapped;
       lastSample= pts[i];
@@ -291,85 +295,58 @@ function getCell(p){
 }
 
 /************************************************
- * 三、操作方式：
- *   (1) 長按滿1秒 => 直接清除畫布
- *   (2) 若在長按滿1秒後，左右滑 >=90px => 刪除輸入欄
+ * 三、長按一秒 => 清除畫布，不恢復筆畫
+ *    之後畫布鎖定，直到使用者放開手指，才恢復
  ************************************************/
-let pressStartTime=0, pressTimer=null;
-let pressStartPos={x:0,y:0};
-let hasClearedCanvas = false;  // 是否已經清除過畫布
-let hasClearedOutput = false;  // 是否已經刪除過輸入欄
+let canvasLocked = false;     // 當觸發長按後，鎖定畫布
+let pointerIsDown = false;    // 是否按住中
+let pressStartTime = 0;       // 按下的時間戳
+let pressTimer = null;        // 用於1秒計時
 
-// 綁定在 canvas 上
-canvas.addEventListener("pointerdown", onPointerDown, {passive:false});
-canvas.addEventListener("pointermove", onPointerMove, {passive:false});
-canvas.addEventListener("pointerup",   onPointerUp,   {passive:false});
-canvas.addEventListener("pointercancel", onPointerUp, {passive:false});
+// 為了最小修改，可用 pointer 事件 或 mouse/touch 事件。
+// 這裡採用 pointer 事件，減少分支。
+canvas.addEventListener("pointerdown", (e)=>{
+  pointerIsDown = true;
+  pressStartTime = Date.now();
+  // 1 秒後執行清除畫布 (若仍然按住)
+  pressTimer = setTimeout(()=>{
+    // 若此時還是按住 => 觸發長按
+    if(pointerIsDown){
+      clearCanvasOnly();
+      // 之後鎖定畫布，直到 pointerup
+      canvasLocked = true;
+    }
+  }, 1000);
+});
+
+canvas.addEventListener("pointerup", (e)=>{
+  pointerIsDown = false;
+  // 如果還沒到1秒就放開 => 取消計時，不清除畫布
+  clearTimeout(pressTimer);
+  // 如果畫布是鎖定的 => 解鎖
+  if(canvasLocked){
+    canvasLocked = false;
+  }
+});
+
+canvas.addEventListener("pointercancel", (e)=>{
+  // 手勢中斷 (如系統切換等) => 視同放開
+  pointerIsDown = false;
+  clearTimeout(pressTimer);
+  if(canvasLocked){
+    canvasLocked = false;
+  }
+});
 
 /**
- * 只清空畫布(含筆跡、recognizedStrokeText / recognizedGridText)
+ * 只清除畫布與筆畫記錄
  */
 function clearCanvasOnly(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  recognizedStrokeText="";
-  recognizedGridText="";
+  recognizedStrokeText = "";
+  recognizedGridText   = "";
   resetBounds();
   updateFloatingSuggestions();
-}
-
-/**
- * 刪除輸入欄 (包含已完成品項、當前輸入、金額等)
- * 但不動畫布
- */
-function clearOutputOnly(){
-  // 重置所有輸入資料
-  itemList=[];
-  currentLine="";
-  grandTotal=0;
-  currentDbIndex=0;
-  selectedLabels=[];
-  // 不清除畫布
-  // 同步清除輸出欄
-  document.getElementById("outputField").value = "";
-  updateFloatingSuggestions();
-}
-
-function onPointerDown(e){
-  // 記錄按下時資訊
-  pressStartTime = Date.now();
-  hasClearedCanvas = false;
-  hasClearedOutput = false;
-  pressStartPos = getPos(e);
-
-  // 開始1秒計時 => 時到就清除畫布
-  pressTimer = setTimeout(()=>{
-    clearCanvasOnly();
-    hasClearedCanvas = true;
-  }, 1000);
-}
-
-function onPointerMove(e){
-  // 如果還沒清除畫布，就不用判斷任何事
-  if(!hasClearedCanvas) return;
-
-  // 如果已清除畫布，但尚未刪除輸入欄 => 偵測水平滑 90px
-  if(!hasClearedOutput){
-    let currentPos = getPos(e);
-    let dx = currentPos.x - pressStartPos.x;
-    if(Math.abs(dx) >= 90){
-      clearOutputOnly();
-      hasClearedOutput = true;
-    }
-  }
-}
-
-function onPointerUp(e){
-  // 若按上去不到1秒就放開 => 取消計時(不清除畫布)
-  if(!hasClearedCanvas){
-    clearTimeout(pressTimer);
-  }
-  // 指釋放後，不做額外處理
-  // (若已清除畫布, 也有可能在 move 時已刪除輸入欄)
 }
 
 /************************************************
@@ -446,7 +423,6 @@ function updateFloatingSuggestions(){
     let btn= document.createElement("button");
     btn.textContent= s.tagName;
     btn.addEventListener("click", ()=>{
-      // 選到後，把文字累加進 currentLine
       if(currentLine!=="") currentLine+=" ";
       if(currentCategory==="amount"){
         currentLine+="× "+ s.tagName; 
