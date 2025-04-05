@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <!-- viewport 設定 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手持裝置手寫辨識系統 (顯示所有備選標籤)</title>
+  <title>手持裝置手寫辨識系統 (只顯示前三個備選標籤)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -35,7 +35,7 @@
       padding: 5px 10px;
       margin: 2px;
     }
-    /* 輸出欄 (改用 textarea 支援換行) */
+    /* 輸出欄 (textarea) */
     #outputField {
       width: 90%;
       font-size: 16px;
@@ -54,7 +54,7 @@
   </style>
 </head>
 <body>
-  <h2 style="text-align:center;">手持裝置手寫辨識系統 (顯示所有備選標籤)</h2>
+  <h2 style="text-align:center;">手持裝置手寫辨識系統 (只顯示前三個備選標籤)</h2>
   
   <!-- 畫布與建議候選區 -->
   <div style="text-align:center; position: relative; max-width: 390px; margin: 0 auto;">
@@ -86,6 +86,8 @@
     let grandTotal = 0;         // 累計總金額
     
     /******** 讀取伺服器上的 tags.json ********/
+    // 確保 tags.json 與此 HTML 同目錄 (或對應路徑)
+    // 且使用 http/https 伺服器開啟此網頁 (非 file://)
     fetch("tags.json")
       .then(response => response.json())
       .then(data => {
@@ -304,7 +306,7 @@
              computeSequenceDifference(gridA, gridB);
     }
     
-    /******** 顯示候選標籤 (全部) ********/
+    /******** 只顯示前 3 個備選標籤 ********/
     function updateFloatingSuggestions() {
       let currentCategory = dbOrder[currentDbIndex];
       const floatingDiv = document.getElementById("floatingSuggestions");
@@ -356,11 +358,9 @@
         }
       });
       
-      // 按 diff 排序
+      // 按 diff 排序，由小到大；只顯示前3筆
       suggestions.sort((a, b) => a.diff - b.diff);
-      
-      // 若只想顯示前三筆，可解開此行:
-      // suggestions = suggestions.slice(0, 3);
+      suggestions = suggestions.slice(0, 3);
       
       // 產生按鈕 (只顯示標籤名稱)
       suggestions.forEach(s => {
