@@ -104,6 +104,7 @@ let selectedLabels = [];
 
 let allTags = [];
 
+// 請自行確保 tags.json 存在；此處僅示範結構
 fetch("tags.json")
   .then(resp => resp.json())
   .then(data => {
@@ -249,6 +250,7 @@ function processPointsByDistance(pts){
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
       let raw  = Math.floor(angle/36);
+      // 角度對應到 0-9 的小技巧，可依個人需求微調
       let mapped= ((raw-7+10)%10).toString();
       result+=mapped;
       lastSample= pts[i];
@@ -290,53 +292,62 @@ function getCell(p){
 }
 
 /************************************************
- * 三、長按 (1s/2s) 清除
+ * 三、長按分兩級：
+ *  - 1 秒 => 清畫布
+ *  - 2 秒 => 清所有資料(含輸入欄)
+ * 且「時間到就執行」，不用等手指放開
  ************************************************/
-let pressStartTime=0, pressStartPos={x:0,y:0}, movedDuringPress=false;
+let pressTimer1 = null; // 1秒定時器
+let pressTimer2 = null; // 2秒定時器
+let pressStartPos = {x:0, y:0};
+let movedDuringPress = false;
+
 function onPressStart(e){
-  pressStartTime= Date.now();
-  pressStartPos= getPos(e);
-  movedDuringPress=false;
+  pressStartPos = getPos(e);
+  movedDuringPress = false;
+
+  // 1 秒後：若仍未移動則清畫布
+  pressTimer1 = setTimeout(()=>{
+    if(!movedDuringPress){
+      clearCanvasOnly();
+    }
+  }, 1000);
+
+  // 2 秒後：若仍未移動則清所有
+  pressTimer2 = setTimeout(()=>{
+    if(!movedDuringPress){
+      clearOutputAndCanvas();
+    }
+  }, 2000);
 }
 function onPressMove(e){
   let pos= getPos(e);
-  let dx= pos.x- pressStartPos.x, dy= pos.y- pressStartPos.y;
-  if(Math.sqrt(dx*dx+dy*dy)>10){
-    movedDuringPress=true;
+  let dx= pos.x - pressStartPos.x;
+  let dy= pos.y - pressStartPos.y;
+  // 若移動超過 10px，就視為「不是長按」
+  if(Math.sqrt(dx*dx+dy*dy) > 10){
+    movedDuringPress = true;
+    // 一旦移動超過閾值，取消兩個計時器
+    if(pressTimer1){
+      clearTimeout(pressTimer1);
+      pressTimer1=null;
+    }
+    if(pressTimer2){
+      clearTimeout(pressTimer2);
+      pressTimer2=null;
+    }
   }
 }
 function onPressEnd(e){
-  if(movedDuringPress) return;
-  let dur= Date.now()- pressStartTime;
-  if(dur>=2000){
-    // 長按2秒 => 清除所有資料
-    clearOutputAndCanvas();
-  } else if(dur>=1000){
-    // 長按1秒 => 清除畫布
-    clearCanvasOnly();
+  // 手指/滑鼠放開 => 取消所有計時
+  if(pressTimer1){
+    clearTimeout(pressTimer1);
+    pressTimer1=null;
   }
-}
-function clearCanvasOnly(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  recognizedStrokeText="";
-  recognizedGridText="";
-  resetBounds();
-  updateFloatingSuggestions();
-}
-function clearOutputAndCanvas(){
-  // 重置所有
-  itemList=[];
-  currentLine="";
-  grandTotal=0;
-  currentDbIndex=0;
-  selectedLabels=[];
-  recognizedStrokeText="";
-  recognizedGridText="";
-  resetBounds();
-
-  document.getElementById("outputField").value="";
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  updateFloatingSuggestions();
+  if(pressTimer2){
+    clearTimeout(pressTimer2);
+    pressTimer2=null;
+  }
 }
 
 document.addEventListener("mousedown", onPressStart, {passive:false});
@@ -385,7 +396,7 @@ function updateFloatingSuggestions(){
         );
         if(diff<minDiff) minDiff= diff;
       });
-      // 處理多子名稱
+      // 若 tag.name 含有多個選項 (如 "大/小")
       if(tag.name.indexOf("/")!==-1){
         let nameParts= tag.name.split("/");
         let priceParts=[];
@@ -423,15 +434,11 @@ function updateFloatingSuggestions(){
     btn.addEventListener("click", ()=>{
       // 選到後，把文字累加進 currentLine
       if(currentLine!=="") currentLine+=" ";
-      // meals, amount, custom 之間用不同格式？
-      // 這裡統一用「/」或直接用空格/×
-      // 依需求可自行改
+      // 若是 "amount" 階段，就在前面加上 "×"
       if(currentCategory==="amount"){
-        currentLine+="× "+ s.tagName; 
-      } else if(currentCategory==="custom"){
-        currentLine+= s.tagName;
+        currentLine += "× "+ s.tagName; 
       } else {
-        currentLine+= s.tagName;
+        currentLine += s.tagName;
       }
 
       // 同時記錄這個 label，後續好算金額
@@ -446,7 +453,6 @@ function updateFloatingSuggestions(){
         // 計算金額 => (mealsPrice × amount)
         let mealLabel  = selectedLabels[0];
         let amountLabel= selectedLabels[1];
-        // custom 不一定影響價格，但只負責顯示
         let totalPrice=0;
         if(mealLabel && mealLabel.candidatePrice!=null){
           let mealPrice= mealLabel.candidatePrice;
@@ -483,7 +489,6 @@ function updateFloatingSuggestions(){
       // 表示 user 不點自動候選，而直接「確定」完成
       let mealLabel  = selectedLabels[0];
       let amountLabel= selectedLabels[1];
-      let customLabel= selectedLabels[2];
       let totalPrice=0;
       if(mealLabel && mealLabel.candidatePrice!=null){
         let mealPrice= mealLabel.candidatePrice;
@@ -536,6 +541,32 @@ function updateOutputField(){
   }
 
   document.getElementById("outputField").value = lines.join("\n");
+}
+
+/************************************************
+ * 其他清除函式
+ ************************************************/
+function clearCanvasOnly(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  recognizedStrokeText="";
+  recognizedGridText="";
+  resetBounds();
+  updateFloatingSuggestions();
+}
+function clearOutputAndCanvas(){
+  // 重置所有
+  itemList=[];
+  currentLine="";
+  grandTotal=0;
+  currentDbIndex=0;
+  selectedLabels=[];
+  recognizedStrokeText="";
+  recognizedGridText="";
+  resetBounds();
+
+  document.getElementById("outputField").value="";
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  updateFloatingSuggestions();
 }
 </script>
 </body>
