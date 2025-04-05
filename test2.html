@@ -71,12 +71,15 @@
       padding: 5px 10px;
     }
     /* 輸出欄 */
+    /* 將 input 改成支援多行的 textarea */
     #outputField {
       width: 90%;
       font-size: 16px;
       padding: 5px;
       margin-top: 10px;
       text-align: center;
+      height: 100px;
+      resize: none;
     }
     #clearOutputBtn {
       font-size: 14px;
@@ -138,8 +141,9 @@
   </div>
   
   <!-- 輸出欄與清除按鈕 -->
+  <!-- 使用 textarea 取代 input -->
   <div style="text-align:center;">
-    <input type="text" id="outputField" readonly placeholder="選擇結果會顯示在此">
+    <textarea id="outputField" readonly placeholder="選擇結果會顯示在此"></textarea>
     <br>
     <button id="clearOutputBtn">清除輸入欄</button>
   </div>
@@ -158,7 +162,9 @@
     let dbOrder = ['meals', 'amount', 'custom'];
     let currentDbIndex = 0;
     // 用來存取各階段選擇的結果，對於 custom 階段允許後續修改，不自動結束循環
-    let selectedLabels = []; 
+    let selectedLabels = [];
+    // 累計所有品項總金額
+    let grandTotal = 0;
   
     /******** Modal 工具 ********/
     function openModal(message, options) {
@@ -592,7 +598,7 @@
         confirmBtn.textContent = "確定";
         confirmBtn.addEventListener("click", function(){
           let outputField = document.getElementById("outputField");
-          // 使用先前選取的 meals 與 amount來計算總金額
+          // 使用先前選取的 meals 與 amount 來計算該品項的金額
           let mealLabel = selectedLabels[0];
           let amountLabel = selectedLabels[1];
           let total = 0;
@@ -603,8 +609,13 @@
               total = mealPrice * amount;
             }
           }
+          // 更新累計總金額
+          grandTotal += total;
+          
           let currentOutput = outputField.value;
-          currentOutput += " = 總金額: " + total;
+          // 換行顯示該品項的金額與累計總金額
+          currentOutput += "\n= 該品項金額: " + total;
+          currentOutput += "\n----------------\n總金額: " + grandTotal;
           outputField.value = currentOutput;
           // 重置循環
           currentDbIndex = 0;
@@ -685,6 +696,7 @@
     /******** 清除輸入欄 ********/
     document.getElementById("clearOutputBtn").addEventListener("click", function(){
       document.getElementById("outputField").value = "";
+      grandTotal = 0; // 重置累計總金額
       currentDbIndex = 0;
       selectedLabels = [];
       updateFloatingSuggestions();
