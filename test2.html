@@ -73,22 +73,22 @@
       z-index: 1; /* 低於 canvas => 螢幕上顯示在後面 */
     }
 
-    /* 浮動按鈕：固定在底部中央，可上下拖曳 */
+    /* 浮動按鈕：固定在底部中央，可左右拖曳 */
     #dragButton {
       position: absolute;
-      bottom: 100px;
+      bottom: 10px;
       left: 50%;
       transform: translateX(-50%);
       padding: 10px 20px;
       font-size: 20px;
       background: orange;
-      border-radius: 3px;
+      border-radius: 10px;
       cursor: grab; /* 滑鼠游標顯示抓取狀態 */
       user-select: none; /* 禁止文字選取 */
       z-index: 999;
       transition: transform 0.1s; /* 拖曳時簡單的平滑過渡 */
     }
-    /* 在拖曳中時，可改為 closed fist cursor */
+    /* 在拖曳中時，顯示抓取中狀態 */
     #dragButton:active {
       cursor: grabbing;
     }
@@ -103,7 +103,7 @@
   <!-- 輸出欄 -->
   <textarea id="outputField" readonly placeholder=""></textarea>
 
-  <!-- 浮動按鈕 (可上下拖曳) -->
+  <!-- 浮動按鈕 (可左右拖曳) -->
   <div id="dragButton">清除</div>
 </div>
 
@@ -122,12 +122,11 @@ let currentLine = "";
 let grandTotal = 0;
 
 // 用來記錄 meals, amount, custom 的價格資訊
-// 以便算出 (mealsPrice × amount)
 let selectedLabels = [];
 
 let allTags = [];
 
-// 請自行確保 tags.json 存在；此處僅示範結構
+// 假設有 tags.json
 fetch("tags.json")
   .then(resp => resp.json())
   .then(data => {
@@ -139,12 +138,11 @@ fetch("tags.json")
   });
 
 /************************************************
- * 二、手寫畫布設定 (90%大小) + 「<30px 視為無效」回復
+ * 二、手寫畫布設定 + 筆畫 <30px => 視為無效
  ************************************************/
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-// 因為用 CSS 控制 size，需同步 canvas.width/height
 function resizeCanvasToDisplaySize() {
   const rect = canvas.getBoundingClientRect();
   canvas.width  = rect.width;
@@ -192,7 +190,6 @@ function updateBounds(pt){
   if(pt.y>maxY) maxY=pt.y;
 }
 
-// 開始繪圖
 function startDrawing(e){
   drawing = true;
   lastCanvasImage = ctx.getImageData(0,0,canvas.width,canvas.height);
@@ -205,7 +202,6 @@ function startDrawing(e){
 
   ctx.beginPath();
   ctx.moveTo(pos.x, pos.y);
-
   e.preventDefault();
 }
 
@@ -224,25 +220,24 @@ function endDrawing(e){
   if(!drawing) return;
   drawing=false;
 
-  // 恢復 < 30 px 視為無效筆畫
   let boxW = maxX - minX;
   let boxH = maxY - minY;
-  if(boxW < 30 && boxH < 30){
-    // 還原畫布到上次狀態
-    ctx.putImageData(lastCanvasImage, 0, 0);
+  // <30px 視為無效 => 還原
+  if(boxW<30 && boxH<30){
+    ctx.putImageData(lastCanvasImage,0,0);
     updateFloatingSuggestions();
     return;
   }
 
-  // 有效筆畫 => 轉數字
+  // 有效筆畫 => 角度轉數字
   let strokeResult= processPointsByDistance(points);
   recognizedStrokeText += strokeResult;
   recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
 
-  // 九宮格(只算不畫)
+  // 九宮格(不畫，只記錄)
   let startCell= getCell(points[0]);
   let endCell  = getCell(points[points.length-1]);
-  recognizedGridText += startCell.toString()+ endCell.toString();
+  recognizedGridText += startCell.toString() + endCell.toString();
 
   updateFloatingSuggestions();
   e.preventDefault();
@@ -262,8 +257,8 @@ canvas.addEventListener("touchend",   endDrawing,   {passive:false});
  * 筆畫 -> 數字 (角度分段)
  ************************************************/
 function getAngle(a,b){
-  let dx = b.x - a.x, dy = b.y - a.y;
-  let rad= Math.atan2(dy, dx);
+  let dx=b.x-a.x, dy=b.y-a.y;
+  let rad= Math.atan2(dy,dx);
   let deg= rad*180/Math.PI;
   if(deg<0) deg+=360;
   return deg;
@@ -274,13 +269,11 @@ function processPointsByDistance(pts){
   let lastSample= pts[0];
   let distSum=0;
   for(let i=1; i<pts.length; i++){
-    let dx=pts[i].x - pts[i-1].x;
-    let dy=pts[i].y - pts[i-1].y;
-    distSum += Math.sqrt(dx*dx + dy*dy);
+    let dx=pts[i].x-pts[i-1].x, dy=pts[i].y-pts[i-1].y;
+    distSum+= Math.sqrt(dx*dx + dy*dy);
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
       let raw  = Math.floor(angle/36);
-      // 角度對應到 0-9 的小技巧，可依個人需求微調
       let mapped= ((raw-7+10)%10).toString();
       result+=mapped;
       lastSample= pts[i];
@@ -312,61 +305,63 @@ function compressConsecutiveSequence(s){
 function getCell(p){
   let edge= Math.max(maxX-minX, maxY-minY);
   let cx=(minX+maxX)/2, cy=(minY+maxY)/2;
-  let left= cx - edge/2, top= cy - edge/2;
+  let left= cx-edge/2, top= cy-edge/2;
   let size= edge/3;
   let col= Math.floor((p.x-left)/size);
   let row= Math.floor((p.y-top)/size);
   if(col<0) col=0; if(col>2) col=2;
   if(row<0) row=0; if(row>2) row=2;
-  return row*3 + col + 1;
+  return row*3+ col+1;
 }
 
 /************************************************
- * 三、浮動按鈕 => 上下拖動
- *   - 往上推 >= 50px => clearOutputAndCanvas()
- *   - 往下推 >= 50px => clearCanvasOnly()
+ * 三、浮動按鈕：左右拖動
+ *   - 向左推 >= 50px => clearCanvasOnly()
+ *   - 向右推 >= 50px => clearOutputAndCanvas()
  ************************************************/
 const dragBtn = document.getElementById("dragButton");
-let dragStartY = null;
+let dragStartX = null;
 let isDragging = false;
 
 function onDragStart(e){
   isDragging = true;
-  dragStartY = (e.touches && e.touches[0]) 
-               ? e.touches[0].clientY 
-               : e.clientY;
+  dragStartX = (e.touches && e.touches[0]) 
+               ? e.touches[0].clientX 
+               : e.clientX;
   e.preventDefault();
 }
 function onDragMove(e){
   if(!isDragging) return;
-  let currentY = (e.touches && e.touches[0]) 
-                 ? e.touches[0].clientY 
-                 : e.clientY;
-  let deltaY = currentY - dragStartY;
+  let currentX = (e.touches && e.touches[0]) 
+                 ? e.touches[0].clientX 
+                 : e.clientX;
+  let deltaX = currentX - dragStartX;
   // 讓按鈕跟著移動
-  dragBtn.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+  // 注意：原先有 translateX(-50%) 居中，因此要相加
+  dragBtn.style.transform = `translateX(calc(-50% + ${deltaX}px))`;
   e.preventDefault();
 }
 function onDragEnd(e){
   if(!isDragging) return;
   isDragging = false;
 
-  let endY = (e.changedTouches && e.changedTouches[0]) 
-             ? e.changedTouches[0].clientY 
-             : e.clientY;
-  let deltaY = endY - dragStartY;
+  let endX = (e.changedTouches && e.changedTouches[0]) 
+             ? e.changedTouches[0].clientX 
+             : e.clientX;
+  let deltaX = endX - dragStartX;
 
-  // 拖完後，檢查方向
-  if(deltax < -50){
-    // 往上推超過 50px => 清除輸入欄
-    clearOutputAndCanvas();
-  } else if(deltax > 50){
-    // 往下推超過 50px => 清除畫布
+  // 檢查拖曳距離
+  if(deltaX < -50){
+    // 往左推超過 50px => 清除畫布
     clearCanvasOnly();
+  } 
+  else if(deltaX > 50){
+    // 往右推超過 50px => 清除所有輸入
+    clearOutputAndCanvas();
   }
 
-  // 無論如何，按鈕歸位
-  dragBtn.style.transform = `translateX(-50%) translateY(0)`;
+  // 將按鈕歸位 (回到底部中央)
+  dragBtn.style.transform = `translateX(-50%)`;
 }
 
 dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
@@ -460,7 +455,6 @@ function updateFloatingSuggestions(){
         currentLine += s.tagName;
       }
 
-      // 同時記錄這個 label，後續好算金額
       selectedLabels[currentDbIndex]= s;
 
       // 進入下一階段
@@ -469,7 +463,6 @@ function updateFloatingSuggestions(){
 
       // 若超過 custom => 完成一個品項
       if(currentDbIndex>= dbOrder.length){
-        // 計算金額 => (mealsPrice × amount)
         let mealLabel  = selectedLabels[0];
         let amountLabel= selectedLabels[1];
         let totalPrice=0;
@@ -481,17 +474,13 @@ function updateFloatingSuggestions(){
           }
         }
         grandTotal+= totalPrice;
-
-        // 完成的這筆 => 加到 itemList
         itemList.push(currentLine);
 
-        // 清空 currentLine
         currentLine="";
         currentDbIndex=0;
         selectedLabels=[];
       }
 
-      // 更新輸出欄 + 建議
       updateOutputField();
       updateFloatingSuggestions();
     });
@@ -503,7 +492,6 @@ function updateFloatingSuggestions(){
     let confirmBtn= document.createElement("button");
     confirmBtn.textContent="確定";
     confirmBtn.addEventListener("click", ()=>{
-      // 表示 user 不點自動候選，而直接「確定」完成
       let mealLabel  = selectedLabels[0];
       let amountLabel= selectedLabels[1];
       let totalPrice=0;
@@ -515,8 +503,6 @@ function updateFloatingSuggestions(){
         }
       }
       grandTotal+= totalPrice;
-
-      // 完成 => 加入 itemList
       itemList.push(currentLine);
       currentLine="";
       currentDbIndex=0;
@@ -532,28 +518,18 @@ function updateFloatingSuggestions(){
 
 /************************************************
  * 五、更新輸出欄
- *    格式：
- *    (已完成) itemList 每行1品項
- *    ----------
- *    總金額: ????
- *    (空行)
- *    currentLine
  ************************************************/
 function updateOutputField(){
   let lines = [];
-
-  // 1. 已完成的品項
   lines = lines.concat(itemList);
 
-  // 2. 若有已完成品項 => 分隔線 + 總金額
   if(itemList.length>0){
     lines.push("----------");
     lines.push("總金額: "+ grandTotal);
   }
 
-  // 3. 當前輸入 (若有)
   if(currentLine.trim()!==""){
-    lines.push("");    // 空行分隔
+    lines.push("");
     lines.push(currentLine);
   }
 
@@ -570,9 +546,7 @@ function clearCanvasOnly(){
   resetBounds();
   updateFloatingSuggestions();
 }
-
 function clearOutputAndCanvas(){
-  // 重置所有
   itemList=[];
   currentLine="";
   grandTotal=0;
