@@ -72,6 +72,26 @@
       color: white;
       z-index: 1; /* 低於 canvas => 螢幕上顯示在後面 */
     }
+
+    /* 浮動按鈕：固定在底部中央，可上下拖曳 */
+    #dragButton {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      font-size: 20px;
+      background: orange;
+      border-radius: 10px;
+      cursor: grab; /* 滑鼠游標顯示抓取狀態 */
+      user-select: none; /* 禁止文字選取 */
+      z-index: 999;
+      transition: transform 0.1s; /* 拖曳時簡單的平滑過渡 */
+    }
+    /* 在拖曳中時，可改為 closed fist cursor */
+    #dragButton:active {
+      cursor: grabbing;
+    }
   </style>
 </head>
 <body>
@@ -82,6 +102,9 @@
   <canvas id="canvas"></canvas>
   <!-- 輸出欄 -->
   <textarea id="outputField" readonly placeholder=""></textarea>
+
+  <!-- 浮動按鈕 (可上下拖曳) -->
+  <div id="dragButton">清除</div>
 </div>
 
 <script>
@@ -116,7 +139,7 @@ fetch("tags.json")
   });
 
 /************************************************
- * 二、手寫畫布設定 (90%大小)
+ * 二、手寫畫布設定 (90%大小) + 「<30px 視為無效」回復
  ************************************************/
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -173,7 +196,7 @@ function updateBounds(pt){
 function startDrawing(e){
   drawing = true;
   lastCanvasImage = ctx.getImageData(0,0,canvas.width,canvas.height);
-  points = [];
+  points=[];
   resetBounds();
 
   const pos = getPos(e);
@@ -199,18 +222,26 @@ function draw(e){
 
 function endDrawing(e){
   if(!drawing) return;
-  drawing = false;
+  drawing=false;
 
-  // 已刪除「筆畫 < 30 px => 還原」的判斷  
+  // 恢復 < 30 px 視為無效筆畫
+  let boxW = maxX - minX;
+  let boxH = maxY - minY;
+  if(boxW < 30 && boxH < 30){
+    // 還原畫布到上次狀態
+    ctx.putImageData(lastCanvasImage, 0, 0);
+    updateFloatingSuggestions();
+    return;
+  }
 
   // 有效筆畫 => 轉數字
-  let strokeResult = processPointsByDistance(points);
+  let strokeResult= processPointsByDistance(points);
   recognizedStrokeText += strokeResult;
   recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
 
   // 九宮格(只算不畫)
-  let startCell = getCell(points[0]);
-  let endCell   = getCell(points[points.length-1]);
+  let startCell= getCell(points[0]);
+  let endCell  = getCell(points[points.length-1]);
   recognizedGridText += startCell.toString()+ endCell.toString();
 
   updateFloatingSuggestions();
@@ -231,20 +262,20 @@ canvas.addEventListener("touchend",   endDrawing,   {passive:false});
  * 筆畫 -> 數字 (角度分段)
  ************************************************/
 function getAngle(a,b){
-  let dx=b.x-a.x, dy=b.y-a.y;
-  let rad= Math.atan2(dy,dx);
+  let dx = b.x - a.x, dy = b.y - a.y;
+  let rad= Math.atan2(dy, dx);
   let deg= rad*180/Math.PI;
   if(deg<0) deg+=360;
   return deg;
 }
-
 function processPointsByDistance(pts){
   if(pts.length<2) return "";
   let result="";
   let lastSample= pts[0];
   let distSum=0;
   for(let i=1; i<pts.length; i++){
-    let dx=pts[i].x-pts[i-1].x, dy=pts[i].y-pts[i-1].y;
+    let dx=pts[i].x - pts[i-1].x;
+    let dy=pts[i].y - pts[i-1].y;
     distSum += Math.sqrt(dx*dx + dy*dy);
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
@@ -258,7 +289,6 @@ function processPointsByDistance(pts){
   }
   return result;
 }
-
 function compressConsecutiveSequence(s){
   let temp= s.replace(/(.)\1+/g, "$1");
   let r="", i=0;
@@ -279,87 +309,73 @@ function compressConsecutiveSequence(s){
   }
   return r;
 }
-
 function getCell(p){
   let edge= Math.max(maxX-minX, maxY-minY);
   let cx=(minX+maxX)/2, cy=(minY+maxY)/2;
-  let left= cx-edge/2, top= cy-edge/2;
+  let left= cx - edge/2, top= cy - edge/2;
   let size= edge/3;
   let col= Math.floor((p.x-left)/size);
   let row= Math.floor((p.y-top)/size);
   if(col<0) col=0; if(col>2) col=2;
   if(row<0) row=0; if(row>2) row=2;
-  return row*3+ col+1;
+  return row*3 + col + 1;
 }
 
 /************************************************
- * 三、長按分兩級：
- *  - 1 秒 => 清畫布
- *  - 2 秒 => 清所有資料(含輸入欄)
- * 且「時間到就執行」，不用等手指放開
+ * 三、浮動按鈕 => 上下拖動
+ *   - 往上推 >= 50px => clearOutputAndCanvas()
+ *   - 往下推 >= 50px => clearCanvasOnly()
  ************************************************/
-let pressTimer1 = null; // 1秒定時器
-let pressTimer2 = null; // 2秒定時器
-let pressStartPos = {x:0, y:0};
-let movedDuringPress = false;
+const dragBtn = document.getElementById("dragButton");
+let dragStartY = null;
+let isDragging = false;
 
-function onPressStart(e){
-  pressStartPos = getPos(e);
-  movedDuringPress = false;
+function onDragStart(e){
+  isDragging = true;
+  dragStartY = (e.touches && e.touches[0]) 
+               ? e.touches[0].clientY 
+               : e.clientY;
+  e.preventDefault();
+}
+function onDragMove(e){
+  if(!isDragging) return;
+  let currentY = (e.touches && e.touches[0]) 
+                 ? e.touches[0].clientY 
+                 : e.clientY;
+  let deltaY = currentY - dragStartY;
+  // 讓按鈕跟著移動
+  dragBtn.style.transform = `translateX(-50%) translateY(${deltaY}px)`;
+  e.preventDefault();
+}
+function onDragEnd(e){
+  if(!isDragging) return;
+  isDragging = false;
 
-  // 1 秒後：若仍未移動則清畫布
-  pressTimer1 = setTimeout(()=>{
-    if(!movedDuringPress){
-      clearCanvasOnly();
-    }
-  }, 1000);
+  let endY = (e.changedTouches && e.changedTouches[0]) 
+             ? e.changedTouches[0].clientY 
+             : e.clientY;
+  let deltaY = endY - dragStartY;
 
-  // 2 秒後：若仍未移動則清所有
-  pressTimer2 = setTimeout(()=>{
-    if(!movedDuringPress){
-      clearOutputAndCanvas();
-    }
-  }, 2000);
+  // 拖完後，檢查方向
+  if(deltaY < -50){
+    // 往上推超過 50px => 清除輸入欄
+    clearOutputAndCanvas();
+  } else if(deltaY > 50){
+    // 往下推超過 50px => 清除畫布
+    clearCanvasOnly();
+  }
+
+  // 無論如何，按鈕歸位
+  dragBtn.style.transform = `translateX(-50%) translateY(0)`;
 }
 
-function onPressMove(e){
-  let pos= getPos(e);
-  let dx= pos.x - pressStartPos.x;
-  let dy= pos.y - pressStartPos.y;
-  // 若移動超過 10px，就視為「不是長按」
-  if(Math.sqrt(dx*dx + dy*dy) > 10){
-    movedDuringPress = true;
-    // 一旦移動超過閾值，取消兩個計時器
-    if(pressTimer1){
-      clearTimeout(pressTimer1);
-      pressTimer1=null;
-    }
-    if(pressTimer2){
-      clearTimeout(pressTimer2);
-      pressTimer2=null;
-    }
-  }
-}
+dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
+document.addEventListener("mousemove", onDragMove, {passive:false});
+document.addEventListener("mouseup",   onDragEnd,  {passive:false});
 
-function onPressEnd(e){
-  // 手指/滑鼠放開 => 取消所有計時
-  if(pressTimer1){
-    clearTimeout(pressTimer1);
-    pressTimer1=null;
-  }
-  if(pressTimer2){
-    clearTimeout(pressTimer2);
-    pressTimer2=null;
-  }
-}
-
-document.addEventListener("mousedown", onPressStart, {passive:false});
-document.addEventListener("mousemove", onPressMove,  {passive:false});
-document.addEventListener("mouseup",   onPressEnd,   {passive:false});
-
-document.addEventListener("touchstart", onPressStart, {passive:false});
-document.addEventListener("touchmove",  onPressMove,  {passive:false});
-document.addEventListener("touchend",   onPressEnd,   {passive:false});
+dragBtn.addEventListener("touchstart", onDragStart, {passive:false});
+document.addEventListener("touchmove", onDragMove,  {passive:false});
+document.addEventListener("touchend",  onDragEnd,   {passive:false});
 
 /************************************************
  * 四、只顯示前3個備選標籤 + 累計品項 + 總金額 + 當前輸入
@@ -452,7 +468,7 @@ function updateFloatingSuggestions(){
       clearCanvasOnly();
 
       // 若超過 custom => 完成一個品項
-      if(currentDbIndex >= dbOrder.length){
+      if(currentDbIndex>= dbOrder.length){
         // 計算金額 => (mealsPrice × amount)
         let mealLabel  = selectedLabels[0];
         let amountLabel= selectedLabels[1];
@@ -464,7 +480,7 @@ function updateFloatingSuggestions(){
             totalPrice= mealPrice* amtVal;
           }
         }
-        grandTotal += totalPrice;
+        grandTotal+= totalPrice;
 
         // 完成的這筆 => 加到 itemList
         itemList.push(currentLine);
@@ -498,7 +514,7 @@ function updateFloatingSuggestions(){
           totalPrice= mealPrice* amtVal;
         }
       }
-      grandTotal += totalPrice;
+      grandTotal+= totalPrice;
 
       // 完成 => 加入 itemList
       itemList.push(currentLine);
