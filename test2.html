@@ -76,7 +76,7 @@
     /* 浮動按鈕：固定在底部中央，可上下拖曳 */
     #dragButton {
       position: absolute;
-      bottom: 10px;
+      bottom: 100px;
       left: 50%;
       transform: translateX(-50%);
       padding: 10px 20px;
@@ -357,10 +357,10 @@ function onDragEnd(e){
   let deltaY = endY - dragStartY;
 
   // 拖完後，檢查方向
-  if(deltaY < -50){
+  if(deltax < -50){
     // 往上推超過 50px => 清除輸入欄
     clearOutputAndCanvas();
-  } else if(deltaY > 50){
+  } else if(deltax > 50){
     // 往下推超過 50px => 清除畫布
     clearCanvasOnly();
   }
