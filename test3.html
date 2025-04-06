@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <!-- 在手機上自適應 -->
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手寫辨識系統 (Meal 與 Custom 各自數量)</title>
+  <title>手寫辨識系統 (累計品項 + 總金額 + 當前輸入於下一行)</title>
   <style>
     html, body {
       margin: 0;
@@ -98,10 +98,8 @@
 <div id="appContainer">
   <!-- 建議候選區 -->
   <div id="floatingSuggestions"></div>
-
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
-
   <!-- 輸出欄 -->
   <textarea id="outputField" readonly placeholder=""></textarea>
 
@@ -111,81 +109,33 @@
 
 <script>
 /************************************************
- * 一、四階段:
- *   0 => meals
- *   1 => amount(對應 meals)
- *   2 => custom
- *   3 => amount(對應 custom)
+ * 一、三階段 (meals → amount → custom) + 讀取 tags.json
  ************************************************/
-let currentDbIndex = 0;
+let dbOrder = ['meals','amount','custom'];
+let currentDbIndex = 0;   // 0=meals, 1=amount, 2=custom
 
-// 「已完成」的品項清單 (每完成一次四階段，就放進來)
+// 「已完成」的品項清單 (每完成一次三階段，就放進來)
 let itemList = [];
-// 「目前」四階段還沒完成的文字
+// 「目前」三階段還沒完成的文字
 let currentLine = "";
 // 累計總金額
 let grandTotal = 0;
 
-// 用來記錄四階段選到的標籤
-//   [0] => meals label
-//   [1] => meal amount
-//   [2] => custom label
-//   [3] => custom amount
+// 用來記錄 meals, amount, custom 的價格資訊
 let selectedLabels = [];
 
-/************************************************
- * 設定：若你有放 tags.json，可用 fetch；這裡範例直接寫死
- ************************************************/
-let allTags = [
-  {
-    category: "meals",
-    name: "雞腿飯",
-    price: 30,
-    data: [
-      { stroke: "xxx", grid: "yyy" } // 以下省略
-    ]
-  },
-  {
-    category: "custom",
-    name: "加蛋",
-    price: 10,
-    data: [
-      { stroke: "aaa", grid: "bbb" }
-    ]
-  },
-  {
-    category: "amount",
-    name: "1",
-    price: 1,
-    data: [
-      { stroke: "someStrokeFor1", grid: "someGridFor1" }
-    ]
-  },
-  {
-    category: "amount",
-    name: "2",
-    price: 2,
-    data: [
-      { stroke: "someStrokeFor2", grid: "someGridFor2" }
-    ]
-  },
-  {
-    category: "amount",
-    name: "3",
-    price: 3,
-    data: [
-      { stroke: "someStrokeFor3", grid: "someGridFor3" }
-    ]
-  },
-  {
-    category: "custom",
-    name: "無",
-    price: 0,
-    data: [
-      { stroke: "skip", grid: "skip" }
-    ]
-  }
-];
+let allTags = [];
+
+// 假設有 tags.json
+fetch("tags.json")
+  .then(resp => resp.json())
+  .then(data => {
+    allTags = data;
+    updateFloatingSuggestions();
+  })
+  .catch(err => {
+    console.error("無法取得 tags.json：", err);
+  });
 
 /************************************************
  * 二、手寫畫布設定 + 筆畫 <30px => 視為無效
@@ -324,7 +274,6 @@ function processPointsByDistance(pts){
     if(distSum>=30){
       let angle= getAngle(lastSample, pts[i]);
       let raw  = Math.floor(angle/36);
-      // 以 36度為一段，但這裡加了個映射 ((raw-7+10)%10) 你原本的算法
       let mapped= ((raw-7+10)%10).toString();
       result+=mapped;
       lastSample= pts[i];
@@ -423,24 +372,6 @@ document.addEventListener("touchmove", onDragMove,  {passive:false});
 document.addEventListener("touchend",  onDragEnd,   {passive:false});
 
 /************************************************
- * 四、根據 currentDbIndex 決定該用哪個 category
- ************************************************/
-function getCurrentCategory(){
-  // 0 => meals
-  // 1 => amountMeal
-  // 2 => custom
-  // 3 => amountCustom
-  // 這裡統一用 "amount" 這個分類標籤，但邏輯不同
-  switch(currentDbIndex){
-    case 0: return "meals";
-    case 1: return "amount"; // for meal
-    case 2: return "custom";
-    case 3: return "amount"; // for custom
-    default: return ""; 
-  }
-}
-
-/************************************************
  * 四、只顯示前3個備選標籤 + 累計品項 + 總金額 + 當前輸入
  ************************************************/
 function computeRecordDifference(sa,ga,sb,gb){
@@ -458,17 +389,15 @@ function computeSequenceDifference(s1,s2){
   return d;
 }
 
+// 生成候選按鈕
 function updateFloatingSuggestions(){
-  const floatingDiv= document.getElementById("floatingSuggestions");
+  let currentCategory= dbOrder[currentDbIndex];
+  let floatingDiv= document.getElementById("floatingSuggestions");
   floatingDiv.innerHTML="";
 
-  const cat = getCurrentCategory();
-  if(!cat) return;
-
-  let tags= allTags.filter(t=> t.category === cat);
+  let tags= allTags.filter(t=> t.category=== currentCategory);
   if(tags.length===0) return;
 
-  // 找出差異最小者
   let suggestions=[];
   tags.forEach(tag=>{
     if(tag.data && tag.data.length>0){
@@ -480,46 +409,75 @@ function updateFloatingSuggestions(){
         );
         if(diff<minDiff) minDiff= diff;
       });
-
-      // 若 tag.name 有多個選擇 (例如 "大/小")
-      // 這裡示範直接 push 單一值
-      suggestions.push({
-        tagName: tag.name,
-        diff: minDiff,
-        candidatePrice: parseFloat(tag.price),
-        category: tag.category
-      });
+      // 若 tag.name 含有多個選項 (如 "大/小")
+      if(tag.name.indexOf("/")!==-1){
+        let nameParts= tag.name.split("/");
+        let priceParts=[];
+        if(typeof tag.price==="string" && tag.price.indexOf("/")!==-1){
+          priceParts= tag.price.split("/");
+        }
+        nameParts.forEach((part,idx)=>{
+          let nm= part.trim();
+          let candidatePrice= (priceParts.length>idx)? parseFloat(priceParts[idx]) : parseFloat(tag.price);
+          suggestions.push({
+            tagName: nm,
+            diff: minDiff,
+            candidatePrice,
+            category: tag.category
+          });
+        });
+      } else {
+        suggestions.push({
+          tagName: tag.name,
+          diff: minDiff,
+          candidatePrice: parseFloat(tag.price),
+          category: tag.category
+        });
+      }
     }
   });
   // 排序 + 只取前三
   suggestions.sort((a,b)=> a.diff-b.diff);
-  suggestions = suggestions.slice(0,3);
+  suggestions= suggestions.slice(0,3);
 
-  // 建立按鈕
+  // 生成按鈕
   suggestions.forEach(s=>{
     let btn= document.createElement("button");
     btn.textContent= s.tagName;
     btn.addEventListener("click", ()=>{
-      // 若是 amount 顯示時，在文字前面加 "×"
-      if(cat==="amount"){
-        if(currentLine!=="") currentLine+=" ";
-        currentLine += "× " + s.tagName;
-      }
-      else {
-        // meal 或 custom
-        if(currentLine!=="") currentLine+=" ";
+      // 選到後，把文字累加進 currentLine
+      if(currentLine!=="") currentLine+=" ";
+      // 若是 "amount" 階段，就在前面加上 "×"
+      if(currentCategory==="amount"){
+        currentLine += "× "+ s.tagName; 
+      } else {
         currentLine += s.tagName;
       }
 
-      selectedLabels[currentDbIndex] = s;
+      selectedLabels[currentDbIndex]= s;
 
-      // 選完後，進入下一階段並清除畫布
+      // 進入下一階段
       currentDbIndex++;
       clearCanvasOnly();
 
-      // 若已到最後(>3) => 結算本筆
-      if(currentDbIndex>3){
-        finalizeOneItem();
+      // 若超過 custom => 完成一個品項
+      if(currentDbIndex>= dbOrder.length){
+        let mealLabel  = selectedLabels[0];
+        let amountLabel= selectedLabels[1];
+        let totalPrice=0;
+        if(mealLabel && mealLabel.candidatePrice!=null){
+          let mealPrice= mealLabel.candidatePrice;
+          let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
+          if(!isNaN(mealPrice) && !isNaN(amtVal)){
+            totalPrice= mealPrice* amtVal;
+          }
+        }
+        grandTotal+= totalPrice;
+        itemList.push(currentLine);
+
+        currentLine="";
+        currentDbIndex=0;
+        selectedLabels=[];
       }
 
       updateOutputField();
@@ -527,35 +485,47 @@ function updateFloatingSuggestions(){
     });
     floatingDiv.appendChild(btn);
   });
+
+  // 若是 custom 階段 => 顯示「確定」按鈕 (可多次添加)
+  if(currentCategory==="custom"){
+    let confirmBtn= document.createElement("button");
+    confirmBtn.textContent="確定";
+    confirmBtn.addEventListener("click", ()=>{
+      let mealLabel  = selectedLabels[0];
+      let amountLabel= selectedLabels[1];
+      let totalPrice=0;
+      if(mealLabel && mealLabel.candidatePrice!=null){
+        let mealPrice= mealLabel.candidatePrice;
+        let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
+        if(!isNaN(mealPrice) && !isNaN(amtVal)){
+          totalPrice= mealPrice* amtVal;
+        }
+      }
+
+      // ★ 新增：把 custom 的價格也加上去(預設 custom ×1)
+      let customLabel = selectedLabels[2];
+      if(customLabel && customLabel.candidatePrice != null){
+        totalPrice += customLabel.candidatePrice; 
+      }
+      // ★ 新增結束
+
+      grandTotal+= totalPrice;
+      itemList.push(currentLine);
+
+      currentLine="";
+      currentDbIndex=0;
+      selectedLabels=[];
+      clearCanvasOnly();
+
+      updateOutputField();
+      updateFloatingSuggestions();
+    });
+    floatingDiv.appendChild(confirmBtn);
+  }
 }
 
 /************************************************
- * 五、結算本筆 (mealPrice×mealQty + customPrice×customQty)
- ************************************************/
-function finalizeOneItem(){
-  const mealLabel     = selectedLabels[0];
-  const mealAmountLbl = selectedLabels[1];
-  const customLabel   = selectedLabels[2];
-  const custAmountLbl = selectedLabels[3];
-
-  let mealPrice   = mealLabel?.candidatePrice     || 0;
-  let mealQty     = parseFloat(mealAmountLbl?.tagName   || "0");
-  let customPrice = customLabel?.candidatePrice   || 0;
-  let customQty   = parseFloat(custAmountLbl?.tagName   || "0");
-
-  let totalPrice = mealPrice*mealQty + customPrice*customQty;
-
-  grandTotal += totalPrice;
-  itemList.push(currentLine);
-
-  // 重置
-  currentLine = "";
-  currentDbIndex = 0;
-  selectedLabels = [];
-}
-
-/************************************************
- * 六、更新輸出欄
+ * 五、更新輸出欄
  ************************************************/
 function updateOutputField(){
   let lines = [];
@@ -563,7 +533,7 @@ function updateOutputField(){
 
   if(itemList.length>0){
     lines.push("----------");
-    lines.push("總金額: " + grandTotal);
+    lines.push("總金額: "+ grandTotal);
   }
 
   if(currentLine.trim()!==""){
