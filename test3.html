@@ -98,8 +98,21 @@
 <div id="appContainer">
   <!-- 建議候選區 -->
   <div id="floatingSuggestions"></div>
+
+  <!-- custom 階段用的工具按鈕 -->
+  <div id="customToolsContainer" style="
+    position: absolute;
+    top: 80%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    gap: 10px;
+    z-index: 10;
+  "></div>
+
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
+
   <!-- 輸出欄 -->
   <textarea id="outputField" readonly placeholder=""></textarea>
 
@@ -126,7 +139,8 @@ let selectedLabels = [];
 
 let allTags = [];
 
-// 假設有 tags.json
+// 假設有 tags.json (放在同目錄)
+// 這裡僅作範例，實際需要對應正確路徑
 fetch("tags.json")
   .then(resp => resp.json())
   .then(data => {
@@ -396,7 +410,12 @@ function updateFloatingSuggestions(){
   floatingDiv.innerHTML="";
 
   let tags= allTags.filter(t=> t.category=== currentCategory);
-  if(tags.length===0) return;
+  if(tags.length===0) {
+    // 沒有該分類可用標籤 => 隱藏工具區
+    const toolDiv = document.getElementById("customToolsContainer");
+    toolDiv.style.display = "none";
+    return;
+  }
 
   let suggestions=[];
   tags.forEach(tag=>{
@@ -445,70 +464,77 @@ function updateFloatingSuggestions(){
     let btn= document.createElement("button");
     btn.textContent= s.tagName;
     btn.addEventListener("click", ()=>{
-      // 選到後，把文字累加進 currentLine
-      if(currentLine!=="") currentLine+=" ";
-      // 若是 "amount" 階段，就在前面加上 "×"
+      // 如果是amount階段 => 前面顯示 "×"
+      // 其餘階段只接著加文字
       if(currentCategory==="amount"){
-        currentLine += "× "+ s.tagName; 
+        if(currentLine!=="") currentLine+=" ";
+        currentLine += "× " + s.tagName;
       } else {
+        if(currentLine!=="") currentLine+=" ";
         currentLine += s.tagName;
       }
 
       selectedLabels[currentDbIndex]= s;
 
-      // 進入下一階段
-      currentDbIndex++;
-      clearCanvasOnly();
+      // 如果不是 custom，就直接進入下一階段並清除畫布
+      if(currentCategory!=="custom"){
+        currentDbIndex++;
+        clearCanvasOnly();
 
-      // 若超過 custom => 完成一個品項
-      if(currentDbIndex>= dbOrder.length){
-        let mealLabel  = selectedLabels[0];
-        let amountLabel= selectedLabels[1];
-        let totalPrice=0;
-        if(mealLabel && mealLabel.candidatePrice!=null){
-          let mealPrice= mealLabel.candidatePrice;
-          let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
-          if(!isNaN(mealPrice) && !isNaN(amtVal)){
-            totalPrice= mealPrice* amtVal;
+        // 若超過 custom => 完成一個品項
+        if(currentDbIndex>= dbOrder.length){
+          let mealLabel  = selectedLabels[0];
+          let amountLabel= selectedLabels[1];
+          let totalPrice=0;
+          if(mealLabel && mealLabel.candidatePrice!=null){
+            let mealPrice= mealLabel.candidatePrice;
+            let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
+            if(!isNaN(mealPrice) && !isNaN(amtVal)){
+              totalPrice= mealPrice* amtVal;
+            }
           }
+          grandTotal+= totalPrice;
+          itemList.push(currentLine);
+
+          currentLine="";
+          currentDbIndex=0;
+          selectedLabels=[];
         }
-        grandTotal+= totalPrice;
-        itemList.push(currentLine);
-
-        currentLine="";
-        currentDbIndex=0;
-        selectedLabels=[];
       }
-
       updateOutputField();
       updateFloatingSuggestions();
     });
     floatingDiv.appendChild(btn);
   });
 
-  // 若是 custom 階段 => 顯示「確定」按鈕 (可多次添加)
-  if(currentCategory==="custom"){
-    let confirmBtn= document.createElement("button");
-    confirmBtn.textContent="確定";
-    confirmBtn.addEventListener("click", ()=>{
-      let mealLabel  = selectedLabels[0];
-      let amountLabel= selectedLabels[1];
+  // 若是 custom 階段 => 顯示「數量」與「確認」按鈕
+  if (currentCategory === "custom") {
+    const toolDiv = document.getElementById("customToolsContainer");
+    toolDiv.innerHTML = "";
+    toolDiv.style.display = "flex";
+
+    // 「數量」按鈕 => 回到 amount 階段
+    const qtyBtn = document.createElement("button");
+    qtyBtn.textContent = "數量";
+    qtyBtn.addEventListener("click", () => {
+      currentDbIndex = 1; // 回到 amount
+      updateFloatingSuggestions();
+    });
+
+    // 「確認」按鈕 => 正式結算品項，並清除畫布
+    const confirmBtn = document.createElement("button");
+    confirmBtn.textContent = "確認";
+    confirmBtn.addEventListener("click", () => {
+      let mealLabel  = selectedLabels[0]; // meals
+      let amountLabel= selectedLabels[1]; // amount
       let totalPrice=0;
       if(mealLabel && mealLabel.candidatePrice!=null){
         let mealPrice= mealLabel.candidatePrice;
-        let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
+        let amtVal   = parseFloat(amountLabel?.tagName||"0");
         if(!isNaN(mealPrice) && !isNaN(amtVal)){
           totalPrice= mealPrice* amtVal;
         }
       }
-
-      // ★ 新增：把 custom 的價格也加上去(預設 custom ×1)
-      let customLabel = selectedLabels[2];
-      if(customLabel && customLabel.candidatePrice != null){
-        totalPrice += customLabel.candidatePrice; 
-      }
-      // ★ 新增結束
-
       grandTotal+= totalPrice;
       itemList.push(currentLine);
 
@@ -517,10 +543,20 @@ function updateFloatingSuggestions(){
       selectedLabels=[];
       clearCanvasOnly();
 
+      toolDiv.innerHTML = "";
+      toolDiv.style.display = "none";
+
       updateOutputField();
       updateFloatingSuggestions();
     });
-    floatingDiv.appendChild(confirmBtn);
+
+    toolDiv.appendChild(qtyBtn);
+    toolDiv.appendChild(confirmBtn);
+  } else {
+    // 非 custom 階段隱藏工具列
+    const toolDiv = document.getElementById("customToolsContainer");
+    toolDiv.innerHTML = "";
+    toolDiv.style.display = "none";
   }
 }
 
