@@ -61,7 +61,7 @@
     /* 訂單區：置中固定浮動圖層，避免被 canvas 遮蓋，內部文字水平置中 */
     #orderDisplay {
       position: fixed;
-      top: 10px;
+      top: 150px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 1000;
@@ -69,6 +69,7 @@
       padding: 10px;
       border-radius: 5px;
       max-height: 90vh;
+      width: 390px;
       overflow-y: auto;
       font-size: 20px;
       color: black;
@@ -128,9 +129,9 @@
  ************************************************/
 const defaultTags = {
   meals: [
-    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" },
-    { tagName: "大腸麵線", candidatePrice: 40, category: "meals" },
-    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" }
+    { tagName: "蔥油餅加蛋", candidatePrice: 30, category: "meals" },
+    { tagName: "大腸麵線", candidatePrice: 50, category: "meals" },
+    { tagName: "大炒麵", candidatePrice: 40, category: "meals" }
   ],
   amount: [
     { tagName: "1", candidatePrice: 0, category: "amount" },
