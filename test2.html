@@ -337,7 +337,6 @@ function onDragMove(e){
                  : e.clientX;
   let deltaX = currentX - dragStartX;
   // 讓按鈕跟著移動
-  // 注意：原先有 translateX(-50%) 居中，因此要相加
   dragBtn.style.transform = `translateX(calc(-50% + ${deltaX}px))`;
   e.preventDefault();
 }
@@ -366,7 +365,7 @@ function onDragEnd(e){
 
 dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
 document.addEventListener("mousemove", onDragMove, {passive:false});
-document.addEventListener("mouseup",   onDragEnd,  {passive:false});
+document.addEventListener("mouseup",   onDragEnd,   {passive:false});
 
 dragBtn.addEventListener("touchstart", onDragStart, {passive:false});
 document.addEventListener("touchmove", onDragMove,  {passive:false});
@@ -497,13 +496,22 @@ function updateFloatingSuggestions(){
       let totalPrice=0;
       if(mealLabel && mealLabel.candidatePrice!=null){
         let mealPrice= mealLabel.candidatePrice;
-        let amtVal   = parseFloat(amountLabel?.tagName||"0");
+        let amtVal   = parseFloat(amountLabel?.tagName||"0"); 
         if(!isNaN(mealPrice) && !isNaN(amtVal)){
           totalPrice= mealPrice* amtVal;
         }
       }
+
+      // ★ 新增：把 custom 的價格也加上去(預設 custom ×1)
+      let customLabel = selectedLabels[2];
+      if(customLabel && customLabel.candidatePrice != null){
+        totalPrice += customLabel.candidatePrice; 
+      }
+      // ★ 新增結束
+
       grandTotal+= totalPrice;
       itemList.push(currentLine);
+
       currentLine="";
       currentDbIndex=0;
       selectedLabels=[];
