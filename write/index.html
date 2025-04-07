@@ -13,7 +13,6 @@
       height: 100%;
       font-family: Arial, sans-serif;
       background: black;
-      /* 防止文字被選取 */
       -webkit-user-select: none;
       -moz-user-select: none;
       -ms-user-select: none;
@@ -25,7 +24,6 @@
       height: 100%;
       overflow: hidden;
     }
-    /* 畫布：佔 90% 螢幕寬高，背景透明 */
     canvas {
       position: absolute;
       left: 0;
@@ -36,7 +34,6 @@
       border: none;
       z-index: 2;
     }
-    /* 建議按鈕 (浮動於上層) */
     #floatingSuggestions {
       position: absolute;
       top: 68%;
@@ -59,7 +56,6 @@
       white-space: nowrap;
       color: white;
     }
-    /* 訂單區：置中固定浮動圖層，避免被 canvas 遮蓋，內部文字水平置中 */
     #orderDisplay {
       position: fixed;
       top: 100px;
@@ -76,7 +72,6 @@
       color: white;
       text-align: center;
     }
-    /* 浮動按鈕：固定在底部中央，可左右拖曳 */
     #dragButton {
       position: absolute;
       bottom: 75px;
@@ -87,16 +82,13 @@
       z-index: 999;
       transition: transform 0.1s;
     }
-    /* 滑鼠按下狀態下保持抓取手勢 */
     #dragButton:active {
       cursor: grabbing;
     }
-    /* 限制圖片寬度 100px，高度自動 */
     #dragButton img {
       width: 100px;
-      display: block; /* 讓圖片佔一整行，避免被縮小或文字干擾 */
+      display: block;
     }
-    /* custom 階段專用工具按鈕 (若需要則顯示) */
     #customToolsContainer {
       position: absolute;
       top: 80%;
@@ -106,23 +98,20 @@
       gap: 10px;
       z-index: 10;
     }
-
-    /* 一開始顯示在畫面中央的logo2.png */
     #centerLogo {
-      position: absolute;         /* 或者 fixed 也可 */
+      position: absolute;
       top: 39%;
       left: 50%;
       transform: translate(-50%, -50%);
-      z-index: 9999;             /* 在所有內容之上 */
-      display: block;            /* 一開始就顯示 */
-      cursor: pointer;           /* 滑鼠變成手型，暗示可點擊 */
+      z-index: 9999;
+      display: block;
+      cursor: pointer;
     }
     #centerLogo img {
-      max-width: 150px;
+      max-width: 120px;
       height: auto;
       display: block;
     }
-
   </style>
 </head>
 <body>
@@ -179,17 +168,12 @@ let phase = "meal";
 let currentOrder = { meal: null, customs: [] };
 let tempCustom = null;
 
-// 訂單列表與累計總金額（每筆訂單以物件儲存）
 let itemList = []; 
 let grandTotal = 0;
 let currentLine = ""; // 當前訂單字串
 
-// 標籤資料（從 tags.json 讀取，若無筆畫輸入則使用 defaultTags）
+// 讀入標籤資料：若失敗則 fallback 用 defaultTags
 let allTags = [];
-
-/************************************************
- * 3. 嘗試讀取 tags.json，如讀失敗則使用預設
- ************************************************/
 fetch("tags.json")
   .then(resp => resp.json())
   .then(data => {
@@ -202,7 +186,7 @@ fetch("tags.json")
   });
 
 /************************************************
- * 4. 手寫畫布設定與筆畫處理
+ * 3. 手寫畫布設定與筆畫處理
  ************************************************/
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -291,12 +275,10 @@ function endDrawing(e){
     return;
   }
 
-  // 產生 stroke 角度序列
   let strokeResult = processPointsByDistance(points);
   recognizedStrokeText += strokeResult;
   recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
 
-  // 起始格＆結束格
   let startCell = getCell(points[0]);
   let endCell   = getCell(points[points.length-1]);
   recognizedGridText += startCell.toString() + endCell.toString();
@@ -380,7 +362,7 @@ function getCell(p){
 }
 
 /************************************************
- * 5. 浮動按鈕左右拖曳 -> 清除
+ * 4. 浮動按鈕左右拖曳 -> 清除
  ************************************************/
 const dragBtn = document.getElementById("dragButton");
 let dragStartX = null;
@@ -406,7 +388,6 @@ function onDragEnd(e){
   if(deltaX < -50) clearCanvasOnly();
   // 往右拖超過50px => 清除畫布+訂單
   else if(deltaX > 50) clearOutputAndCanvas();
-  // 沒達到距離，就回到原位
   dragBtn.style.transform = `translateX(-50%)`;
 }
 dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
@@ -417,13 +398,25 @@ document.addEventListener("touchmove", onDragMove, {passive:false});
 document.addEventListener("touchend", onDragEnd, {passive:false});
 
 /************************************************
+ * 5. 可切換文字群組 (★ 新增)
+ ************************************************/
+// 你可以自行調整想要切換的關鍵字與對應的字串。
+const toggleGroups = {
+  "辣":   ["辣", "大辣", "小辣", "不辣"],
+  "蒜泥": ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],
+  "烏醋": ["烏醋", "烏醋多", "烏醋少", "不烏醋"],
+  "香菜": ["香菜", "香菜多", "香菜少", "不香菜"],
+  "豆芽": ["豆芽", "豆芽多", "豆芽少", "不豆芽"]
+};
+
+
+/************************************************
  * 6. 更新候選按鈕 + 依 phase 處理點擊邏輯
  ************************************************/
 function updateFloatingSuggestions(){
   let floatingDiv = document.getElementById("floatingSuggestions");
   floatingDiv.innerHTML = "";
   
-  // 根據目前階段決定使用的標籤類別
   let category = "";
   if(phase === "meal") category = "meals";
   else if(phase === "mealQuantity" || phase === "customQuantity") category = "amount";
@@ -440,7 +433,6 @@ function updateFloatingSuggestions(){
     let tags = allTags.filter(t => t.category === category);
     tags.forEach(tag => {
       if(tag.data && tag.data.length > 0){
-        // 計算此 tag 最佳匹配差異
         let minDiff = Infinity;
         tag.data.forEach(record => {
           let diff = computeRecordDifference(
@@ -480,17 +472,14 @@ function updateFloatingSuggestions(){
     });
   }
   
-  // 依差異度排序，取前三筆
   suggestions.sort((a,b)=> a.diff - b.diff);
   suggestions = suggestions.slice(0,3);
   
-  // 產生按鈕並綁定點擊事件
   suggestions.forEach(s => {
     let btn = document.createElement("button");
     btn.textContent = s.tagName;
     btn.addEventListener("click", ()=>{
       if(phase === "meal"){
-        // 選擇主餐 -> 進入數量輸入階段
         currentOrder.meal = {
           tagName: s.tagName,
           candidatePrice: s.candidatePrice,
@@ -501,7 +490,6 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "mealQuantity"){
-        // 選擇數量 -> 直接轉到 custom 階段
         let qty = parseFloat(s.tagName);
         currentOrder.meal.quantity = qty;
         currentLine = currentOrder.meal.tagName + " × " + qty;
@@ -510,20 +498,30 @@ function updateFloatingSuggestions(){
         updateOrderDisplay();
       }
       else if(phase === "custom"){
-        // 選擇客製化品項 -> 進入客製化數量階段
-        tempCustom = s;
+        // ★ 新增：如果自訂項目是屬於 toggleGroups，可以先存下 toggleKey 與當前索引
+        let isToggleItem = !!toggleGroups[s.tagName];
+        
+        tempCustom = {
+          tagName: s.tagName,
+          candidatePrice: s.candidatePrice,
+          quantity: 0
+        };
+        
+        if(isToggleItem) {
+          // 設定 toggleKey 與初始索引0
+          tempCustom.toggleKey = s.tagName; 
+          tempCustom.toggleIndex = 0;      
+        }
+
         currentLine += " + " + s.tagName;
         phase = "customQuantity";
         clearCanvasOnly();
       }
       else if(phase === "customQuantity"){
-        // 選擇數量 -> 新增到 currentOrder.customs
         let qty = parseFloat(s.tagName);
-        currentOrder.customs.push({
-          tagName: tempCustom.tagName,
-          candidatePrice: tempCustom.candidatePrice,
-          quantity: qty
-        });
+        tempCustom.quantity = qty;  // 這裡真正記錄數量
+        currentOrder.customs.push(tempCustom);
+
         rebuildCurrentLine();
         phase = "custom";
         tempCustom = null;
@@ -538,13 +536,10 @@ function updateFloatingSuggestions(){
   // 在 customQuantity 階段，增加「全部」(或「完成」)按鈕
   if(phase === "customQuantity"){
     let finishBtn = document.createElement("button");
-    finishBtn.textContent = "全部"; // 可改成「完成」等
+    finishBtn.textContent = "全部";
     finishBtn.addEventListener("click", () => {
-      currentOrder.customs.push({
-        tagName: tempCustom.tagName,
-        candidatePrice: tempCustom.candidatePrice,
-        quantity: null
-      });
+      tempCustom.quantity = null;
+      currentOrder.customs.push(tempCustom);
       rebuildCurrentLine();
       phase = "custom";
       tempCustom = null;
@@ -559,7 +554,6 @@ function updateFloatingSuggestions(){
   if(phase === "custom" && currentOrder.meal){
     let finishOrderBtn = document.createElement("button");
     finishOrderBtn.textContent = "點餐";
-    // 設定橘色背景、橘色框線、黑色字
     finishOrderBtn.style.backgroundColor = "orange";
     finishOrderBtn.style.border = "3px solid orange";
     finishOrderBtn.style.color = "black";
@@ -572,7 +566,6 @@ function updateFloatingSuggestions(){
   toolDiv.style.display = (phase === "custom") ? "flex" : "none";
 }
 
-// 重建當前訂單字串
 function rebuildCurrentLine(){
   if(!currentOrder.meal) return;
   currentLine = currentOrder.meal.tagName + " × " + currentOrder.meal.quantity;
@@ -584,8 +577,6 @@ function rebuildCurrentLine(){
     }
   });
 }
-
-// 計算筆畫差異(用於排序)
 function computeRecordDifference(sa, ga, sb, gb){
   return computeSequenceDifference(sa, sb) + computeSequenceDifference(ga, gb);
 }
@@ -612,28 +603,47 @@ function updateOrderDisplay(){
   itemList.forEach((order, index) => {
     let orderDiv = document.createElement("div");
     orderDiv.style.cursor = "pointer";
+    
     let orderStr = order.meal.tagName + " × " + order.meal.quantity;
-    order.customs.forEach(c => {
-      if(c.quantity != null){
-        orderStr += " + " + c.tagName + " × " + c.quantity;
-      } else {
-        orderStr += " + " + c.tagName;
-      }
-    });
     let total = order.meal.candidatePrice * order.meal.quantity;
-    order.customs.forEach(c => {
+
+    // 逐一處理 custom
+    // ★ 作法：客製品項用小 span 呈現，若含 toggleKey 就做可點擊切換
+    let customsHtml = "";
+    order.customs.forEach((c, cIndex) => {
+      let part = "";
+
+      // 組合該 custom 的顯示文字(含數量)
+      if(c.quantity != null) {
+        part = c.tagName + " × " + c.quantity;
+      } else {
+        part = c.tagName;
+      }
+
+      // 加入可點擊的 <span>
+      // data-* 屬性用來記錄「訂單索引」與「custom 索引」
+      let span = `<span 
+                    class="customItem" 
+                    data-orderindex="${index}" 
+                    data-customindex="${cIndex}"
+                  >${part}</span>`;
+
+      customsHtml += " + " + span;
+
+      // 計算金額
       if(c.quantity != null){
         total += c.candidatePrice * c.quantity;
       }
     });
-    orderStr += " = " + total;
-    orderDiv.textContent = orderStr;
-    
-    // 點擊訂單 -> 移除並回到 custom 階段編輯
+
+    orderDiv.innerHTML = orderStr + customsHtml + " = " + total;
+
+    // 點擊此整條 orderDiv -> 移除整筆訂單，回到 custom 階段編輯
     orderDiv.addEventListener("click", () => {
       itemList.splice(index, 1);
       grandTotal -= total;
-      currentOrder = order;
+      currentOrder = order;  // 把該筆訂單還原回 currentOrder
+
       // 重建 currentLine
       currentLine = order.meal.tagName + " × " + order.meal.quantity;
       order.customs.forEach(c => {
@@ -647,6 +657,7 @@ function updateOrderDisplay(){
       updateOrderDisplay();
       updateFloatingSuggestions();
     });
+
     container.appendChild(orderDiv);
   });
   
@@ -660,12 +671,36 @@ function updateOrderDisplay(){
     container.appendChild(totalDiv);
   }
   
-  // 下方顯示尚未「點餐」的當前訂單 (若存在)
+  // 最下方顯示「尚未點餐」但正在編輯的訂單
   if(currentLine.trim() !== ""){
     let currentDiv = document.createElement("div");
     currentDiv.textContent = currentLine;
     container.appendChild(currentDiv);
   }
+
+  // ★ 綁定 customItem 的點擊事件 (用事件委派或 querySelectorAll)
+  let customItems = container.querySelectorAll(".customItem");
+  customItems.forEach(item => {
+    item.addEventListener("click", (ev) => {
+      ev.stopPropagation(); // 避免冒泡到整筆訂單的點擊事件
+
+      let odx = parseInt(item.getAttribute("data-orderindex"));
+      let cdx = parseInt(item.getAttribute("data-customindex"));
+
+      let c = itemList[odx].customs[cdx];
+      if(!c.toggleKey) return; // 如果沒有 toggleKey，就不是可切換的
+
+      let group = toggleGroups[c.toggleKey];
+      if(!group) return;
+
+      // 將 toggleIndex 向後循環
+      c.toggleIndex = (c.toggleIndex + 1) % group.length;
+      c.tagName = group[c.toggleIndex];
+      
+      // 重新更新介面
+      updateOrderDisplay();
+    });
+  });
 }
 
 /************************************************
@@ -681,11 +716,9 @@ function finalizeOrder(){
       total += c.candidatePrice * c.quantity;
     }
   });
-  // 把當前訂單推進 itemList，並更新總金額
   itemList.push(JSON.parse(JSON.stringify(currentOrder)));
   grandTotal += total;
 
-  // 重置
   currentOrder = { meal: null, customs: [] };
   currentLine = "";
   phase = "meal";
@@ -694,7 +727,6 @@ function finalizeOrder(){
   clearCanvasOnly();
 }
 
-// 僅清除畫布筆跡
 function clearCanvasOnly(){
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   recognizedStrokeText = "";
@@ -703,7 +735,6 @@ function clearCanvasOnly(){
   updateFloatingSuggestions();
 }
 
-// 清除所有：包含訂單、畫布
 function clearOutputAndCanvas(){
   itemList = [];
   currentLine = "";
@@ -714,8 +745,7 @@ function clearOutputAndCanvas(){
   recognizedGridText = "";
   resetBounds();
 
-  let container = document.getElementById("orderDisplay");
-  container.innerHTML = "";
+  document.getElementById("orderDisplay").innerHTML = "";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   updateFloatingSuggestions();
