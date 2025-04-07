@@ -61,7 +61,7 @@
     /* 訂單區：置中固定浮動圖層，避免被 canvas 遮蓋，內部文字水平置中 */
     #orderDisplay {
       position: fixed;
-      top: 150px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 1000;
@@ -69,7 +69,6 @@
       padding: 10px;
       border-radius: 5px;
       max-height: 90vh;
-      width: 390px;
       overflow-y: auto;
       font-size: 20px;
       color: black;
@@ -129,9 +128,9 @@
  ************************************************/
 const defaultTags = {
   meals: [
-    { tagName: "蔥油餅加蛋", candidatePrice: 30, category: "meals" },
-    { tagName: "大腸麵線", candidatePrice: 50, category: "meals" },
-    { tagName: "大炒麵", candidatePrice: 40, category: "meals" }
+    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" },
+    { tagName: "大腸麵線", candidatePrice: 40, category: "meals" },
+    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" }
   ],
   amount: [
     { tagName: "1", candidatePrice: 0, category: "amount" },
@@ -179,7 +178,7 @@ fetch("tags.json")
   })
   .catch(err => {
     console.error("無法取得 tags.json：", err);
-    updateFloatingSuggestions(); // 讀取失敗時也使用預設
+    updateFloatingSuggestions(); // 若讀取失敗也使用預設
   });
 
 /************************************************
@@ -468,28 +467,23 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "custom"){
-        // 選擇客製化品項，進入數量輸入階段（保留所選 custom 標籤）
+        // 選擇客製化品項，進入數量輸入階段
         tempCustom = s;
         currentLine += " + " + s.tagName;
         phase = "customQuantity";
         clearCanvasOnly();
       }
       else if(phase === "customQuantity"){
-        // 當在 customQuantity 階段，點選候選數字加入數量，累計相同 custom 的數量
+        // 若選擇候選數字作為客製化數量
         let qty = parseFloat(s.tagName);
-        let found = currentOrder.customs.find(c => c.tagName === tempCustom.tagName);
-        if(found) {
-          if(found.quantity == null) found.quantity = qty;
-          else found.quantity += qty;
-        } else {
-          currentOrder.customs.push({
-            tagName: tempCustom.tagName,
-            candidatePrice: tempCustom.candidatePrice,
-            quantity: qty
-          });
-        }
+        currentOrder.customs.push({
+          tagName: tempCustom.tagName,
+          candidatePrice: tempCustom.candidatePrice,
+          quantity: qty
+        });
         rebuildCurrentLine();
-        // 保持在 customQuantity 階段，讓使用者可連續輸入
+        phase = "custom";
+        tempCustom = null;
         clearCanvasOnly();
       }
       updateOrderDisplay();
@@ -499,13 +493,19 @@ function updateFloatingSuggestions(){
   });
   
   // 當在 customQuantity 階段，增加「完成」按鈕，
-  // 按下後結束 customQuantity 輸入，返回 custom 階段（保留所選 custom 標籤）
+  // 按下後若數量未匹配，僅輸出標籤文字（不附加 "× 數量"）
   if(phase === "customQuantity"){
     let finishBtn = document.createElement("button");
     finishBtn.textContent = "完成";
     finishBtn.addEventListener("click", () => {
+      currentOrder.customs.push({
+        tagName: tempCustom.tagName,
+        candidatePrice: tempCustom.candidatePrice,
+        quantity: null
+      });
+      rebuildCurrentLine();
       phase = "custom";
-      // 保留 tempCustom（點選品項標籤不被清除）
+      tempCustom = null;
       clearCanvasOnly();
       updateOrderDisplay();
       updateFloatingSuggestions();
@@ -580,7 +580,7 @@ function updateOrderDisplay(){
     orderStr += " = " + total;
     orderDiv.textContent = orderStr;
     orderDiv.addEventListener("click", () => {
-      // 點擊訂單後，移除該訂單並進入 custom 編輯模式
+      // 點擊訂單後，將該訂單移除並設定為當前訂單以編輯 custom
       itemList.splice(index, 1);
       grandTotal -= total;
       currentOrder = order;
