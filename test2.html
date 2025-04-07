@@ -29,7 +29,7 @@
       height: 90vh;
       background: transparent;
       border: none;
-      z-index: 2; /* 在輸出欄之上 */
+      z-index: 2;
     }
     /* 建議按鈕 (浮動於上層) */
     #floatingSuggestions {
@@ -38,7 +38,7 @@
       left: 50%;
       transform: translateX(-50%);
       display: flex;
-      flex-wrap: nowrap; /* 不換行；若超出則橫向捲動 */
+      flex-wrap: nowrap;
       overflow-x: auto;
       max-width: 95vw;
       gap: 5px;
@@ -51,9 +51,9 @@
       font-size: 23px;
       padding: 5px 10px;
       margin: 2px;
-      white-space: nowrap; /* 不換行 */
+      white-space: nowrap;
     }
-    /* 輸出欄 (textarea)：固定高度 500px，置中顯示 */
+    /* 輸出欄改為 div：固定高度 500px，置中且可滾動，內容可點擊 */
     #outputField {
       position: absolute;
       left: 50%;
@@ -61,18 +61,18 @@
       transform: translate(-50%, -50%);
       min-width: 390px;
       width: auto;
-      height: 500px;  /* 固定高度 500px */
+      height: 500px;
       padding: 5px;
       font-size: 23px;
       text-align: center;
-      resize: none;
+      overflow-y: auto;
       background: transparent;
       border: none;
       outline: none;
       color: white;
       z-index: 1;
     }
-    /* 浮動按鈕：固定在底部中央，可拖曳 */
+    /* 浮動按鈕：固定在底部中央，可左右拖曳 */
     #dragButton {
       position: absolute;
       bottom: 100px;
@@ -107,14 +107,14 @@
   <!-- 建議候選區 -->
   <div id="floatingSuggestions"></div>
 
-  <!-- custom 階段用工具按鈕 (例如完成訂單) -->
+  <!-- custom 階段用工具按鈕 -->
   <div id="customToolsContainer"></div>
 
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
 
-  <!-- 輸出欄 -->
-  <textarea id="outputField" readonly placeholder=""></textarea>
+  <!-- 輸出欄：訂單列表，點擊訂單可進入編輯 custom 模式 -->
+  <div id="outputField"></div>
 
   <!-- 浮動按鈕 (拖曳觸發清除) -->
   <div id="dragButton">清除</div>
@@ -129,7 +129,7 @@
  *    "custom"：客製化品項選擇，可重複新增
  *    "customQuantity"：客製化數量輸入
  *
- * currentOrder：目前訂單
+ * currentOrder：目前訂單，格式：
  *    { meal: {tagName, candidatePrice, quantity}, customs: [ {tagName, candidatePrice, quantity}, ... ] }
  *
  * tempCustom：暫存目前正在輸入數量的客製化項目
@@ -139,7 +139,8 @@ let currentOrder = { meal: null, customs: [] };
 let tempCustom = null;
 
 // 訂單列表與累計總金額
-let itemList = [];
+// 將每筆訂單儲存為物件，方便後續編輯
+let itemList = []; 
 let grandTotal = 0;
 let currentLine = ""; // 當前訂單字串
 
@@ -362,15 +363,15 @@ document.addEventListener("touchend", onDragEnd, {passive:false});
  * 四、更新候選按鈕與依 phase 處理選擇邏輯
  ************************************************/
 function updateFloatingSuggestions(){
+  let floatingDiv = document.getElementById("floatingSuggestions");
+  floatingDiv.innerHTML = "";
+  
   // 根據目前階段決定使用的標籤類別
   let category = "";
   if(phase === "meal") category = "meals";
   else if(phase === "mealQuantity" || phase === "customQuantity") category = "amount";
   else if(phase === "custom") category = "custom";
   
-  let floatingDiv = document.getElementById("floatingSuggestions");
-  floatingDiv.innerHTML = "";
-
   let tags = allTags.filter(t => t.category === category);
   let suggestions = [];
   tags.forEach(tag => {
@@ -409,29 +410,26 @@ function updateFloatingSuggestions(){
   });
   suggestions.sort((a,b)=> a.diff - b.diff);
   suggestions = suggestions.slice(0,3);
-
+  
   suggestions.forEach(s => {
     let btn = document.createElement("button");
     btn.textContent = s.tagName;
     btn.addEventListener("click", ()=>{
       if(phase === "meal"){
-        // 選擇主餐品項
+        // 選擇主餐品項，進入數量輸入階段
         currentOrder.meal = { tagName: s.tagName, candidatePrice: s.candidatePrice, quantity: 0 };
         currentLine = s.tagName;
         phase = "mealQuantity";
         clearCanvasOnly();
       }
       else if(phase === "mealQuantity"){
-        // 選完數量後直接輸出餐點、計算小計，再回到主餐選單
+        // 選完數量後直接輸出餐點並計算小計，將訂單儲存至 itemList，回到主餐選單
         let qty = parseFloat(s.tagName);
         currentOrder.meal.quantity = qty;
         currentLine = currentOrder.meal.tagName + " × " + qty;
-        let total = currentOrder.meal.candidatePrice * qty;
-        let orderStr = currentLine + " = " + total;
-        itemList.push(orderStr);
-        grandTotal += total;
+        itemList.push(JSON.parse(JSON.stringify(currentOrder)));
+        grandTotal += currentOrder.meal.candidatePrice * qty;
         updateOutputField();
-        // 重置訂單狀態，回到主餐選單
         currentOrder = { meal: null, customs: [] };
         currentLine = "";
         phase = "meal";
@@ -463,27 +461,32 @@ function updateFloatingSuggestions(){
     floatingDiv.appendChild(btn);
   });
   
-  // 若在 customQuantity 階段，加上「完成」按鈕，
-  // 按下後預設數量取主餐數量
-  if(phase === "customQuantity"){
-    let finishBtn = document.createElement("button");
-    finishBtn.textContent = "完成";
-    finishBtn.addEventListener("click", ()=>{
-      // 若使用者未輸入數量，則預設數量等於主餐數量
-      let defaultQty = currentOrder.meal ? currentOrder.meal.quantity : 1;
-      currentOrder.customs.push({
-        tagName: tempCustom.tagName,
-        candidatePrice: tempCustom.candidatePrice,
-        quantity: defaultQty
-      });
-      rebuildCurrentLine();
-      phase = "custom";
-      tempCustom = null;
-      clearCanvasOnly();
-      updateOutputField();
-      updateFloatingSuggestions();
+  // 在 custom 階段，增加手動輸入 custom 的按鈕
+  if(phase === "custom"){
+    let customInputBtn = document.createElement("button");
+    customInputBtn.textContent = "自訂";
+    customInputBtn.addEventListener("click", () => {
+      let inputStr = prompt("請輸入自訂內容, 格式: 名稱 價格 數量\n例如: 辣 5 1");
+      if(inputStr){
+        let parts = inputStr.split(" ");
+        if(parts.length >= 3){
+          let name = parts[0];
+          let price = parseFloat(parts[1]);
+          let qty = parseFloat(parts[2]);
+          currentOrder.customs.push({
+            tagName: name,
+            candidatePrice: price,
+            quantity: qty
+          });
+          rebuildCurrentLine();
+          updateOutputField();
+          clearCanvasOnly();
+        } else {
+          alert("格式錯誤！");
+        }
+      }
     });
-    floatingDiv.appendChild(finishBtn);
+    floatingDiv.appendChild(customInputBtn);
   }
   
   // 若在 custom 階段且主餐已選，加入「完成訂單」按鈕
@@ -496,15 +499,11 @@ function updateFloatingSuggestions(){
   
   // 顯示 custom 階段專用工具列（可加入其他工具按鈕）
   let toolDiv = document.getElementById("customToolsContainer");
-  if(phase === "custom"){
-    toolDiv.style.display = "flex";
-  } else {
-    toolDiv.style.display = "none";
-  }
+  toolDiv.style.display = (phase === "custom") ? "flex" : "none";
 }
 
 function rebuildCurrentLine(){
-  // 重建訂單字串 (主餐與所有客製品項)
+  if(!currentOrder.meal) return;
   currentLine = currentOrder.meal.tagName + " × " + currentOrder.meal.quantity;
   currentOrder.customs.forEach(c => {
     currentLine += " + " + c.tagName + " × " + c.quantity;
@@ -528,19 +527,55 @@ function computeSequenceDifference(s1, s2){
 
 /************************************************
  * 五、更新輸出欄：顯示各筆訂單與累計金額
+ * 輸出欄改用 div，每筆訂單可點擊編輯 custom
  ************************************************/
 function updateOutputField(){
-  let lines = [];
-  itemList.forEach(order => lines.push(order));
+  let container = document.getElementById("outputField");
+  container.innerHTML = "";
+  
+  itemList.forEach((order, index) => {
+    let orderDiv = document.createElement("div");
+    orderDiv.style.cursor = "pointer";
+    let orderStr = order.meal.tagName + " × " + order.meal.quantity;
+    order.customs.forEach(c => {
+      orderStr += " + " + c.tagName + " × " + c.quantity;
+    });
+    let total = order.meal.candidatePrice * order.meal.quantity;
+    order.customs.forEach(c => {
+      total += c.candidatePrice * c.quantity;
+    });
+    orderStr += " = " + total;
+    orderDiv.textContent = orderStr;
+    orderDiv.addEventListener("click", () => {
+      // 點擊訂單主餐部分後，移除此訂單並設定為當前訂單，以便加入客製化內容
+      itemList.splice(index, 1);
+      grandTotal -= total;
+      currentOrder = order;
+      currentLine = order.meal.tagName + " × " + order.meal.quantity;
+      order.customs.forEach(c => {
+        currentLine += " + " + c.tagName + " × " + c.quantity;
+      });
+      phase = "custom";
+      updateOutputField();
+      updateFloatingSuggestions();
+    });
+    container.appendChild(orderDiv);
+  });
+  
   if(itemList.length > 0){
-    lines.push("----------");
-    lines.push("總金額: " + grandTotal);
+    let separator = document.createElement("div");
+    separator.textContent = "----------";
+    container.appendChild(separator);
+    let totalDiv = document.createElement("div");
+    totalDiv.textContent = "總金額: " + grandTotal;
+    container.appendChild(totalDiv);
   }
+  
   if(currentLine.trim() !== ""){
-    lines.push("");
-    lines.push(currentLine);
+    let currentDiv = document.createElement("div");
+    currentDiv.textContent = currentLine;
+    container.appendChild(currentDiv);
   }
-  document.getElementById("outputField").value = lines.join("\n");
 }
 
 /************************************************
@@ -554,14 +589,11 @@ function finalizeOrder(){
   currentOrder.customs.forEach(c => {
     total += c.candidatePrice * c.quantity;
   });
-  // 將訂單字串加上總計
-  let orderStr = currentLine + " = " + total;
-  itemList.push(orderStr);
+  itemList.push(JSON.parse(JSON.stringify(currentOrder)));
   grandTotal += total;
-  // 重置目前訂單與狀態
   currentOrder = { meal: null, customs: [] };
-  phase = "meal";
   currentLine = "";
+  phase = "meal";
   updateOutputField();
   clearCanvasOnly();
 }
@@ -583,7 +615,7 @@ function clearOutputAndCanvas(){
   recognizedStrokeText = "";
   recognizedGridText = "";
   resetBounds();
-  document.getElementById("outputField").value = "";
+  document.getElementById("outputField").innerHTML = "";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   updateFloatingSuggestions();
 }
