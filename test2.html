@@ -13,12 +13,11 @@
       height: 100%;
       font-family: Arial, sans-serif;
       background: black;
-    }
-.no-select {
-  -webkit-user-select: none; /* Chrome, Safari, Opera */
-  -moz-user-select: none;    /* Firefox */
-  -ms-user-select: none;     /* IE/Edge */
-  user-select: none;         /* 標準語法 */
+      /* 防止全站文字被選取 */
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
     }
     #appContainer {
       position: relative;
@@ -35,7 +34,7 @@
       height: 90vh;
       background: transparent;
       border: none;
-      z-index: 1;
+      z-index: 2;
     }
     /* 建議按鈕 (浮動於上層) */
     #floatingSuggestions {
@@ -59,24 +58,19 @@
       margin: 2px;
       white-space: nowrap;
     }
-    /* 輸出欄改為 div：固定高度 500px，置中且可滾動，內容可點擊 */
-    #outputField {
-      position: absolute;
-      left: 50%;
-      top: 36%;
-      transform: translate(-50%, -50%);
-      min-width: 390px;
-      width: auto;
-      height: 500px;
-      padding: 5px;
-      font-size: 23px;
-      text-align: center;
+    /* 訂單區：固定於右上角浮動圖層，避免被畫布遮蓋 */
+    #orderDisplay {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 1000;
+      background: rgba(255,255,255,0.8);
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 90vh;
       overflow-y: auto;
-      background: transparent;
-      border: none;
-      outline: none;
-      color: white;
-      z-index: 2;
+      font-size: 20px;
+      color: black;
     }
     /* 浮動按鈕：固定在底部中央，可左右拖曳 */
     #dragButton {
@@ -119,8 +113,8 @@
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
 
-  <!-- 輸出欄：訂單列表，點擊訂單可進入編輯 custom 模式 -->
-  <div id="outputField"></div>
+  <!-- 訂單區：固定於右上角浮動圖層 -->
+  <div id="orderDisplay"></div>
 
   <!-- 浮動按鈕 (拖曳觸發清除) -->
   <div id="dragButton">清除</div>
@@ -145,7 +139,7 @@ let currentOrder = { meal: null, customs: [] };
 let tempCustom = null;
 
 // 訂單列表與累計總金額
-// 將每筆訂單儲存為物件，方便後續編輯
+// 每筆訂單以物件存入
 let itemList = []; 
 let grandTotal = 0;
 let currentLine = ""; // 當前訂單字串
@@ -435,7 +429,7 @@ function updateFloatingSuggestions(){
         currentLine = currentOrder.meal.tagName + " × " + qty;
         itemList.push(JSON.parse(JSON.stringify(currentOrder)));
         grandTotal += currentOrder.meal.candidatePrice * qty;
-        updateOutputField();
+        updateOrderDisplay();
         currentOrder = { meal: null, customs: [] };
         currentLine = "";
         phase = "meal";
@@ -461,40 +455,13 @@ function updateFloatingSuggestions(){
         tempCustom = null;
         clearCanvasOnly();
       }
-      updateOutputField();
+      updateOrderDisplay();
       updateFloatingSuggestions();
     });
     floatingDiv.appendChild(btn);
   });
   
-  // 在 custom 階段，增加手動輸入 custom 的按鈕
-  if(phase === "custom"){
-    let customInputBtn = document.createElement("button");
-    customInputBtn.textContent = "自訂";
-    customInputBtn.addEventListener("click", () => {
-      let inputStr = prompt("請輸入自訂內容, 格式: 名稱 價格 數量\n例如: 辣 5 1");
-      if(inputStr){
-        let parts = inputStr.split(" ");
-        if(parts.length >= 3){
-          let name = parts[0];
-          let price = parseFloat(parts[1]);
-          let qty = parseFloat(parts[2]);
-          currentOrder.customs.push({
-            tagName: name,
-            candidatePrice: price,
-            quantity: qty
-          });
-          rebuildCurrentLine();
-          updateOutputField();
-          clearCanvasOnly();
-        } else {
-          alert("格式錯誤！");
-        }
-      }
-    });
-    floatingDiv.appendChild(customInputBtn);
-  }
-  
+  // 取消「自訂」按鈕，不再顯示
   // 若在 custom 階段且主餐已選，加入「完成訂單」按鈕
   if(phase === "custom" && currentOrder.meal){
     let finishOrderBtn = document.createElement("button");
@@ -532,11 +499,11 @@ function computeSequenceDifference(s1, s2){
 }
 
 /************************************************
- * 五、更新輸出欄：顯示各筆訂單與累計金額
- * 輸出欄改用 div，每筆訂單可點擊編輯 custom
+ * 五、更新訂單區：顯示各筆訂單與累計金額
+ * 訂單區為浮動圖層，點擊訂單可編輯 custom
  ************************************************/
-function updateOutputField(){
-  let container = document.getElementById("outputField");
+function updateOrderDisplay(){
+  let container = document.getElementById("orderDisplay");
   container.innerHTML = "";
   
   itemList.forEach((order, index) => {
@@ -553,7 +520,7 @@ function updateOutputField(){
     orderStr += " = " + total;
     orderDiv.textContent = orderStr;
     orderDiv.addEventListener("click", () => {
-      // 點擊訂單主餐部分後，移除此訂單並設定為當前訂單，以便加入客製化內容
+      // 點擊訂單後，將該訂單移除並設定為當前訂單以編輯 custom
       itemList.splice(index, 1);
       grandTotal -= total;
       currentOrder = order;
@@ -562,7 +529,7 @@ function updateOutputField(){
         currentLine += " + " + c.tagName + " × " + c.quantity;
       });
       phase = "custom";
-      updateOutputField();
+      updateOrderDisplay();
       updateFloatingSuggestions();
     });
     container.appendChild(orderDiv);
@@ -600,7 +567,7 @@ function finalizeOrder(){
   currentOrder = { meal: null, customs: [] };
   currentLine = "";
   phase = "meal";
-  updateOutputField();
+  updateOrderDisplay();
   clearCanvasOnly();
 }
 
@@ -621,7 +588,7 @@ function clearOutputAndCanvas(){
   recognizedStrokeText = "";
   recognizedGridText = "";
   resetBounds();
-  document.getElementById("outputField").innerHTML = "";
+  document.getElementById("orderDisplay").innerHTML = "";
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   updateFloatingSuggestions();
 }
