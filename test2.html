@@ -13,7 +13,7 @@
       height: 100%;
       font-family: Arial, sans-serif;
       background: black;
-      /* 防止全站文字被選取 */
+      /* 防止文字被選取 */
       -webkit-user-select: none;
       -moz-user-select: none;
       -ms-user-select: none;
@@ -58,22 +58,21 @@
       margin: 2px;
       white-space: nowrap;
     }
-    /* 訂單區：固定於右上角浮動圖層，避免被畫布遮蓋 */
+    /* 訂單區：置中浮動圖層，避免被 canvas 遮蓋 */
     #orderDisplay {
       position: fixed;
-      top: 100px;
-      left: 50%;               /* 置中訂單區 */
+      top: 10px;
+      left: 50%;
       transform: translateX(-50%);
       z-index: 1000;
-      background: black;
+      background: rgba(255,255,255,0.8);
       padding: 10px;
       border-radius: 5px;
       max-height: 90vh;
-      width: 390px;
       overflow-y: auto;
       font-size: 20px;
-      color: white;
-      text-align: center;      /* 文字水平置中 */
+      color: black;
+      text-align: center;
     }
     /* 浮動按鈕：固定在底部中央，可左右拖曳 */
     #dragButton {
@@ -116,7 +115,7 @@
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
 
-  <!-- 訂單區：固定於右上角浮動圖層 -->
+  <!-- 訂單區：置中浮動圖層 -->
   <div id="orderDisplay"></div>
 
   <!-- 浮動按鈕 (拖曳觸發清除) -->
@@ -141,13 +140,12 @@ let phase = "meal";
 let currentOrder = { meal: null, customs: [] };
 let tempCustom = null;
 
-// 訂單列表與累計總金額
-// 每筆訂單以物件存入
+// 訂單列表與累計總金額（每筆訂單以物件儲存）
 let itemList = []; 
 let grandTotal = 0;
 let currentLine = ""; // 當前訂單字串
 
-// 用來記錄標籤資料 (假設 tags.json 中包含 category 分類)
+// 標籤資料，假設 tags.json 中包含 category 分類
 let allTags = [];
 
 // 讀取 tags.json
@@ -446,7 +444,7 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "customQuantity"){
-        // 輸入客製化數量
+        // 選擇候選數字作為客製化數量
         let qty = parseFloat(s.tagName);
         currentOrder.customs.push({
           tagName: tempCustom.tagName,
@@ -464,7 +462,27 @@ function updateFloatingSuggestions(){
     floatingDiv.appendChild(btn);
   });
   
-  // 取消「自訂」按鈕，不再顯示
+  // 當在 customQuantity 階段，增加「完成」按鈕，
+  // 按下後不匹配數量，只輸出標籤文字（不附加 "× 數量"）
+  if(phase === "customQuantity"){
+    let finishBtn = document.createElement("button");
+    finishBtn.textContent = "完成";
+    finishBtn.addEventListener("click", () => {
+      currentOrder.customs.push({
+        tagName: tempCustom.tagName,
+        candidatePrice: tempCustom.candidatePrice,
+        quantity: null   // 無數量資料，只輸出標籤文字
+      });
+      rebuildCurrentLine();
+      phase = "custom";
+      tempCustom = null;
+      clearCanvasOnly();
+      updateOrderDisplay();
+      updateFloatingSuggestions();
+    });
+    floatingDiv.appendChild(finishBtn);
+  }
+  
   // 若在 custom 階段且主餐已選，加入「完成訂單」按鈕
   if(phase === "custom" && currentOrder.meal){
     let finishOrderBtn = document.createElement("button");
@@ -482,7 +500,11 @@ function rebuildCurrentLine(){
   if(!currentOrder.meal) return;
   currentLine = currentOrder.meal.tagName + " × " + currentOrder.meal.quantity;
   currentOrder.customs.forEach(c => {
-    currentLine += " + " + c.tagName + " × " + c.quantity;
+    if(c.quantity != null){
+      currentLine += " + " + c.tagName + " × " + c.quantity;
+    } else {
+      currentLine += " + " + c.tagName;
+    }
   });
 }
 
@@ -514,11 +536,17 @@ function updateOrderDisplay(){
     orderDiv.style.cursor = "pointer";
     let orderStr = order.meal.tagName + " × " + order.meal.quantity;
     order.customs.forEach(c => {
-      orderStr += " + " + c.tagName + " × " + c.quantity;
+      if(c.quantity != null){
+        orderStr += " + " + c.tagName + " × " + c.quantity;
+      } else {
+        orderStr += " + " + c.tagName;
+      }
     });
     let total = order.meal.candidatePrice * order.meal.quantity;
     order.customs.forEach(c => {
-      total += c.candidatePrice * c.quantity;
+      if(c.quantity != null){
+        total += c.candidatePrice * c.quantity;
+      }
     });
     orderStr += " = " + total;
     orderDiv.textContent = orderStr;
@@ -529,7 +557,11 @@ function updateOrderDisplay(){
       currentOrder = order;
       currentLine = order.meal.tagName + " × " + order.meal.quantity;
       order.customs.forEach(c => {
-        currentLine += " + " + c.tagName + " × " + c.quantity;
+        if(c.quantity != null){
+          currentLine += " + " + c.tagName + " × " + c.quantity;
+        } else {
+          currentLine += " + " + c.tagName;
+        }
       });
       phase = "custom";
       updateOrderDisplay();
@@ -563,7 +595,9 @@ function finalizeOrder(){
     total += currentOrder.meal.candidatePrice * currentOrder.meal.quantity;
   }
   currentOrder.customs.forEach(c => {
-    total += c.candidatePrice * c.quantity;
+    if(c.quantity != null){
+      total += c.candidatePrice * c.quantity;
+    }
   });
   itemList.push(JSON.parse(JSON.stringify(currentOrder)));
   grandTotal += total;
