@@ -58,21 +58,20 @@
       margin: 2px;
       white-space: nowrap;
     }
-    /* 訂單區：置中浮動圖層，避免被 canvas 遮蓋 */
+    /* 訂單區：置中固定浮動圖層，避免被 canvas 遮蓋，內部文字水平置中 */
     #orderDisplay {
       position: fixed;
-      top: 150px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 1000;
-      background: black;
+      background: rgba(255,255,255,0.8);
       padding: 10px;
       border-radius: 5px;
       max-height: 90vh;
-      width: 390px;
       overflow-y: auto;
       font-size: 20px;
-      color: white;
+      color: black;
       text-align: center;
     }
     /* 浮動按鈕：固定在底部中央，可左右拖曳 */
@@ -116,7 +115,7 @@
   <!-- 透明畫布 -->
   <canvas id="canvas"></canvas>
 
-  <!-- 訂單區：置中浮動圖層 -->
+  <!-- 訂單區：置中固定浮動圖層 -->
   <div id="orderDisplay"></div>
 
   <!-- 浮動按鈕 (拖曳觸發清除) -->
@@ -124,6 +123,27 @@
 </div>
 
 <script>
+/************************************************
+ * 預設標籤設定：若無筆畫輸入時，各類別候選標籤使用預設值
+ ************************************************/
+const defaultTags = {
+  meals: [
+    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" },
+    { tagName: "大腸麵線", candidatePrice: 40, category: "meals" },
+    { tagName: "蔥油餅加蛋", candidatePrice: 50, category: "meals" }
+  ],
+  amount: [
+    { tagName: "1", candidatePrice: 0, category: "amount" },
+    { tagName: "2", candidatePrice: 0, category: "amount" },
+    { tagName: "3", candidatePrice: 0, category: "amount" }
+  ],
+  custom: [
+    { tagName: "辣", candidatePrice: 0, category: "custom" },
+    { tagName: "冰", candidatePrice: 0, category: "custom" },
+    { tagName: "溫", candidatePrice: 0, category: "custom" }
+  ]
+};
+
 /************************************************
  * 狀態定義：
  * phase：訂單目前階段
@@ -146,7 +166,7 @@ let itemList = [];
 let grandTotal = 0;
 let currentLine = ""; // 當前訂單字串
 
-// 標籤資料，假設 tags.json 中包含 category 分類
+// 標籤資料（從 tags.json 讀取，若無筆畫輸入則使用 defaultTags）
 let allTags = [];
 
 // 讀取 tags.json
@@ -158,6 +178,7 @@ fetch("tags.json")
   })
   .catch(err => {
     console.error("無法取得 tags.json：", err);
+    updateFloatingSuggestions(); // 若讀取失敗也使用預設
   });
 
 /************************************************
@@ -374,42 +395,50 @@ function updateFloatingSuggestions(){
   else if(phase === "mealQuantity" || phase === "customQuantity") category = "amount";
   else if(phase === "custom") category = "custom";
   
-  let tags = allTags.filter(t => t.category === category);
   let suggestions = [];
-  tags.forEach(tag => {
-    if(tag.data && tag.data.length > 0){
-      let minDiff = Infinity;
-      tag.data.forEach(record => {
-        let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText,
+  // 若無筆畫輸入，使用預設標籤
+  if(recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){
+    if(defaultTags[category]){
+      suggestions = defaultTags[category].slice(0);
+    }
+  } else {
+    let tags = allTags.filter(t => t.category === category);
+    tags.forEach(tag => {
+      if(tag.data && tag.data.length > 0){
+        let minDiff = Infinity;
+        tag.data.forEach(record => {
+          let diff = computeRecordDifference(recognizedStrokeText, recognizedGridText,
                                              record.stroke, record.grid);
-        if(diff < minDiff) minDiff = diff;
-      });
-      if(tag.name.indexOf("/") !== -1){
-        let nameParts = tag.name.split("/");
-        let priceParts = [];
-        if(typeof tag.price === "string" && tag.price.indexOf("/") !== -1){
-          priceParts = tag.price.split("/");
-        }
-        nameParts.forEach((part, idx) => {
-          let nm = part.trim();
-          let candidatePrice = (priceParts.length > idx) ? parseFloat(priceParts[idx]) : parseFloat(tag.price);
+          if(diff < minDiff) minDiff = diff;
+        });
+        if(tag.name.indexOf("/") !== -1){
+          let nameParts = tag.name.split("/");
+          let priceParts = [];
+          if(typeof tag.price === "string" && tag.price.indexOf("/") !== -1){
+            priceParts = tag.price.split("/");
+          }
+          nameParts.forEach((part, idx) => {
+            let nm = part.trim();
+            let candidatePrice = (priceParts.length > idx) ? parseFloat(priceParts[idx]) : parseFloat(tag.price);
+            suggestions.push({
+              tagName: nm,
+              diff: minDiff,
+              candidatePrice,
+              category: tag.category
+            });
+          });
+        } else {
           suggestions.push({
-            tagName: nm,
+            tagName: tag.name,
             diff: minDiff,
-            candidatePrice,
+            candidatePrice: parseFloat(tag.price),
             category: tag.category
           });
-        });
-      } else {
-        suggestions.push({
-          tagName: tag.name,
-          diff: minDiff,
-          candidatePrice: parseFloat(tag.price),
-          category: tag.category
-        });
+        }
       }
-    }
-  });
+    });
+  }
+  
   suggestions.sort((a,b)=> a.diff - b.diff);
   suggestions = suggestions.slice(0,3);
   
@@ -425,7 +454,7 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "mealQuantity"){
-        // 選完數量後直接輸出餐點並計算小計，將訂單儲存至 itemList，回到主餐選單
+        // 選完數量後直接輸出餐點並計算小計，儲存訂單後回到主餐選單
         let qty = parseFloat(s.tagName);
         currentOrder.meal.quantity = qty;
         currentLine = currentOrder.meal.tagName + " × " + qty;
@@ -445,7 +474,7 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "customQuantity"){
-        // 選擇候選數字作為客製化數量
+        // 若選擇候選數字作為客製化數量
         let qty = parseFloat(s.tagName);
         currentOrder.customs.push({
           tagName: tempCustom.tagName,
@@ -464,7 +493,7 @@ function updateFloatingSuggestions(){
   });
   
   // 當在 customQuantity 階段，增加「完成」按鈕，
-  // 按下後不匹配數量，只輸出標籤文字（不附加 "× 數量"）
+  // 按下後若數量未匹配，僅輸出標籤文字（不附加 "× 數量"）
   if(phase === "customQuantity"){
     let finishBtn = document.createElement("button");
     finishBtn.textContent = "完成";
@@ -472,7 +501,7 @@ function updateFloatingSuggestions(){
       currentOrder.customs.push({
         tagName: tempCustom.tagName,
         candidatePrice: tempCustom.candidatePrice,
-        quantity: null   // 無數量資料，只輸出標籤文字
+        quantity: null
       });
       rebuildCurrentLine();
       phase = "custom";
@@ -492,7 +521,6 @@ function updateFloatingSuggestions(){
     floatingDiv.appendChild(finishOrderBtn);
   }
   
-  // 顯示 custom 階段專用工具列（可加入其他工具按鈕）
   let toolDiv = document.getElementById("customToolsContainer");
   toolDiv.style.display = (phase === "custom") ? "flex" : "none";
 }
@@ -526,7 +554,7 @@ function computeSequenceDifference(s1, s2){
 
 /************************************************
  * 五、更新訂單區：顯示各筆訂單與累計金額
- * 訂單區為浮動圖層，點擊訂單可編輯 custom
+ * 訂單區為置中固定浮動圖層，點擊訂單可編輯 custom
  ************************************************/
 function updateOrderDisplay(){
   let container = document.getElementById("orderDisplay");
