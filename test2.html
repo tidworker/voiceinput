@@ -72,7 +72,7 @@
       color: white;
       z-index: 1;
     }
-    /* 浮動按鈕：固定在底部中央，可左右拖曳 */
+    /* 浮動按鈕：固定在底部中央，可拖曳 */
     #dragButton {
       position: absolute;
       bottom: 100px;
@@ -116,7 +116,7 @@
   <!-- 輸出欄 -->
   <textarea id="outputField" readonly placeholder=""></textarea>
 
-  <!-- 浮動按鈕 (可左右拖曳) -->
+  <!-- 浮動按鈕 (拖曳觸發完成訂單) -->
   <div id="dragButton">清除</div>
 </div>
 
@@ -325,30 +325,36 @@ function getCell(p){
 }
 
 /************************************************
- * 三、浮動按鈕拖曳清除功能
+ * 三、浮動按鈕拖曳功能 (修改後：依垂直拖曳觸發完成訂單)
  ************************************************/
 const dragBtn = document.getElementById("dragButton");
-let dragStartX = null;
+let dragStartY = null;
 let isDragging = false;
 function onDragStart(e){
   isDragging = true;
-  dragStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+  dragStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
   e.preventDefault();
 }
 function onDragMove(e){
   if(!isDragging) return;
-  let currentX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
-  let deltaX = currentX - dragStartX;
-  dragBtn.style.transform = `translateX(calc(-50% + ${deltaX}px))`;
+  let currentY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+  let deltaY = currentY - dragStartY;
+  // 更新按鈕位置，保持水平置中
+  dragBtn.style.transform = `translateY(${deltaY}px) translateX(-50%)`;
   e.preventDefault();
 }
 function onDragEnd(e){
   if(!isDragging) return;
   isDragging = false;
-  let endX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : e.clientX;
-  let deltaX = endX - dragStartX;
-  if(deltaX < -50) clearCanvasOnly();
-  else if(deltaX > 50) clearOutputAndCanvas();
+  let endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : e.clientY;
+  let deltaY = endY - dragStartY;
+  // 若上滑超過 50px（deltaY 小於 -50），則觸發完成訂單
+  if(deltaY < -50) {
+    finalizeOrder();
+  } else {
+    clearCanvasOnly();
+  }
+  // 恢復初始位置
   dragBtn.style.transform = `translateX(-50%)`;
 }
 dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
@@ -422,11 +428,19 @@ function updateFloatingSuggestions(){
         clearCanvasOnly();
       }
       else if(phase === "mealQuantity"){
-        // 選擇主餐數量
+        // 修改後：選完數量後直接輸出餐點、計算小計，再回到主餐選單
         let qty = parseFloat(s.tagName);
         currentOrder.meal.quantity = qty;
         currentLine = currentOrder.meal.tagName + " × " + qty;
-        phase = "custom";
+        let total = currentOrder.meal.candidatePrice * qty;
+        let orderStr = currentLine + " = " + total;
+        itemList.push(orderStr);
+        grandTotal += total;
+        updateOutputField();
+        // 重置訂單狀態，回到主餐選單
+        currentOrder = { meal: null, customs: [] };
+        currentLine = "";
+        phase = "meal";
         clearCanvasOnly();
       }
       else if(phase === "custom"){
