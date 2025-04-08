@@ -305,7 +305,7 @@
     let boxW = maxX - minX;
     let boxH = maxY - minY;
     // 若筆畫過小，視為誤觸還原
-    if(boxW < 30 && boxH < 30){
+    if(boxW < 5 && boxH < 5){
       ctx.putImageData(lastCanvasImage,0,0);
       updateFloatingSuggestions();
       return;
