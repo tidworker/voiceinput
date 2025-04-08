@@ -154,12 +154,7 @@
    * 新增：格式化備註文字的函式
    ************************************************/
   function formatRemark(remark) {
-    return remark
-      .replace(/不辣(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: red;">$&</span>')
-      .replace(/加辣(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: red;">$&</span>')
-      .replace(/小辣(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: red;">$&</span>')
-      .replace(/大辣(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: red;">$&</span>')
-      .replace(/辣(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: red;">$&</span>')
+    return remark
       .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: #84C1FF">$&</span>')
       .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: #FF6347;">$&</span>');
   }
