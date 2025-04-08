@@ -13,7 +13,6 @@
       font-weight: normal;
       font-style: normal;
     }
-
     html, body {
       margin: 0;
       padding: 0;
@@ -79,6 +78,7 @@
       font-size: 22px;
       color: white;
       text-align: center;
+      opacity: 1;
     }
     #dragButton {
       position: absolute;
@@ -120,7 +120,6 @@
       height: auto;
       display: block;
     }
-
     button,
     input,
     select,
@@ -154,7 +153,7 @@
    * 新增：格式化備註文字的函式
    ************************************************/
   function formatRemark(remark) {
-    return remark
+    return remark
       .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white">$&</span>')
       .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white;">$&</span>');
   }
@@ -394,15 +393,17 @@
   }
 
   /************************************************
-   * 4. 浮動按鈕左右拖曳 -> 清除/刪除
+   * 4. 浮動按鈕拖曳事件 -> 清除/刪除與上滑切換備註（加入動畫效果）
    ************************************************/
   const dragBtn = document.getElementById("dragButton");
   let dragStartX = null;
+  let dragStartY = null;  // 記錄開始拖曳時的 Y 座標
   let isDragging = false;
 
   function onDragStart(e){
     isDragging = true;
     dragStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+    dragStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
     e.preventDefault();
   }
   function onDragMove(e){
@@ -416,27 +417,53 @@
     if(!isDragging) return;
     isDragging = false;
     let endX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : e.clientX;
+    let endY = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : e.clientY;
+    
     let deltaX = endX - dragStartX;
-
-    // 向左拖超過50px
-    if(deltaX < -50) {
-      if(phase === "remark" && editingIndex !== null) {
-        itemList.splice(editingIndex,1);
-        editingIndex = null;
-        currentOrder = { item: null, remarks: [] };
-        currentLine = "";
-        phase = "item";
-        updateOrderDisplay();
-        clearCanvasOnly();
-      } else {
-        clearCanvasOnly();
-      }
+    let deltaY = endY - dragStartY;
+    
+    // 判斷是否為上滑：垂直位移超過50px，且比水平位移更明顯
+    if(Math.abs(deltaY) > Math.abs(deltaX) && deltaY < -50){
+      // 先對拖曳按鈕作垂直動畫效果，再切換到 memo 階段（模擬點選「備註」）
+      dragBtn.style.transition = "transform 0.3s ease";
+      dragBtn.style.transform = "translate(-50%, -30px)";
+      setTimeout(() => {
+         dragBtn.style.transition = "";
+         dragBtn.style.transform = "translate(-50%, 0)";
+         if(phase === "item"){
+           phase = "memo";
+           clearCanvasOnly();
+           updateFloatingSuggestions();
+           updateOrderDisplay();
+         }
+      }, 300);
     }
-    // 向右拖超過50px => 清除全部(含訂單+畫布)
+    // 左滑：向左移動超過50px，動畫淡出上方輸入內容，清除當下輸入的餐點內容並回到 items 選擇
+    else if(deltaX < -50) {
+      let orderDisplay = document.getElementById("orderDisplay");
+      orderDisplay.style.transition = "opacity 0.3s ease";
+      orderDisplay.style.opacity = "0";
+      setTimeout(() => {
+         currentLine = "";
+         orderDisplay.style.transition = "";
+         orderDisplay.style.opacity = "1";
+         if(phase === "remark" && editingIndex !== null) {
+           itemList.splice(editingIndex,1);
+           editingIndex = null;
+           currentOrder = { item: null, remarks: [] };
+         }
+         phase = "item";
+         clearCanvasOnly();
+         updateFloatingSuggestions();
+         updateOrderDisplay();
+      }, 300);
+    }
+    // 右滑：向右移動超過50px，則清除所有訂單與畫布（此處直接呼叫函式，可依需求加入動畫）
     else if(deltaX > 50) {
       clearOutputAndCanvas();
     }
-    dragBtn.style.transform = `translateX(-50%)`;
+    
+    dragBtn.style.transform = "translateX(-50%)";
   }
 
   dragBtn.addEventListener("mousedown", onDragStart, {passive:false});
