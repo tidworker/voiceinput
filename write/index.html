@@ -38,7 +38,7 @@
       top: 30px;
       width: 90vw;
       height: 70vh;
-      background: gray;
+      background: transparent;
       border: none;
       z-index: 2;
     }
@@ -155,8 +155,8 @@
    ************************************************/
   function formatRemark(remark) {
     return remark
-      .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: #84C1FF">$&</span>')
-      .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: #FF6347;">$&</span>');
+      .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white">$&</span>')
+      .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white;">$&</span>');
   }
 
   /************************************************
