@@ -2,21 +2,21 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>手寫數字識別 - 手機版</title>
+  <title>手寫數字識別 - 手機版 (修正版)</title>
   <!-- 設置 viewport，確保在手機裝置上的優化顯示 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 0 auto;
       text-align: center;
-      padding: 10px;
       background-color: #f5f5f5;
+      margin: 0 auto;
+      padding: 10px;
     }
     h2 {
       margin-top: 20px;
     }
-    /* 畫布樣式：增加 touch-action 屬性以取消預設觸控手勢 */
+    /* 畫布樣式：取消瀏覽器預設觸控手勢 */
     #canvas {
       border: 2px solid #000;
       background-color: #fff;
@@ -53,14 +53,14 @@
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // 定義啟動繪圖
+    // 開始繪圖
     function startDrawing(x, y) {
       isDrawing = true;
       ctx.beginPath();
       ctx.moveTo(x, y);
     }
     
-    // 定義連續畫線
+    // 連續畫線
     function drawLine(x, y) {
       if (!isDrawing) return;
       ctx.lineWidth = 15;
@@ -73,13 +73,29 @@
       ctx.moveTo(x, y);
     }
     
-    // 定義結束繪圖
+    // 結束繪圖
     function stopDrawing() {
       isDrawing = false;
       ctx.beginPath();
     }
     
-    // 取得觸控點對應於 canvas 的位置
+    // 滑鼠事件
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      startDrawing(x, y);
+    });
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      drawLine(x, y);
+    });
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    // 觸控事件（手機、平板適用）
     function getTouchPos(e) {
       const rect = canvas.getBoundingClientRect();
       return {
@@ -87,46 +103,22 @@
         y: e.touches[0].clientY - rect.top
       };
     }
-    
-    // -----------------------
-    // 事件監聽：滑鼠事件
-    canvas.addEventListener('mousedown', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      startDrawing(x, y);
-    });
-    
-    canvas.addEventListener('mousemove', (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      drawLine(x, y);
-    });
-    
-    canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseout', stopDrawing);
-    
-    // -----------------------
-    // 事件監聽：觸控事件（適用於手機與平板）
     canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();  // 防止觸控時頁面滾動
+      e.preventDefault();
       const pos = getTouchPos(e);
       startDrawing(pos.x, pos.y);
     });
-    
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
       const pos = getTouchPos(e);
       drawLine(pos.x, pos.y);
     });
-    
     canvas.addEventListener('touchend', (e) => {
       e.preventDefault();
       stopDrawing();
     });
     
-    // 清除按鈕：重置畫布與清空結果
+    // 清除畫布
     document.getElementById('clear').addEventListener('click', () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "white";
@@ -134,33 +126,44 @@
       document.getElementById('result').innerText = '';
     });
     
-    // -----------------------
-    // 載入 TensorFlow.js 模型，使用直接可用的預訓練 MNIST 模型
+    // 載入 TensorFlow.js 預訓練的 MNIST 模型
     let model;
     async function loadModel() {
-      model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist/model.json');
-      console.log("模型已成功載入");
+      try {
+        model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist/model.json');
+        console.log("模型載入成功");
+      } catch (error) {
+        console.error("模型載入失敗:", error);
+      }
     }
     loadModel();
     
-    // 預測按鈕：從 canvas 擷取影像、預處理後送入模型獲得預測結果
+    // 預測按鈕點擊事件
     document.getElementById('predict').addEventListener('click', async () => {
+      if (!model) {
+        console.warn("模型尚未載入完成");
+        return;
+      }
+      
+      // 從 canvas 擷取影像
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      // 轉換圖像資料為灰階 tensor
+      // 從 imageData 建立單通道 tensor
       let tensor = tf.browser.fromPixels(imageData, 1);
-      // 調整大小為 28x28，並正規化至 [0,1]
+      // 調整尺寸為 28x28，並正規化至 [0,1]
       tensor = tf.image.resizeBilinear(tensor, [28, 28])
                 .toFloat()
-                .div(255.0)
-                .expandDims(0); // 增加 batch 維度
+                .div(255.0);
+      // 因為 MNIST 模型的輸入是「白色(1)」代表數字，背景黑(0)，所以反轉顏色：
+      tensor = tf.sub(1, tensor);
+      // 增加 batch 維度，使 tensor 形狀變為 [1, 28, 28, 1]
+      tensor = tensor.expandDims(0);
       
-      // 執行預測，取得每個數字的信心分數
+      // 執行模型預測
       const prediction = model.predict(tensor);
       const predictionData = prediction.dataSync();
       
-      // 找出分數最高的數字
+      // 找出信心最高的數字
       const predictedDigit = predictionData.indexOf(Math.max(...predictionData));
-      
       document.getElementById('result').innerText = predictedDigit;
     });
   </script>
