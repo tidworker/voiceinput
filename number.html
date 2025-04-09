@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>手寫數字識別 - 手機版</title>
+  <!-- 設置 viewport，確保在手機裝置上的優化顯示 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0 auto;
+      text-align: center;
+      padding: 10px;
+      background-color: #f5f5f5;
+    }
+    h2 {
+      margin-top: 20px;
+    }
+    /* 畫布樣式：增加 touch-action 屬性以取消預設觸控手勢 */
+    #canvas {
+      border: 2px solid #000;
+      background-color: #fff;
+      touch-action: none;
+    }
+    button {
+      margin: 10px 5px;
+      padding: 10px 20px;
+      font-size: 18px;
+    }
+    #result {
+      font-weight: bold;
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+  <h2>手寫數字識別（手機版）</h2>
+  <canvas id="canvas" width="280" height="280"></canvas>
+  <br>
+  <button id="clear">清除畫布</button>
+  <button id="predict">預測</button>
+  <p>識別結果：<span id="result"></span></p>
+  
+  <!-- 載入 TensorFlow.js 庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.14.0/dist/tf.min.js"></script>
+  <script>
+    // 取得 canvas 與 2D 繪圖上下文
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    
+    // 初始化畫布背景為白色
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // 定義啟動繪圖
+    function startDrawing(x, y) {
+      isDrawing = true;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+    
+    // 定義連續畫線
+    function drawLine(x, y) {
+      if (!isDrawing) return;
+      ctx.lineWidth = 15;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "black";
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+    
+    // 定義結束繪圖
+    function stopDrawing() {
+      isDrawing = false;
+      ctx.beginPath();
+    }
+    
+    // 取得觸控點對應於 canvas 的位置
+    function getTouchPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    
+    // -----------------------
+    // 事件監聽：滑鼠事件
+    canvas.addEventListener('mousedown', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      startDrawing(x, y);
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      drawLine(x, y);
+    });
+    
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    // -----------------------
+    // 事件監聽：觸控事件（適用於手機與平板）
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();  // 防止觸控時頁面滾動
+      const pos = getTouchPos(e);
+      startDrawing(pos.x, pos.y);
+    });
+    
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      const pos = getTouchPos(e);
+      drawLine(pos.x, pos.y);
+    });
+    
+    canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      stopDrawing();
+    });
+    
+    // 清除按鈕：重置畫布與清空結果
+    document.getElementById('clear').addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "white";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      document.getElementById('result').innerText = '';
+    });
+    
+    // -----------------------
+    // 載入 TensorFlow.js 模型，使用直接可用的預訓練 MNIST 模型
+    let model;
+    async function loadModel() {
+      model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist/model.json');
+      console.log("模型已成功載入");
+    }
+    loadModel();
+    
+    // 預測按鈕：從 canvas 擷取影像、預處理後送入模型獲得預測結果
+    document.getElementById('predict').addEventListener('click', async () => {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // 轉換圖像資料為灰階 tensor
+      let tensor = tf.browser.fromPixels(imageData, 1);
+      // 調整大小為 28x28，並正規化至 [0,1]
+      tensor = tf.image.resizeBilinear(tensor, [28, 28])
+                .toFloat()
+                .div(255.0)
+                .expandDims(0); // 增加 batch 維度
+      
+      // 執行預測，取得每個數字的信心分數
+      const prediction = model.predict(tensor);
+      const predictionData = prediction.dataSync();
+      
+      // 找出分數最高的數字
+      const predictedDigit = predictionData.indexOf(Math.max(...predictionData));
+      
+      document.getElementById('result').innerText = predictedDigit;
+    });
+  </script>
+</body>
+</html>
