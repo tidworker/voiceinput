@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>手機手寫辨識數字程式</title>
+  <title>辨識 99 以下數字</title>
   <!-- 載入 TensorFlow.js -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
   <style>
@@ -14,7 +14,8 @@
     }
     canvas {
       background: #fff;
-      touch-action: none; /* 避免瀏覽器預設的觸控縮放 */
+      touch-action: none;
+      border: 1px solid #000;
     }
     button {
       margin: 10px;
@@ -24,26 +25,24 @@
   </style>
 </head>
 <body>
-  <h1>手寫數字辨識</h1>
-  <!-- Canvas 區域，這裡設定 280x280 像素，方便以較大比例繪製，再縮放回 28x28 -->
-  <canvas id="canvas" width="280" height="280" style="border: 1px solid #000;"></canvas>
+  <h1>手寫數字辨識（99 以下）</h1>
+  <!-- 這裡的 canvas 使用 280x280 像素，方便繪圖與後續切割 -->
+  <canvas id="canvas" width="280" height="280"></canvas>
   <br>
   <button id="clear">清除</button>
   <button id="predict">辨識</button>
   <p>辨識結果：<span id="result"></span></p>
 
   <script>
-    // 取得 canvas 元素與 2D 繪圖上下文
+    // 基本 canvas 畫圖邏輯
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     let drawing = false;
-
-    // 設定畫筆屬性
     ctx.lineWidth = 20;
     ctx.lineCap = 'round';
     ctx.strokeStyle = '#000';
 
-    // 處理滑鼠事件
+    // 滑鼠事件
     canvas.addEventListener('mousedown', function(e) {
       drawing = true;
       ctx.beginPath();
@@ -58,26 +57,22 @@
     canvas.addEventListener('mouseup', function() {
       drawing = false;
     });
-    
-    // 處理觸控事件（手機裝置）
+
+    // 觸控事件
     canvas.addEventListener('touchstart', function(e) {
       e.preventDefault();
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      const x = touch.clientX - rect.left;
-      const y = touch.clientY - rect.top;
       drawing = true;
       ctx.beginPath();
-      ctx.moveTo(x, y);
+      ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
     });
     canvas.addEventListener('touchmove', function(e) {
       e.preventDefault();
       if (drawing) {
         const touch = e.touches[0];
         const rect = canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        const y = touch.clientY - rect.top;
-        ctx.lineTo(x, y);
+        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
         ctx.stroke();
       }
     });
@@ -85,40 +80,79 @@
       drawing = false;
     });
 
-    // 清除按鈕：重設 canvas 與結果顯示區
+    // 清除按鈕
     document.getElementById('clear').addEventListener('click', function() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       document.getElementById('result').textContent = '';
     });
 
-    // 載入預訓練的 MNIST 模型
+    // 載入預訓練 MNIST 模型
     let model;
     (async function(){
-      model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist_tfjs_model/model.json');
-      console.log('模型載入完成');
+      try {
+        model = await tf.loadLayersModel('https://storage.googleapis.com/tfjs-models/tfjs/mnist_tfjs_model/model.json');
+        console.log('模型載入完成');
+      } catch (error) {
+        console.error("模型載入失敗:", error);
+      }
     })();
 
-    // 辨識按鈕：擷取畫布圖像、預處理，並進行模型預測
-    document.getElementById('predict').addEventListener('click', async function() {
-      // 從 Canvas 擷取圖像，僅取得單一色道（灰階）
-      let img = tf.browser.fromPixels(canvas, 1);
-      // 將圖像縮放至 28x28（MNIST 標準尺寸）
-      let resized = tf.image.resizeBilinear(img, [28, 28]);
-      // 重塑 tensor 形狀為 [1, 28, 28, 1] ，符合模型輸入形狀
+    // 定義預測單一數字的共用函數
+    async function predictDigit(imageTensor) {
+      // 將圖像縮放至 28x28，調整 tensor 形狀與正規化
+      let resized = tf.image.resizeBilinear(imageTensor, [28, 28]);
       let tensor = resized.reshape([1, 28, 28, 1]);
-      // 將像素值標準化到 [0, 1] 區間
-      tensor = tensor.div(255.0);
-
-      // 使用模型進行預測
+      // 正規化並反轉顏色（將白背景轉0，筆劃轉為1）
+      tensor = tf.sub(1, tensor.div(255.0));
       let prediction = model.predict(tensor);
-      // 取出預測結果中機率最高的數字
-      let predictedValue = prediction.argMax(1).dataSync()[0];
+      let digit = prediction.argMax(1).dataSync()[0];
+      tf.dispose([resized, tensor, prediction]);
+      return digit;
+    }
 
-      // 在頁面上顯示辨識結果
-      document.getElementById('result').textContent = predictedValue;
+    // 辨識按鈕：將 canvas 分割為左右兩個區塊再分別進行辨識
+    document.getElementById('predict').addEventListener('click', async function() {
+      if (!model) {
+        document.getElementById('result').textContent = "模型尚未載入";
+        console.log("模型尚未載入");
+        return;
+      }
+      try {
+        // 取出整個 canvas 的灰階圖像 tensor
+        let fullTensor = tf.browser.fromPixels(canvas, 1);
+        const [height, width, channels] = fullTensor.shape;
+        const mid = Math.floor(width / 2);
 
-      // 清理 TensorFlow.js 佔用的資源
-      tf.dispose([img, resized, tensor, prediction]);
+        // 將畫布切成左半區與右半區
+        let leftTensor = tf.slice(fullTensor, [0, 0, 0], [height, mid, channels]);
+        let rightTensor = tf.slice(fullTensor, [0, mid, 0], [height, width - mid, channels]);
+        
+        // 簡單檢查左右區是否有畫筆痕跡（像素值總和超過門檻）
+        const threshold = 10; // 門檻值，可根據實際狀況調整
+        const leftSum = leftTensor.sum().dataSync()[0];
+        const rightSum = rightTensor.sum().dataSync()[0];
+        let resultStr = "";
+
+        // 如果左側有內容，就辨識左側數字
+        if (leftSum > threshold) {
+          const leftDigit = await predictDigit(leftTensor);
+          resultStr += leftDigit.toString();
+        }
+        // 如果右側有內容，就辨識右側數字
+        if (rightSum > threshold) {
+          const rightDigit = await predictDigit(rightTensor);
+          resultStr += rightDigit.toString();
+        }
+
+        if (!resultStr) {
+          resultStr = "無辨識內容";
+        }
+        document.getElementById('result').textContent = resultStr;
+        tf.dispose([fullTensor, leftTensor, rightTensor]);
+      } catch (error) {
+        console.error("辨識發生錯誤:", error);
+        document.getElementById('result').textContent = "辨識發生錯誤";
+      }
     });
   </script>
 </body>
