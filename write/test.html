@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- 在手機上自適應 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手寫辨識系統 (訂單累計與價格計算)</title>
+  <style>
+    /* 載入自訂字型 */
+    @font-face {
+      font-family: 'Cubic';
+      src: url('Cubic_11_1.100_R.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: 'Cubic', Arial, sans-serif;
+      background: black;
+      user-select: none;
+    }
+    #appContainer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute;
+      left: 5%;
+      top: 30px;
+      width: 90vw;
+      height: 65vh;
+      background: transparent;
+      border: none;
+      z-index: 2;
+    }
+    #floatingSuggestions {
+      position: absolute;
+      top: 68%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      max-width: 95vw;
+      gap: 5px;
+      z-index: 10;
+    }
+    #floatingSuggestions button {
+      background: black;
+      border: 3px solid orange;
+      border-radius: 5px;
+      font-size: 22px;
+      padding: 5px 10px;
+      margin: 2px;
+      white-space: nowrap;
+      color: white;
+    }
+    #orderDisplay {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: transparent;
+      padding: 10px;
+      border-radius: 5px;
+      max-height: 90vh;
+      width: 390px;
+      overflow-y: auto;
+      font-size: 22px;
+      color: white;
+      text-align: center;
+    }
+    /* 浮動按鈕 (虛擬搖桿) */
+    #dragButton {
+      position: absolute;
+      /* 預設搖桿中心位置 */
+      top: 80%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      cursor: grab;
+      user-select: none;
+      z-index: 999;
+    }
+    #dragButton:active { cursor: grabbing; }
+    #dragButton img { width: 100px; display: block; }
+    #customToolsContainer {
+      position: absolute;
+      top: 80%;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      gap: 10px;
+      z-index: 10;
+    }
+    #centerLogo {
+      position: absolute;
+      top: 39%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 9999;
+      display: block;
+      cursor: pointer;
+    }
+    #centerLogo img { max-width: 120px; height: auto; display: block; }
+    button, input, select, textarea {
+      font-family: 'Cubic', Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+<div id="appContainer">
+  <!-- 一開始顯示於螢幕中央的 logo2.png，點擊後將隱藏 -->
+  <div id="centerLogo">
+    <img src="logo2.png" alt="Logo2">
+  </div>
+  <!-- 建議候選區 -->
+  <div id="floatingSuggestions"></div>
+  <!-- custom 階段用工具按鈕 -->
+  <div id="customToolsContainer"></div>
+  <!-- 透明畫布 -->
+  <canvas id="canvas"></canvas>
+  <!-- 訂單區：置中固定浮動圖層 -->
+  <div id="orderDisplay"></div>
+  <!-- 虛擬搖桿按鈕 (logo.png) -->
+  <div id="dragButton">
+    <img src="logo.png" alt="清除" />
+  </div>
+</div>
+
+<script>
+/************************************************
+  新增：格式化備註文字的函式
+************************************************/
+function formatRemark(remark) {
+  return remark
+    .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white">$&</span>')
+    .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white;">$&</span>');
+}
+
+/************************************************
+  1. 預設標籤設定（保留 items、amount、remark；"備註" 仍放在 items 內）
+************************************************/
+const defaultTags = {
+  items: [
+    { tagName: "蔥油餅加蛋", candidatePrice: 30, category: "items" },
+    { tagName: "大腸麵線",   candidatePrice: 50, category: "items" },
+    { tagName: "大炒麵",     candidatePrice: 40, category: "items" },
+    { tagName: "備註",       candidatePrice: 0,  category: "items" }
+  ],
+  amount: [
+    { tagName: "1", candidatePrice: 0, category: "amount" },
+    { tagName: "2", candidatePrice: 0, category: "amount" },
+    { tagName: "3", candidatePrice: 0, category: "amount" }
+  ],
+  remark: [
+    { tagName: "辣", candidatePrice: 0, category: "remark" },
+    { tagName: "冰", candidatePrice: 0, category: "remark" },
+    { tagName: "溫", candidatePrice: 0, category: "remark" }
+  ],
+  memo: [
+    { tagName: "辣另外包",   candidatePrice: 0, category: "memo" },
+    { tagName: "環保餐具",   candidatePrice: 0, category: "memo" },
+    { tagName: "分開袋",     candidatePrice: 0, category: "memo" }
+  ]
+};
+
+/************************************************
+  2. 狀態定義
+************************************************/
+let phase = "item";
+let currentOrder = { item: null, remarks: [] };
+let tempCustom = null;
+let itemList = [];
+let currentLine = "";
+let globalRemark = "";
+let editingIndex = null;
+
+let allTags = [];
+fetch("tags.json")
+  .then(resp => resp.json())
+  .then(data => { allTags = data; updateFloatingSuggestions(); })
+  .catch(err => { console.error("無法取得 tags.json：", err); updateFloatingSuggestions(); });
+
+/************************************************
+  3. 手寫畫布設定與筆畫處理
+************************************************/
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+function resizeCanvasToDisplaySize() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width  = rect.width;
+  canvas.height = rect.height;
+}
+window.addEventListener("resize", resizeCanvasToDisplaySize);
+resizeCanvasToDisplaySize();
+
+ctx.lineWidth   = 2;
+ctx.lineCap     = "round";
+ctx.strokeStyle = "gray";
+
+let drawing = false, points = [];
+let recognizedStrokeText = "", recognizedGridText = "";
+let lastCanvasImage = null;
+let minX, maxX, minY, maxY;
+function resetBounds(){ minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity; }
+resetBounds();
+function getPos(e){
+  const rect = canvas.getBoundingClientRect();
+  if(e.touches && e.touches[0]){
+    return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+  } else {
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+}
+function updateBounds(pt){
+  if(pt.x < minX) minX = pt.x;
+  if(pt.x > maxX) maxX = pt.x;
+  if(pt.y < minY) minY = pt.y;
+  if(pt.y > maxY) maxY = pt.y;
+}
+function startDrawing(e){
+  drawing = true;
+  lastCanvasImage = ctx.getImageData(0,0,canvas.width,canvas.height);
+  points = [];
+  resetBounds();
+  const pos = getPos(e);
+  points.push(pos);
+  updateBounds(pos);
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  e.preventDefault();
+}
+function draw(e){
+  if(!drawing) return;
+  const pos = getPos(e);
+  points.push(pos);
+  updateBounds(pos);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  e.preventDefault();
+}
+function endDrawing(e){
+  if(!drawing) return;
+  drawing = false;
+  let boxW = maxX - minX, boxH = maxY - minY;
+  if(boxW < 5 && boxH < 5){
+    ctx.putImageData(lastCanvasImage,0,0);
+    updateFloatingSuggestions();
+    return;
+  }
+  let strokeResult = processPointsByDistance(points);
+  recognizedStrokeText += strokeResult;
+  recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);
+  let startCell = getCell(points[0]);
+  let endCell   = getCell(points[points.length-1]);
+  recognizedGridText += startCell.toString() + endCell.toString();
+  updateFloatingSuggestions();
+  e.preventDefault();
+}
+// PC 事件
+canvas.addEventListener("mousedown", startDrawing);
+canvas.addEventListener("mousemove", draw);
+canvas.addEventListener("mouseup", endDrawing);
+canvas.addEventListener("mouseout", endDrawing);
+// 行動裝置事件
+canvas.addEventListener("touchstart", startDrawing, {passive:false});
+canvas.addEventListener("touchmove", draw, {passive:false});
+canvas.addEventListener("touchend", endDrawing, {passive:false});
+function getAngle(a,b){
+  let dx = b.x - a.x, dy = b.y - a.y;
+  let rad = Math.atan2(dy, dx);
+  let deg = rad * 180 / Math.PI;
+  if(deg < 0) deg += 360;
+  return deg;
+}
+function processPointsByDistance(pts){
+  if(pts.length < 2) return "";
+  let result = "", lastSample = pts[0], distSum = 0;
+  for(let i = 1; i < pts.length; i++){
+    let dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    distSum += Math.sqrt(dx*dx + dy*dy);
+    if(distSum >= 30){
+      let angle = getAngle(lastSample, pts[i]);
+      let raw = Math.floor(angle / 36);
+      let mapped = ((raw - 7 + 10) % 10).toString();
+      result += mapped;
+      lastSample = pts[i];
+      distSum = 0;
+    }
+  }
+  return result;
+}
+function compressConsecutiveSequence(s){
+  let temp = s.replace(/(.)\1+/g, "$1"), r = "", i = 0;
+  while(i < temp.length){
+    let j = i + 1;
+    if(i < temp.length - 1){
+      let diff = parseInt(temp[i+1]) - parseInt(temp[i]);
+      if(diff === 1 || diff === -1){
+        while(j < temp.length && (parseInt(temp[j]) - parseInt(temp[j-1]) === diff)) j++;
+        if(j - i >= 3) r += temp[i] + temp[j-1];
+        else r += temp.slice(i,j);
+        i = j; continue;
+      }
+    }
+    r += temp[i]; i++;
+  }
+  return r;
+}
+function getCell(p){
+  let edge = Math.max(maxX - minX, maxY - minY);
+  let cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  let left = cx - edge/2, top = cy - edge/2;
+  let size = edge / 3;
+  let col = Math.floor((p.x - left) / size);
+  let row = Math.floor((p.y - top) / size);
+  if(col < 0) col = 0; if(col > 2) col = 2;
+  if(row < 0) row = 0; if(row > 2) row = 2;
+  return row * 3 + col + 1;
+}
+
+/************************************************
+  4. 可切換文字群組 (若有需要)
+************************************************/
+const toggleGroups = {
+  "辣":   ["辣", "大辣", "小辣", "不辣"],
+  "蒜泥": ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],
+  "烏醋": ["烏醋", "烏醋多", "烏醋少", "不烏醋"],
+  "香菜": ["香菜", "香菜多", "香菜少", "不香菜"],
+  "豆芽": ["豆芽", "豆芽多", "豆芽少", "不豆芽"]
+};
+
+/************************************************
+  5. 更新候選按鈕 + 依 phase 處理點擊邏輯
+************************************************/
+function updateFloatingSuggestions(){
+  let floatingDiv = document.getElementById("floatingSuggestions");
+  floatingDiv.innerHTML = "";
+
+  let category = "";
+  if(phase === "item") category = "items";
+  else if(phase === "itemQuantity" || phase === "remarkQuantity") category = "amount";
+  else if(phase === "remark") category = "remark";
+  else if(phase === "memo") category = "memo";
+
+  let suggestions = [];
+  if(recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){
+    if(defaultTags[category]) { suggestions = defaultTags[category].slice(0); }
+  } else {
+    let tags = allTags.filter(t => t.category === category);
+    tags.forEach(tag => {
+      if(tag.data && tag.data.length > 0){
+        let minDiff = Infinity;
+        tag.data.forEach(record => {
+          let diff = computeRecordDifference(
+            recognizedStrokeText, recognizedGridText,
+            record.stroke, record.grid
+          );
+          if(diff < minDiff) minDiff = diff;
+        });
+        if(tag.name.indexOf("/") !== -1){
+          let nameParts = tag.name.split("/");
+          let priceParts = [];
+          if(typeof tag.price === "string" && tag.price.indexOf("/") !== -1){
+            priceParts = tag.price.split("/");
+          }
+          nameParts.forEach((part, idx) => {
+            let nm = part.trim();
+            let candidatePrice = (priceParts.length > idx)
+              ? parseFloat(priceParts[idx])
+              : parseFloat(tag.price);
+            suggestions.push({ tagName: nm, diff: minDiff, candidatePrice, category: tag.category });
+          });
+        } else {
+          suggestions.push({ tagName: tag.name, diff: minDiff, candidatePrice: parseFloat(tag.price), category: tag.category });
+        }
+      }
+    });
+  }
+
+  suggestions.sort((a,b)=> a.diff - b.diff);
+  suggestions = suggestions.slice(0,3);
+  if(suggestions.length === 0 && recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){
+    if(defaultTags[category]) { suggestions = defaultTags[category].slice(0); }
+  }
+  suggestions.forEach(s => {
+    let btn = document.createElement("button");
+    btn.textContent = s.tagName;
+    btn.addEventListener("click", ()=>{
+      if(phase === "item"){
+        if(s.tagName === "備註"){
+          phase = "memo";
+          clearCanvasOnly();
+          updateFloatingSuggestions();
+          return;
+        }
+        currentOrder.item = { tagName: s.tagName, candidatePrice: s.candidatePrice, quantity: 0 };
+        currentLine = s.tagName;
+        phase = "itemQuantity";
+        clearCanvasOnly();
+      } else if(phase === "itemQuantity"){
+        let qty = parseFloat(s.tagName);
+        currentOrder.item.quantity = qty;
+        currentLine = currentOrder.item.tagName + " × " + qty;
+        phase = "remark";
+        clearCanvasOnly();
+        updateOrderDisplay();
+      } else if(phase === "remark"){
+        let isToggleItem = !!toggleGroups[s.tagName];
+        tempCustom = { tagName: s.tagName, candidatePrice: s.candidatePrice, quantity: 0 };
+        if(isToggleItem) {
+          tempCustom.toggleKey = s.tagName; tempCustom.toggleIndex = 0;
+        }
+        currentLine += " + " + s.tagName;
+        phase = "remarkQuantity";
+        clearCanvasOnly();
+      } else if(phase === "remarkQuantity"){
+        let qty = parseFloat(s.tagName);
+        tempCustom.quantity = qty;
+        currentOrder.remarks.push(tempCustom);
+        rebuildCurrentLine();
+        phase = "remark";
+        tempCustom = null;
+        clearCanvasOnly();
+      } else if(phase === "memo"){
+        globalRemark = s.tagName;
+        phase = "item";
+        clearCanvasOnly();
+      }
+      updateOrderDisplay();
+      updateFloatingSuggestions();
+    });
+    floatingDiv.appendChild(btn);
+  });
+
+  if(phase === "remarkQuantity"){
+    let finishBtn = document.createElement("button");
+    finishBtn.textContent = "全部";
+    finishBtn.addEventListener("click", () => {
+      tempCustom.quantity = null;
+      currentOrder.remarks.push(tempCustom);
+      rebuildCurrentLine();
+      phase = "remark";
+      tempCustom = null;
+      clearCanvasOnly();
+      updateOrderDisplay();
+      updateFloatingSuggestions();
+    });
+    floatingDiv.appendChild(finishBtn);
+  }
+  if(phase === "remark" && currentOrder.item){
+    let finishOrderBtn = document.createElement("button");
+    finishOrderBtn.textContent = (editingIndex !== null) ? "完成" : "點餐";
+    finishOrderBtn.style.backgroundColor = "orange";
+    finishOrderBtn.style.border = "3px solid orange";
+    finishOrderBtn.style.color = "black";
+    finishOrderBtn.addEventListener("click", finalizeOrder);
+    floatingDiv.appendChild(finishOrderBtn);
+  }
+  let toolDiv = document.getElementById("customToolsContainer");
+  toolDiv.style.display = (phase === "remark") ? "flex" : "none";
+}
+function rebuildCurrentLine(){
+  if(!currentOrder.item) return;
+  currentLine = currentOrder.item.tagName + " × " + currentOrder.item.quantity;
+  currentOrder.remarks.forEach(c => {
+    if(c.quantity != null){ currentLine += " + " + c.tagName + " × " + c.quantity; }
+    else { currentLine += " + " + c.tagName; }
+  });
+}
+function computeRecordDifference(sa, ga, sb, gb){
+  return computeSequenceDifference(sa, sb) + computeSequenceDifference(ga, gb);
+}
+function computeSequenceDifference(s1, s2){
+  let ml = Math.max(s1.length, s2.length), d = 0;
+  for(let i = 0; i < ml; i++){
+    if(i < s1.length && i < s2.length){
+      d += Math.abs(parseInt(s1[i]) - parseInt(s2[i]));
+    } else { d += 3; }
+  }
+  return d;
+}
+
+/************************************************
+  6. 更新訂單區：顯示各筆訂單與累計金額 + 全局備註
+************************************************/
+function updateOrderDisplay(){
+  let container = document.getElementById("orderDisplay");
+  container.innerHTML = "";
+  itemList.forEach((order, index) => {
+    let orderDiv = document.createElement("div");
+    orderDiv.style.cursor = "pointer";
+    let orderStr = order.item.tagName + " × " + order.item.quantity;
+    let remarksHtml = "";
+    order.remarks.forEach((c, cIndex) => {
+      let part = (c.quantity != null) ? (c.tagName + " × " + c.quantity) : c.tagName;
+      let formattedPart = formatRemark(part);
+      let span = `<span class="customItem" data-orderindex="${index}" data-customindex="${cIndex}">${formattedPart}</span>`;
+      remarksHtml += " + " + span;
+    });
+    orderDiv.innerHTML = orderStr + remarksHtml;
+    if(editingIndex === index) { orderDiv.style.color = "orange"; }
+    orderDiv.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if(editingIndex === index) return;
+      editingIndex = index;
+      currentOrder = JSON.parse(JSON.stringify(order));
+      rebuildCurrentLine();
+      phase = "remark";
+      updateOrderDisplay();
+      updateFloatingSuggestions();
+    });
+    container.appendChild(orderDiv);
+  });
+  if(itemList.length > 0){
+    let separator = document.createElement("div");
+    separator.textContent = "----------";
+    container.appendChild(separator);
+    let totalDiv = document.createElement("div");
+    totalDiv.textContent = "總金額: " + calcGrandTotal();
+    container.appendChild(totalDiv);
+    let br = document.createElement("br");
+    container.appendChild(br);
+    if(globalRemark.trim() !== ""){
+      let remarkDiv = document.createElement("div");
+      remarkDiv.innerHTML = "備註: " + formatRemark(globalRemark);
+      container.appendChild(remarkDiv);
+    }
+  }
+  if(currentLine.trim() !== ""){
+    let currentDiv = document.createElement("div");
+    currentDiv.textContent = currentLine;
+    container.appendChild(currentDiv);
+  }
+  let customItems = container.querySelectorAll(".customItem");
+  customItems.forEach(item => {
+    item.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      let odx = parseInt(item.getAttribute("data-orderindex"));
+      let cdx = parseInt(item.getAttribute("data-customindex"));
+      let c = itemList[odx].remarks[cdx];
+      if(!c.toggleKey) return;
+      let group = toggleGroups[c.toggleKey];
+      if(!group) return;
+      c.toggleIndex = (c.toggleIndex + 1) % group.length;
+      c.tagName = group[c.toggleIndex];
+      updateOrderDisplay();
+    });
+  });
+}
+function calcGrandTotal(){
+  let sum = 0;
+  itemList.forEach(order => {
+    let sub = 0;
+    if(order.item) { sub += order.item.candidatePrice * order.item.quantity; }
+    order.remarks.forEach(c=>{
+      if(c.quantity != null){ sub += c.candidatePrice * c.quantity; }
+    });
+    sum += sub;
+  });
+  return sum;
+}
+
+/************************************************
+  7. 完成訂單 & 清除功能
+************************************************/
+function finalizeOrder(){
+  if(!currentOrder.item) return;
+  if(editingIndex !== null) {
+    itemList[editingIndex] = JSON.parse(JSON.stringify(currentOrder));
+    editingIndex = null;
+  } else { itemList.push(JSON.parse(JSON.stringify(currentOrder))); }
+  currentOrder = { item: null, remarks: [] };
+  currentLine = "";
+  phase = "item";
+  updateOrderDisplay();
+  clearCanvasOnly();
+}
+function clearCanvasOnly(){
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  recognizedStrokeText = "";
+  recognizedGridText = "";
+  resetBounds();
+  updateFloatingSuggestions();
+}
+function clearOutputAndCanvas(){
+  itemList = [];
+  currentLine = "";
+  currentOrder = { item: null, remarks: [] };
+  globalRemark = "";
+  editingIndex = null;
+  phase = "item";
+  recognizedStrokeText = "";
+  recognizedGridText = "";
+  resetBounds();
+  document.getElementById("orderDisplay").innerHTML = "";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  updateFloatingSuggestions();
+  updateOrderDisplay();
+}
+
+/************************************************
+  8. 使中心 logo2.png 起始顯示、點擊後隱藏
+************************************************/
+document.getElementById("centerLogo").addEventListener("click", () => {
+  document.getElementById("centerLogo").style.display = "none";
+});
+
+/************************************************
+  9. 虛擬搖桿效果：logo.png 拖曳
+      - 搖桿可以在四周自由移動，但移動距離限制在 200px 以內（以拖曳開始位置為中心）
+      - 拖曳放開後，搖桿會自動復位回中心位置
+      - 同時可利用拖曳位移執行特定功能（例如：超過一定閾值執行部分或全部清除）
+************************************************/
+// 輔助函式：夾取數值
+function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+const dragBtn = document.getElementById("dragButton");
+// 紀錄拖曳開始時的位置（中心位置）
+let dragStartX = 0, dra
