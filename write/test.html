@@ -79,7 +79,7 @@
     /* 虛擬搖桿容器：固定在螢幕上，保持原位 */
     #dragButton {
       position: absolute;
-      top: 85%;
+      top: 80%;
       left: 50%;
       transform: translate(-50%, -50%);
       width: 100px; 
@@ -89,8 +89,8 @@
     }
     /* 搖桿把手：拖曳時會跟著移動，放開後復位 */
     #joystickKnob {
-      width: 200px;
-      height: 200px;
+      width: 100%;
+      height: 100%;
       /* 初始時不偏移 */
       transform: translate(0px, 0px);
       transition: transform 0.2s ease-out; /* 放開後會平滑復位 */
