@@ -623,4 +623,108 @@ function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
 const dragBtn = document.getElementById("dragButton");
 // 紀錄拖曳開始時的位置（中心位置）
-let dragStartX = 0, dra
+let dragStartX = 0, dragStartY = 0;
+// 記錄搖桿起始（中心）位置
+let btnCenterX = 0, btnCenterY = 0;
+// 是否正在拖曳
+let isDragging = false;
+
+function onDragStart(e) {
+  isDragging = true;
+  // 取得觸控或滑鼠初始位置
+  let startX = e.touches ? e.touches[0].clientX : e.clientX;
+  let startY = e.touches ? e.touches[0].clientY : e.clientY;
+  dragStartX = startX; dragStartY = startY;
+  // 記錄目前搖桿的中心位置
+  const rect = dragBtn.getBoundingClientRect();
+  btnCenterX = rect.left;
+  btnCenterY = rect.top;
+  e.preventDefault();
+}
+
+function onDragMove(e) {
+  if (!isDragging) return;
+  let currentX = e.touches ? e.touches[0].clientX : e.clientX;
+  let currentY = e.touches ? e.touches[0].clientY : e.clientY;
+  let deltaX = currentX - dragStartX;
+  let deltaY = currentY - dragStartY;
+  // 限制總位移的絕對距離不超過 200px
+  let dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+  if (dist > 200) {
+    let scale = 200 / dist;
+    deltaX *= scale;
+    deltaY *= scale;
+  }
+  // 計算新位置
+  let newLeft = btnCenterX + deltaX;
+  let newTop  = btnCenterY + deltaY;
+  // 視窗邊界限制
+  let winWidth  = window.innerWidth;
+  let winHeight = window.innerHeight;
+  let btnWidth  = dragBtn.offsetWidth;
+  let btnHeight = dragBtn.offsetHeight;
+  newLeft = clamp(newLeft, 0, winWidth - btnWidth);
+  newTop  = clamp(newTop, 0, winHeight - btnHeight);
+  dragBtn.style.left = newLeft + "px";
+  dragBtn.style.top  = newTop + "px";
+  e.preventDefault();
+}
+
+function onDragEnd(e) {
+  if (!isDragging) return;
+  isDragging = false;
+  // 計算拖曳後的總位移
+  let endX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+  let endY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+  let deltaX = endX - dragStartX;
+  let deltaY = endY - dragStartY;
+  // 例如：若拖曳超過 50px，根據拖曳方向執行功能
+  if (Math.abs(deltaX) > Math.abs(deltaY)) {
+    if (deltaX < -50) {
+      console.log("向左超過 50px: 執行部分清除");
+      if (phase === "remark" && editingIndex !== null) {
+        itemList.splice(editingIndex, 1);
+        editingIndex = null;
+        currentOrder = { item: null, remarks: [] };
+        currentLine = "";
+        phase = "item";
+        updateOrderDisplay();
+        clearCanvasOnly();
+      } else {
+        clearCanvasOnly();
+      }
+    } else if (deltaX > 50) {
+      console.log("向右超過 50px: 執行全部清除");
+      clearOutputAndCanvas();
+    }
+  } else {
+    if (deltaY < -50) {
+      console.log("向上超過 50px: 執行部分清除");
+      if (phase === "remark" && editingIndex !== null) {
+        itemList.splice(editingIndex, 1);
+        editingIndex = null;
+        currentOrder = { item: null, remarks: [] };
+        currentLine = "";
+        phase = "item";
+        updateOrderDisplay();
+        clearCanvasOnly();
+      } else { clearCanvasOnly(); }
+    } else if (deltaY > 50) {
+      console.log("向下超過 50px: 執行全部清除");
+      clearOutputAndCanvas();
+    }
+  }
+  // 搖桿復位（返回起始中心位置）
+  dragBtn.style.left = btnCenterX + "px";
+  dragBtn.style.top  = btnCenterY  + "px";
+}
+
+dragBtn.addEventListener("mousedown", onDragStart, { passive: false });
+document.addEventListener("mousemove", onDragMove, { passive: false });
+document.addEventListener("mouseup", onDragEnd,   { passive: false });
+dragBtn.addEventListener("touchstart", onDragStart, { passive: false });
+document.addEventListener("touchmove", onDragMove,    { passive: false });
+document.addEventListener("touchend", onDragEnd,      { passive: false });
+</script>
+</body>
+</html>
