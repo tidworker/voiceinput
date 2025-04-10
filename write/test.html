@@ -76,19 +76,31 @@
       color: white;
       text-align: center;
     }
-    /* 浮動按鈕 (虛擬搖桿) */
+    /* 虛擬搖桿容器：固定在螢幕上，保持原位 */
     #dragButton {
       position: absolute;
-      /* 預設搖桿中心位置 */
       top: 80%;
       left: 50%;
       transform: translate(-50%, -50%);
-      cursor: grab;
-      user-select: none;
+      width: 100px; 
+      height: 100px;
       z-index: 999;
+      /* 背景容器固定，不會因拖曳而改變位置 */
     }
-    #dragButton:active { cursor: grabbing; }
-    #dragButton img { width: 100px; display: block; }
+    /* 搖桿把手：拖曳時會跟著移動，放開後復位 */
+    #joystickKnob {
+      width: 100%;
+      height: 100%;
+      /* 初始時不偏移 */
+      transform: translate(0px, 0px);
+      transition: transform 0.2s ease-out; /* 放開後會平滑復位 */
+      cursor: grab;
+    }
+    #joystickKnob:active {
+      cursor: grabbing;
+      transition: none;
+    }
+    /* 其他區塊 */
     #customToolsContainer {
       position: absolute;
       top: 80%;
@@ -107,7 +119,11 @@
       display: block;
       cursor: pointer;
     }
-    #centerLogo img { max-width: 120px; height: auto; display: block; }
+    #centerLogo img {
+      max-width: 120px;
+      height: auto;
+      display: block;
+    }
     button, input, select, textarea {
       font-family: 'Cubic', Arial, sans-serif;
     }
@@ -127,9 +143,10 @@
   <canvas id="canvas"></canvas>
   <!-- 訂單區：置中固定浮動圖層 -->
   <div id="orderDisplay"></div>
-  <!-- 虛擬搖桿按鈕 (logo.png) -->
+  <!-- 虛擬搖桿容器 (保持原位) -->
   <div id="dragButton">
-    <img src="logo.png" alt="清除" />
+    <!-- 搖桿把手 -->
+    <img src="logo.png" alt="清除" id="joystickKnob" />
   </div>
 </div>
 
@@ -342,13 +359,11 @@ const toggleGroups = {
 function updateFloatingSuggestions(){
   let floatingDiv = document.getElementById("floatingSuggestions");
   floatingDiv.innerHTML = "";
-
   let category = "";
   if(phase === "item") category = "items";
   else if(phase === "itemQuantity" || phase === "remarkQuantity") category = "amount";
   else if(phase === "remark") category = "remark";
   else if(phase === "memo") category = "memo";
-
   let suggestions = [];
   if(recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){
     if(defaultTags[category]) { suggestions = defaultTags[category].slice(0); }
@@ -383,7 +398,6 @@ function updateFloatingSuggestions(){
       }
     });
   }
-
   suggestions.sort((a,b)=> a.diff - b.diff);
   suggestions = suggestions.slice(0,3);
   if(suggestions.length === 0 && recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){
@@ -438,7 +452,6 @@ function updateFloatingSuggestions(){
     });
     floatingDiv.appendChild(btn);
   });
-
   if(phase === "remarkQuantity"){
     let finishBtn = document.createElement("button");
     finishBtn.textContent = "全部";
@@ -613,32 +626,30 @@ document.getElementById("centerLogo").addEventListener("click", () => {
 });
 
 /************************************************
-  9. 虛擬搖桿效果：logo.png 拖曳
-      - 搖桿可以在四周自由移動，但移動距離限制在 200px 以內（以拖曳開始位置為中心）
-      - 拖曳放開後，搖桿會自動復位回中心位置
-      - 同時可利用拖曳位移執行特定功能（例如：超過一定閾值執行部分或全部清除）
+  9. 虛擬搖桿效果
+      - 搖桿背景容器 (#dragButton) 保持原位
+      - 搖桿把手 (#joystickKnob) 根據拖曳向量移動，但限制總位移在 200px 內
+      - 拖曳放開後，根據位移（超過 50px 會觸發功能）執行操作，然後把把手復位
 ************************************************/
 // 輔助函式：夾取數值
 function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
 
 const dragBtn = document.getElementById("dragButton");
-// 紀錄拖曳開始時的位置（中心位置）
+const joystickKnob = document.getElementById("joystickKnob");
+// 記錄拖曳開始時位置（作為參考原點，背景不動）
 let dragStartX = 0, dragStartY = 0;
-// 記錄搖桿起始（中心）位置
-let btnCenterX = 0, btnCenterY = 0;
 // 是否正在拖曳
 let isDragging = false;
 
 function onDragStart(e) {
   isDragging = true;
-  // 取得觸控或滑鼠初始位置
+  // 取得觸控或滑鼠起始位置
   let startX = e.touches ? e.touches[0].clientX : e.clientX;
   let startY = e.touches ? e.touches[0].clientY : e.clientY;
-  dragStartX = startX; dragStartY = startY;
-  // 記錄目前搖桿的中心位置
-  const rect = dragBtn.getBoundingClientRect();
-  btnCenterX = rect.left;
-  btnCenterY = rect.top;
+  dragStartX = startX;
+  dragStartY = startY;
+  // 取消過渡，方便追蹤拖曳
+  joystickKnob.style.transition = "none";
   e.preventDefault();
 }
 
@@ -648,37 +659,29 @@ function onDragMove(e) {
   let currentY = e.touches ? e.touches[0].clientY : e.clientY;
   let deltaX = currentX - dragStartX;
   let deltaY = currentY - dragStartY;
-  // 限制總位移的絕對距離不超過 200px
+  // 計算拖曳距離，限制最大 200px
   let dist = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
   if (dist > 200) {
     let scale = 200 / dist;
     deltaX *= scale;
     deltaY *= scale;
   }
-  // 計算新位置
-  let newLeft = btnCenterX + deltaX;
-  let newTop  = btnCenterY + deltaY;
-  // 視窗邊界限制
-  let winWidth  = window.innerWidth;
-  let winHeight = window.innerHeight;
-  let btnWidth  = dragBtn.offsetWidth;
-  let btnHeight = dragBtn.offsetHeight;
-  newLeft = clamp(newLeft, 0, winWidth - btnWidth);
-  newTop  = clamp(newTop, 0, winHeight - btnHeight);
-  dragBtn.style.left = newLeft + "px";
-  dragBtn.style.top  = newTop + "px";
+  // 更新搖桿把手的 transform，相對於背景中心移動
+  joystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
   e.preventDefault();
 }
 
 function onDragEnd(e) {
   if (!isDragging) return;
   isDragging = false;
-  // 計算拖曳後的總位移
+  // 恢復過渡效果以平滑復位
+  joystickKnob.style.transition = "transform 0.2s ease-out";
+  // 取得最終拖曳位移
   let endX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
   let endY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
   let deltaX = endX - dragStartX;
   let deltaY = endY - dragStartY;
-  // 例如：若拖曳超過 50px，根據拖曳方向執行功能
+  // 判斷拖曳方向：若水平或垂直超過 50px則執行對應功能
   if (Math.abs(deltaX) > Math.abs(deltaY)) {
     if (deltaX < -50) {
       console.log("向左超過 50px: 執行部分清除");
@@ -708,15 +711,16 @@ function onDragEnd(e) {
         phase = "item";
         updateOrderDisplay();
         clearCanvasOnly();
-      } else { clearCanvasOnly(); }
+      } else {
+        clearCanvasOnly();
+      }
     } else if (deltaY > 50) {
       console.log("向下超過 50px: 執行全部清除");
       clearOutputAndCanvas();
     }
   }
-  // 搖桿復位（返回起始中心位置）
-  dragBtn.style.left = btnCenterX + "px";
-  dragBtn.style.top  = btnCenterY  + "px";
+  // 讓搖桿把手復位（回到中心）
+  joystickKnob.style.transform = `translate(0px, 0px)`;
 }
 
 dragBtn.addEventListener("mousedown", onDragStart, { passive: false });
