@@ -1,806 +1,982 @@
-<!DOCTYPE html>  
-<html>  
-<head>  
-  <meta charset="utf-8">  
-  <!-- 在手機上自適應 -->  
-  <meta name="viewport" content="width=device-width, initial-scale=1">  
-  <title>手寫辨識系統 (訂單累計與價格計算)</title>  
-  <style>  
-    /* 載入自訂字型 */  
-    @font-face {  
-      font-family: 'Cubic';  
-      src: url('Cubic_11_1.100_R.ttf') format('truetype');  
-      font-weight: normal;  
-      font-style: normal;  
-    }  
-  
-    html, body {  
-      margin: 0;  
-      padding: 0;  
-      width: 100%;  
-      height: 100%;  
-      font-family: 'Cubic', Arial, sans-serif;  /* 使用自訂字型 */  
-      background: black;  
-      -webkit-user-select: none;  
-      -moz-user-select: none;  
-      -ms-user-select: none;  
-      user-select: none;  
-    }  
-    #appContainer {  
-      position: relative;  
-      width: 100%;  
-      height: 100%;  
-      overflow: hidden;  
-    }  
-    canvas {  
-      position: absolute;  
-      left: 5%;  
-      top: 30px;  
-      width: 90vw;  
-      height: 65vh;  
-      background: transparent;  
-      border: none;  
-      z-index: 2;  
-    }  
-    #floatingSuggestions {  
-      position: absolute;  
-      top: 68%;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      display: flex;  
-      flex-wrap: nowrap;  
-      overflow-x: auto;  
-      max-width: 95vw;  
-      gap: 5px;  
-      z-index: 10;  
-    }  
-    #floatingSuggestions button {  
-      background: black;  
-      border: 3px solid orange;  
-      border-radius: 5px;  
-      font-size: 22px;  
-      padding: 5px 10px;  
-      margin: 2px;  
-      white-space: nowrap;  
-      color: white;  
-    }  
-    #orderDisplay {  
-      position: fixed;  
-      top: 100px;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      z-index: 1000;  
-      background: transparent;  
-      padding: 10px;  
-      border-radius: 5px;  
-      max-height: 90vh;  
-      width: 390px;  
-      overflow-y: auto;  
-      font-size: 22px;  
-      color: white;  
-      text-align: center;  
-    }  
-    #dragButton {  
-      position: absolute;  
-      bottom: 75px;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      cursor: grab;  
-      user-select: none;  
-      z-index: 999;  
-      transition: transform 0.1s;  
-    }  
-    #dragButton:active {  
-      cursor: grabbing;  
-    }  
-    #dragButton img {  
-      width: 100px;  
-      display: block;  
-    }  
-    #customToolsContainer {  
-      position: absolute;  
-      top: 80%;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      display: none;  
-      gap: 10px;  
-      z-index: 10;  
-    }  
-    #centerLogo {  
-      position: absolute;  
-      top: 39%;  
-      left: 50%;  
-      transform: translate(-50%, -50%);  
-      z-index: 9999;  
-      display: block;  
-      cursor: pointer;  
-    }  
-    #centerLogo img {  
-      max-width: 120px;  
-      height: auto;  
-      display: block;  
-    }  
-  
-    button,  
-    input,  
-    select,  
-    textarea {  
-      font-family: 'Cubic', Arial, sans-serif;  
-    }  
-  </style>  
-</head>  
-<body>  
-<div id="appContainer">  
-  <!-- 一開始顯示於螢幕中央的 logo2.png，點擊後將隱藏 -->  
-  <div id="centerLogo">  
-    <img src="logo2.png" alt="Logo2">  
-  </div>  
-  <!-- 建議候選區 -->  
-  <div id="floatingSuggestions"></div>  
-  <!-- custom 階段用工具按鈕 -->  
-  <div id="customToolsContainer"></div>  
-  <!-- 透明畫布 -->  
-  <canvas id="canvas"></canvas>  
-  <!-- 訂單區：置中固定浮動圖層 -->  
-  <div id="orderDisplay"></div>  
-  <!-- 浮動按鈕 (拖曳觸發清除/刪除) -->  
-  <div id="dragButton">  
-    <img src="logo.png" alt="清除" />  
-  </div>  
-</div>  
-  
-<script>  
-  /************************************************  
-   * 新增：格式化備註文字的函式  
-   ************************************************/  
-  function formatRemark(remark) {  
-    return remark  
-      .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white">$&</span>')  
-      .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g, '<span style="color: white;">$&</span>');  
-  }  
-  
-  /************************************************  
-   * 1. 預設標籤設定（保留 items、amount、remark；"備註" 仍放在 items 內）  
-   ************************************************/  
-  const defaultTags = {  
-    items: [  
-      { tagName: "蔥油餅加蛋", candidatePrice: 30, category: "items" },  
-      { tagName: "大腸麵線", candidatePrice: 50, category: "items" },  
-      { tagName: "大炒麵", candidatePrice: 40, category: "items" },  
-      // 「備註」選項：若點擊，切到 memo 階段，輸入後會放到 globalRemark  
-      { tagName: "備註", candidatePrice: 0, category: "items" }  
-    ],  
-    amount: [  
-      { tagName: "1", candidatePrice: 0, category: "amount" },  
-      { tagName: "2", candidatePrice: 0, category: "amount" },  
-      { tagName: "3", candidatePrice: 0, category: "amount" }  
-    ],  
-    remark: [  
-      { tagName: "辣", candidatePrice: 0, category: "remark" },  
-      { tagName: "冰", candidatePrice: 0, category: "remark" },  
-      { tagName: "溫", candidatePrice: 0, category: "remark" }  
-    ],  
-    memo: [  
-      { tagName: "辣另外包", candidatePrice: 0, category: "memo" },  
-      { tagName: "環保餐具", candidatePrice: 0, category: "memo" },  
-      { tagName: "分開袋", candidatePrice: 0, category: "memo" }  
-    ]  
-  };  
-  
-  /************************************************  
-   * 2. 狀態定義  
-   ************************************************/  
-  // 將 "meal" 改為 "item"，"mealQuantity" 改為 "itemQuantity"  
-  // 將 "custom" 改為 "remark"，"customQuantity" 改為 "remarkQuantity"  
-  // 將原本的 "remark"（備註）改為 "memo"  
-  let phase = "item";  
-  let currentOrder = { item: null, remarks: [] };  
-  let tempCustom = null;  
-  
-  // 完整訂單列表  
-  let itemList = [];   
-  // 當前正在輸入的字串顯示  
-  let currentLine = "";  
-  
-  // 全局備註（備註內容）  
-  let globalRemark = "";  
-  
-  // 是否在編輯某個既有訂單 => index，否則 null  
-  let editingIndex = null;  
-  
-  // 載入標籤資料：若失敗則 fallback 用 defaultTags  
-  let allTags = [];  
-  fetch("tags.json")  
-    .then(resp => resp.json())  
-    .then(data => {  
-      allTags = data;  
-      updateFloatingSuggestions();  
-    })  
-    .catch(err => {  
-      console.error("無法取得 tags.json：", err);  
-      updateFloatingSuggestions();  
-    });  
-  
-  /************************************************  
-   * 3. 手寫畫布設定與筆畫處理  
-   ************************************************/  
-  const canvas = document.getElementById("canvas");  
-  const ctx = canvas.getContext("2d");  
-  
-  function resizeCanvasToDisplaySize() {  
-    const rect = canvas.getBoundingClientRect();  
-    canvas.width  = rect.width;  
-    canvas.height = rect.height;  
-  }  
-  window.addEventListener("resize", resizeCanvasToDisplaySize);  
-  resizeCanvasToDisplaySize();  
-  
-  ctx.lineWidth   = 2;  
-  ctx.lineCap     = "round";  
-  ctx.strokeStyle = "gray";  
-  
-  let drawing = false;  
-  let points = [];  
-  let recognizedStrokeText = "";  
-  let recognizedGridText = "";  
-  let lastCanvasImage = null;  
-  
-  let minX, maxX, minY, maxY;  
-  function resetBounds(){  
-    minX = Infinity; maxX = -Infinity; minY = Infinity; maxY = -Infinity;  
-  }  
-  resetBounds();  
-  
-  function getPos(e){  
-    const rect = canvas.getBoundingClientRect();  
-    if(e.touches && e.touches[0]){  
-      return {  
-        x: e.touches[0].clientX - rect.left,  
-        y: e.touches[0].clientY - rect.top  
-      };  
-    } else {  
-      return {  
-        x: e.clientX - rect.left,  
-        y: e.clientY - rect.top  
-      };  
-    }  
-  }  
-  function updateBounds(pt){  
-    if(pt.x < minX) minX = pt.x;  
-    if(pt.x > maxX) maxX = pt.x;  
-    if(pt.y < minY) minY = pt.y;  
-    if(pt.y > maxY) maxY = pt.y;  
-  }  
-  
-  function startDrawing(e){  
-    drawing = true;  
-    lastCanvasImage = ctx.getImageData(0,0,canvas.width,canvas.height);  
-    points = [];  
-    resetBounds();  
-  
-    const pos = getPos(e);  
-    points.push(pos);  
-    updateBounds(pos);  
-  
-    ctx.beginPath();  
-    ctx.moveTo(pos.x, pos.y);  
-    e.preventDefault();  
-  }  
-  
-  function draw(e){  
-    if(!drawing) return;  
-    const pos = getPos(e);  
-    points.push(pos);  
-    updateBounds(pos);  
-  
-    ctx.lineTo(pos.x, pos.y);  
-    ctx.stroke();  
-    e.preventDefault();  
-  }  
-  
-  function endDrawing(e){  
-    if(!drawing) return;  
-    drawing = false;  
-  
-    let boxW = maxX - minX;  
-    let boxH = maxY - minY;  
-    // 若筆畫過小，視為誤觸還原  
-    if(boxW < 5 && boxH < 5){  
-      ctx.putImageData(lastCanvasImage,0,0);  
-      updateFloatingSuggestions();  
-      return;  
-    }  
-  
-    let strokeResult = processPointsByDistance(points);  
-    recognizedStrokeText += strokeResult;  
-    recognizedStrokeText = compressConsecutiveSequence(recognizedStrokeText);  
-  
-    let startCell = getCell(points[0]);  
-    let endCell   = getCell(points[points.length-1]);  
-    recognizedGridText += startCell.toString() + endCell.toString();  
-  
-    updateFloatingSuggestions();  
-    e.preventDefault();  
-  }  
-  
-  // PC 事件  
-  canvas.addEventListener("mousedown", startDrawing);  
-  canvas.addEventListener("mousemove", draw);  
-  canvas.addEventListener("mouseup", endDrawing);  
-  canvas.addEventListener("mouseout", endDrawing);  
-  
-  // 行動裝置事件  
-  canvas.addEventListener("touchstart", startDrawing, {passive:false});  
-  canvas.addEventListener("touchmove", draw, {passive:false});  
-  canvas.addEventListener("touchend", endDrawing, {passive:false});  
-  
-  // 根據移動距離分段抽樣計算方向  
-  function getAngle(a,b){  
-    let dx = b.x - a.x, dy = b.y - a.y;  
-    let rad = Math.atan2(dy, dx);  
-    let deg = rad * 180 / Math.PI;  
-    if(deg < 0) deg += 360;  
-    return deg;  
-  }  
-  function processPointsByDistance(pts){  
-    if(pts.length < 2) return "";  
-    let result = "";  
-    let lastSample = pts[0];  
-    let distSum = 0;  
-    for(let i = 1; i < pts.length; i++){  
-      let dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;  
-      distSum += Math.sqrt(dx*dx + dy*dy);  
-      if(distSum >= 30){  
-        let angle = getAngle(lastSample, pts[i]);  
-        let raw = Math.floor(angle / 36);  
-        let mapped = ((raw - 7 + 10) % 10).toString();  
-        result += mapped;  
-        lastSample = pts[i];  
-        distSum = 0;  
-      }  
-    }  
-    return result;  
-  }  
-  function compressConsecutiveSequence(s){  
-    let temp = s.replace(/(.)\1+/g, "$1");  
-    let r = "", i = 0;  
-    while(i < temp.length){  
-      let j = i + 1;  
-      if(i < temp.length - 1){  
-        let diff = parseInt(temp[i+1]) - parseInt(temp[i]);  
-        if(diff === 1 || diff === -1){  
-          while(j < temp.length && (parseInt(temp[j]) - parseInt(temp[j-1]) === diff)) j++;  
-          if(j - i >= 3) r += temp[i] + temp[j-1];  
-          else r += temp.slice(i,j);  
-          i = j;  
-          continue;  
-        }  
-      }  
-      r += temp[i];  
-      i++;  
-    }  
-    return r;  
-  }  
-  function getCell(p){  
-    let edge = Math.max(maxX - minX, maxY - minY);  
-    let cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;  
-    let left = cx - edge/2, top = cy - edge/2;  
-    let size = edge / 3;  
-    let col = Math.floor((p.x - left) / size);  
-    let row = Math.floor((p.y - top) / size);  
-    if(col < 0) col = 0; if(col > 2) col = 2;  
-    if(row < 0) row = 0; if(row > 2) row = 2;  
-    return row * 3 + col + 1;  
-  }  
-  
-  /************************************************  
-   * 4. 浮動按鈕左右拖曳 -> 清除/刪除  
-   ************************************************/  
-  const dragBtn = document.getElementById("dragButton");  
-  let dragStartX = null;  
-  let isDragging = false;  
-  
-  function onDragStart(e){  
-    isDragging = true;  
-    dragStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;  
-    e.preventDefault();  
-  }  
-  function onDragMove(e){  
-    if(!isDragging) return;  
-    let currentX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;  
-    let deltaX = currentX - dragStartX;  
-    dragBtn.style.transform = `translateX(calc(-50% + ${deltaX}px))`;  
-    e.preventDefault();  
-  }  
-  function onDragEnd(e){  
-    if(!isDragging) return;  
-    isDragging = false;  
-    let endX = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : e.clientX;  
-    let deltaX = endX - dragStartX;  
-  
-    // 向左拖超過50px  
-    if(deltaX < -50) {  
-      if(phase === "remark" && editingIndex !== null) {  
-        itemList.splice(editingIndex,1);  
-        editingIndex = null;  
-        currentOrder = { item: null, remarks: [] };  
-        currentLine = "";  
-        phase = "item";  
-        updateOrderDisplay();  
-        clearCanvasOnly();  
-      } else {  
-        clearCanvasOnly();  
-      }  
-    }  
-    // 向右拖超過50px => 清除全部(含訂單+畫布)  
-    else if(deltaX > 50) {  
-      clearOutputAndCanvas();  
-    }  
-    dragBtn.style.transform = `translateX(-50%)`;  
-  }  
-  
-  dragBtn.addEventListener("mousedown", onDragStart, {passive:false});  
-  document.addEventListener("mousemove", onDragMove, {passive:false});  
-  document.addEventListener("mouseup", onDragEnd, {passive:false});  
-  
-  dragBtn.addEventListener("touchstart", onDragStart, {passive:false});  
-  document.addEventListener("touchmove", onDragMove, {passive:false});  
-  document.addEventListener("touchend", onDragEnd, {passive:false});  
-  
-  /************************************************  
-   * 5. 可切換文字群組 (若有需要)  
-   ************************************************/  
-  const toggleGroups = {  
-    "辣":   ["辣", "大辣", "小辣", "不辣"],  
-    "蒜泥": ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],  
-    "烏醋": ["烏醋", "烏醋多", "烏醋少", "不烏醋"],  
-    "香菜": ["香菜", "香菜多", "香菜少", "不香菜"],  
-    "豆芽": ["豆芽", "豆芽多", "豆芽少", "不豆芽"]  
-  };  
-  
-  /************************************************  
-   * 6. 更新候選按鈕 + 依 phase 處理點擊邏輯  
-   ************************************************/  
-  function updateFloatingSuggestions(){  
-    let floatingDiv = document.getElementById("floatingSuggestions");  
-    floatingDiv.innerHTML = "";  
-      
-    let category = "";  
-    if(phase === "item") category = "items";  
-    else if(phase === "itemQuantity" || phase === "remarkQuantity") category = "amount";  
-    else if(phase === "remark") category = "remark";  
-    else if(phase === "memo") category = "memo";  
-      
-    let suggestions = [];  
-      
-    if(recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){  
-      if(defaultTags[category]) {  
-        suggestions = defaultTags[category].slice(0);  
-      }  
-    }  
-    else {  
-      let tags = allTags.filter(t => t.category === category);  
-      tags.forEach(tag => {  
-        if(tag.data && tag.data.length > 0){  
-          let minDiff = Infinity;  
-          tag.data.forEach(record => {  
-            let diff = computeRecordDifference(  
-              recognizedStrokeText, recognizedGridText,  
-              record.stroke, record.grid  
-            );  
-            if(diff < minDiff) minDiff = diff;  
-          });  
-          if(tag.name.indexOf("/") !== -1){  
-            let nameParts = tag.name.split("/");  
-            let priceParts = [];  
-            if(typeof tag.price === "string" && tag.price.indexOf("/") !== -1){  
-              priceParts = tag.price.split("/");  
-            }  
-            nameParts.forEach((part, idx) => {  
-              let nm = part.trim();  
-              let candidatePrice = (priceParts.length > idx)  
-                ? parseFloat(priceParts[idx])  
-                : parseFloat(tag.price);  
-              suggestions.push({  
-                tagName: nm,  
-                diff: minDiff,  
-                candidatePrice,  
-                category: tag.category  
-              });  
-            });  
-          } else {  
-            suggestions.push({  
-              tagName: tag.name,  
-              diff: minDiff,  
-              candidatePrice: parseFloat(tag.price),  
-              category: tag.category  
-            });  
-          }  
-        }  
-      });  
-    }  
-      
-    suggestions.sort((a,b)=> a.diff - b.diff);  
-    suggestions = suggestions.slice(0,3);  
-      
-    if(suggestions.length === 0 && recognizedStrokeText.trim() === "" && recognizedGridText.trim() === ""){  
-      if(defaultTags[category]) {  
-        suggestions = defaultTags[category].slice(0);  
-      }  
-    }  
-      
-    suggestions.forEach(s => {  
-      let btn = document.createElement("button");  
-      btn.textContent = s.tagName;  
-      btn.addEventListener("click", ()=>{  
-        if(phase === "item"){  
-          if(s.tagName === "備註"){  
-            phase = "memo";  
-            clearCanvasOnly();  
-            updateFloatingSuggestions();  
-            return;  
-          }  
-          currentOrder.item = {  
-            tagName: s.tagName,  
-            candidatePrice: s.candidatePrice,  
-            quantity: 0  
-          };  
-          currentLine = s.tagName;  
-          phase = "itemQuantity";  
-          clearCanvasOnly();  
-        }  
-        else if(phase === "itemQuantity"){  
-          let qty = parseFloat(s.tagName);  
-          currentOrder.item.quantity = qty;  
-          currentLine = currentOrder.item.tagName + " × " + qty;  
-          phase = "remark";  
-          clearCanvasOnly();  
-          updateOrderDisplay();  
-        }  
-        else if(phase === "remark"){  
-          let isToggleItem = !!toggleGroups[s.tagName];  
-          tempCustom = {  
-            tagName: s.tagName,  
-            candidatePrice: s.candidatePrice,  
-            quantity: 0  
-          };  
-          if(isToggleItem) {  
-            tempCustom.toggleKey = s.tagName;   
-            tempCustom.toggleIndex = 0;        
-          }  
-          currentLine += " + " + s.tagName;  
-          phase = "remarkQuantity";  
-          clearCanvasOnly();  
-        }  
-        else if(phase === "remarkQuantity"){  
-          let qty = parseFloat(s.tagName);  
-          tempCustom.quantity = qty;  
-          currentOrder.remarks.push(tempCustom);  
-          rebuildCurrentLine();  
-          phase = "remark";  
-          tempCustom = null;  
-          clearCanvasOnly();  
-        }  
-        else if(phase === "memo"){  
-          globalRemark = s.tagName;   
-          phase = "item";  
-          clearCanvasOnly();  
-        }  
-        updateOrderDisplay();  
-        updateFloatingSuggestions();  
-      });  
-      floatingDiv.appendChild(btn);  
-    });  
-      
-    if(phase === "remarkQuantity"){  
-      let finishBtn = document.createElement("button");  
-      finishBtn.textContent = "全部";  
-      finishBtn.addEventListener("click", () => {  
-        tempCustom.quantity = null;  
-        currentOrder.remarks.push(tempCustom);  
-        rebuildCurrentLine();  
-        phase = "remark";  
-        tempCustom = null;  
-        clearCanvasOnly();  
-        updateOrderDisplay();  
-        updateFloatingSuggestions();  
-      });  
-      floatingDiv.appendChild(finishBtn);  
-    }  
-      
-    if(phase === "remark" && currentOrder.item){  
-      let finishOrderBtn = document.createElement("button");  
-      finishOrderBtn.textContent = (editingIndex !== null) ? "完成" : "點餐";  
-      finishOrderBtn.style.backgroundColor = "orange";  
-      finishOrderBtn.style.border = "3px solid orange";  
-      finishOrderBtn.style.color = "black";  
-      finishOrderBtn.addEventListener("click", finalizeOrder);  
-      floatingDiv.appendChild(finishOrderBtn);  
-    }  
-      
-    let toolDiv = document.getElementById("customToolsContainer");  
-    toolDiv.style.display = (phase === "remark") ? "flex" : "none";  
-  }  
-  
-  function rebuildCurrentLine(){  
-    if(!currentOrder.item) return;  
-    currentLine = currentOrder.item.tagName + " × " + currentOrder.item.quantity;  
-    currentOrder.remarks.forEach(c => {  
-      if(c.quantity != null){  
-        currentLine += " + " + c.tagName + " × " + c.quantity;  
-      } else {  
-        currentLine += " + " + c.tagName;  
-      }  
-    });  
-  }  
-  function computeRecordDifference(sa, ga, sb, gb){  
-    return computeSequenceDifference(sa, sb) + computeSequenceDifference(ga, gb);  
-  }  
-  function computeSequenceDifference(s1, s2){  
-    let ml = Math.max(s1.length, s2.length), d = 0;  
-    for(let i = 0; i < ml; i++){  
-      if(i < s1.length && i < s2.length){  
-        d += Math.abs(parseInt(s1[i]) - parseInt(s2[i]));  
-      } else {  
-        d += 3;  
-      }  
-    }  
-    return d;  
-  }  
-  
-  /************************************************  
-   * 7. 更新訂單區：顯示各筆訂單與累計金額 + 全局備註  
-   ************************************************/  
-  function updateOrderDisplay(){  
-    let container = document.getElementById("orderDisplay");  
-    container.innerHTML = "";  
-      
-    itemList.forEach((order, index) => {  
-      let orderDiv = document.createElement("div");  
-      orderDiv.style.cursor = "pointer";  
-        
-      let orderStr = order.item.tagName + " × " + order.item.quantity;  
-      let remarksHtml = "";  
-      order.remarks.forEach((c, cIndex) => {  
-        let part = (c.quantity != null) ? (c.tagName + " × " + c.quantity) : c.tagName;  
-        let formattedPart = formatRemark(part);  
-        let span = `<span class="customItem" data-orderindex="${index}" data-customindex="${cIndex}">${formattedPart}</span>`;  
-        remarksHtml += " + " + span;  
-      });  
-  
-      orderDiv.innerHTML = orderStr + remarksHtml;  
-        
-      if(editingIndex === index) {  
-        orderDiv.style.color = "orange";  
-      }  
-  
-      orderDiv.addEventListener("click", (ev) => {  
-        ev.stopPropagation();  
-        if(editingIndex === index) {  
-          return;  
-        }  
-        editingIndex = index;  
-        currentOrder = JSON.parse(JSON.stringify(order));  
-        rebuildCurrentLine();  
-        phase = "remark";  
-        updateOrderDisplay();  
-        updateFloatingSuggestions();  
-      });  
-  
-      container.appendChild(orderDiv);  
-    });  
-      
-    if(itemList.length > 0){  
-      let separator = document.createElement("div");  
-      separator.textContent = "----------";  
-      container.appendChild(separator);  
-  
-      let totalDiv = document.createElement("div");  
-      totalDiv.textContent = "總金額: " + calcGrandTotal();  
-      container.appendChild(totalDiv);  
-  
-      let br = document.createElement("br");  
-      container.appendChild(br);  
-  
-      if(globalRemark.trim() !== ""){  
-        let remarkDiv = document.createElement("div");  
-        remarkDiv.innerHTML = "備註: " + formatRemark(globalRemark);  
-        container.appendChild(remarkDiv);  
-      }  
-    }  
-      
-    if(currentLine.trim() !== ""){  
-      let currentDiv = document.createElement("div");  
-      currentDiv.textContent = currentLine;  
-      container.appendChild(currentDiv);  
-    }  
-  
-    let customItems = container.querySelectorAll(".customItem");  
-    customItems.forEach(item => {  
-      item.addEventListener("click", (ev) => {  
-        ev.stopPropagation();  
-        let odx = parseInt(item.getAttribute("data-orderindex"));  
-        let cdx = parseInt(item.getAttribute("data-customindex"));  
-  
-        let c = itemList[odx].remarks[cdx];  
-        if(!c.toggleKey) return;  
-        let group = toggleGroups[c.toggleKey];  
-        if(!group) return;  
-        c.toggleIndex = (c.toggleIndex + 1) % group.length;  
-        c.tagName = group[c.toggleIndex];  
-        updateOrderDisplay();  
-      });  
-    });  
-  }  
-    
-  function calcGrandTotal(){  
-    let sum = 0;  
-    itemList.forEach(order => {  
-      let sub = 0;  
-      if(order.item) {  
-        sub += order.item.candidatePrice * order.item.quantity;  
-      }  
-      order.remarks.forEach(c=>{  
-        if(c.quantity != null){  
-          sub += c.candidatePrice * c.quantity;  
-        }  
-      });  
-      sum += sub;  
-    });  
-    return sum;  
-  }  
-  
-  /************************************************  
-   * 8. 完成訂單 & 清除功能  
-   ************************************************/  
-  function finalizeOrder(){  
-    if(!currentOrder.item) return;  
-      
-    if(editingIndex !== null) {  
-      itemList[editingIndex] = JSON.parse(JSON.stringify(currentOrder));  
-      editingIndex = null;  
-    } else {  
-      itemList.push(JSON.parse(JSON.stringify(currentOrder)));  
-    }  
-      
-    currentOrder = { item: null, remarks: [] };  
-    currentLine = "";  
-    phase = "item";  
-  
-    updateOrderDisplay();  
-    clearCanvasOnly();  
-  }  
-  
-  function clearCanvasOnly(){  
-    ctx.clearRect(0, 0, canvas.width, canvas.height);  
-    recognizedStrokeText = "";  
-    recognizedGridText = "";  
-    resetBounds();  
-    updateFloatingSuggestions();  
-  }  
-  
-  function clearOutputAndCanvas(){  
-    itemList = [];  
-    currentLine = "";  
-    currentOrder = { item: null, remarks: [] };  
-    globalRemark = "";  
-    editingIndex = null;  
-    phase = "item";  
-    recognizedStrokeText = "";  
-    recognizedGridText = "";  
-    resetBounds();  
-    document.getElementById("orderDisplay").innerHTML = "";  
-    ctx.clearRect(0, 0, canvas.width, canvas.height);  
-    updateFloatingSuggestions();  
-    updateOrderDisplay();  
-  }  
-  
-  /************************************************  
-   * 9. 使中心 logo2.png 起始顯示、點擊後隱藏  
-   ************************************************/  
-  document.getElementById("centerLogo").addEventListener("click", () => {  
-    document.getElementById("centerLogo").style.display = "none";  
-  });  
-</script>  
-</body>  
-</html>  
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1"
+    />
+    <title>手寫辨識系統（訂單累計與價格計算）</title>
+
+    <!-- ==================== Font & Base Style ==================== -->
+    <style>
+      @font-face {
+        font-family: "Cubic";
+        src: url("Cubic_11_1.100_R.ttf") format("truetype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        font-family: "Cubic", Arial, sans-serif;
+        background: #000;
+        user-select: none;
+      }
+
+      /* ============ Banner ============ */
+      #banner {
+        width: 90%;
+        font-size: 18px;
+        color: orange;
+        margin: 0 auto;
+        text-align: center;
+        padding: 10px 0;
+      }
+
+      /* ============ Layout Containers ============ */
+      #appContainer {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* ============ Canvas ============ */
+      canvas {
+        position: absolute;
+        top: 30px;
+        left: 5%;
+        width: 90vw;
+        height: 65vh;
+        background: transparent;
+        border: none;
+        z-index: 2;
+      }
+
+      /* ============ Floating Suggestions ============ */
+      #floatingSuggestions {
+        position: absolute;
+        top: 63%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        gap: 5px;
+        max-width: 95vw;
+        z-index: 10;
+      }
+
+      #floatingSuggestions button {
+        background: #000;
+        border: 3px solid orange;
+        border-radius: 5px;
+        font-size: 24px;
+        padding: 5px 15px;
+        margin: 2px;
+        color: #fff;
+        white-space: nowrap;
+        width: 160px;
+      }
+
+      /* ============ Order Display ============ */
+      #orderDisplay {
+        position: fixed;
+        top: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: transparent;
+        padding: 10px;
+        border-radius: 5px;
+        max-height: 90vh;
+        width: 390px;
+        overflow-y: auto;
+        font-size: 24px;
+        color: #fff;
+        text-align: center;
+      }
+
+      .pendingOrder {
+        color: orange;
+        margin: 1em 0;
+      }
+
+      /* ============ Virtual Joystick ============ */
+      #dragButton {
+        position: absolute;
+        top: 85%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100px;
+        height: 100px;
+        z-index: 999;
+      }
+
+      #joystickKnob {
+        width: 100%;
+        height: 100%;
+        transform: translate(0, 0);
+        transition: transform 0.2s ease-out;
+        cursor: grab;
+      }
+
+      #joystickKnob:active {
+        cursor: grabbing;
+        transition: none;
+      }
+
+      /* ============ Others ============ */
+      #customToolsContainer {
+        position: absolute;
+        top: 80%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        gap: 10px;
+        z-index: 10;
+      }
+
+      #centerLogo {
+        position: absolute;
+        top: 36%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        cursor: pointer;
+      }
+
+      #centerLogo img {
+        max-width: 120px;
+        height: auto;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font-family: "Cubic", Arial, sans-serif;
+      }
+
+      .editingOrder {
+        border: 1px dashed orange;
+        padding: 4px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- ==================== Banner ==================== -->
+    <br>
+    <div id="banner">辣：Ｌ　滷汁：ｒ　胡椒粉：ｆ</div>
+
+    <!-- ==================== App Container ==================== -->
+    <div id="appContainer">
+      <!-- 首次點擊/觸碰後隱藏的 Logo -->
+      <div id="centerLogo">
+        <img src="logo2.png" alt="Logo2" />
+      </div>
+
+      <!-- 建議按鈕 -->
+      <div id="floatingSuggestions"></div>
+
+      <!-- remark 階段自訂工具列 -->
+      <div id="customToolsContainer"></div>
+
+      <!-- 繪圖畫布 -->
+      <canvas id="canvas"></canvas>
+
+      <!-- 訂單顯示 -->
+      <div id="orderDisplay"></div>
+
+      <!-- 虛擬搖桿 -->
+      <div id="dragButton">
+        <img
+          src="logo.png"
+          id="joystickKnob"
+          alt="清除/送出訂單"
+          draggable="false"
+        />
+      </div>
+    </div>
+
+    <!-- ==================== Script ==================== -->
+    <script>
+      /* -------------------------------------------------
+       * 0. Banner Auto‑Rotate
+       * ------------------------------------------------- */
+      const bannerMsgs = [
+        "蒜泥：ｓ　烏醋：ｗ　香菜：ㄘ",
+        "不：ｂ　不＋不ｂｓ",
+      ];
+      const bannerEl = document.getElementById("banner");
+      let bannerIdx = 0;
+      setInterval(() => {
+        bannerIdx = (bannerIdx + 1) % bannerMsgs.length;
+        bannerEl.textContent = bannerMsgs[bannerIdx];
+      }, 5000);
+
+      /* -------------------------------------------------
+       * 1. Utilities
+       * ------------------------------------------------- */
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+      const formatRemark = (str) =>
+        str
+          .replace(
+            /冰(?:\s*[×xX*]?\s*\d+)?/g,
+            '<span style="color:white">$&</span>'
+          )
+          .replace(
+            /溫(?:\s*[×xX*]?\s*\d+)?/g,
+            '<span style="color:white">$&</span>'
+          );
+      const seqDiff = (a, b) => {
+        const len = Math.max(a.length, b.length);
+        let d = 0;
+        for (let i = 0; i < len; i++) {
+          d += i < a.length && i < b.length ? Math.abs(+a[i] - +b[i]) : 3;
+        }
+        return d;
+      };
+
+      /* -------------------------------------------------
+       * 2. Default Tags
+       * ------------------------------------------------- */
+      const defaultTags = {
+        items: [
+          { tagName: "蛋餅", candidatePrice: 30 },
+          { tagName: "大腸麵線", candidatePrice: 50 },
+          { tagName: "大炒麵", candidatePrice: 40 },
+          { tagName: "備註", candidatePrice: 0 },
+        ],
+        amount: [
+          { tagName: "1" },
+          { tagName: "2" },
+          { tagName: "3" },
+          { tagName: "4" },
+        ],
+        remark: [
+          { tagName: "冰" },
+          { tagName: "加辣" },
+          { tagName: "溫" },
+        ],
+        memo: [
+          { tagName: "辣另外包" },
+          { tagName: "電話訂餐" },
+          { tagName: "內用" },
+          { tagName: "分開袋" },
+        ],
+      };
+
+      /* -------------------------------------------------
+       * 3. Global State
+       * ------------------------------------------------- */
+      let phase = "item";
+      let currentOrder = { item: null, remarks: [] };
+      let tempCustom = null;
+      let itemList = [];
+      let currentLine = "";
+      let globalRemark = "";
+      let editingIndex = null;
+      let currentOrderNum = 1; // 1~10 循環
+      let allTags = [];
+
+      /* 讀取 tags.json */
+      fetch("tags.json")
+        .then((res) => res.json())
+        .then((json) => {
+          allTags = json;
+          updateFloatingSuggestions();
+        })
+        .catch(() => {
+          updateFloatingSuggestions();
+        });
+
+      /* -------------------------------------------------
+       * 4. Canvas & Stroke Recognition
+       * ------------------------------------------------- */
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const resizeCanvas = () => {
+        const r = canvas.getBoundingClientRect();
+        canvas.width = r.width;
+        canvas.height = r.height;
+      };
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "gray";
+
+      let drawing = false,
+        points = [],
+        strokeStr = "",
+        gridStr = "",
+        lastImage = null;
+
+      let minX, maxX, minY, maxY;
+      const resetBounds = () => {
+        minX = Infinity;
+        maxX = -Infinity;
+        minY = Infinity;
+        maxY = -Infinity;
+      };
+      resetBounds();
+
+      const getPos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        return e.touches
+          ? {
+              x: e.touches[0].clientX - r.left,
+              y: e.touches[0].clientY - r.top,
+            }
+          : { x: e.clientX - r.left, y: e.clientY - r.top };
+      };
+
+      const updateBounds = (p) => {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      };
+
+      const getAngle = (a, b) => {
+        const deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+        return deg < 0 ? deg + 360 : deg;
+      };
+
+      const encodeStroke = (pts) => {
+        if (pts.length < 2) return "";
+        let res = "",
+          last = pts[0],
+          dist = 0;
+        for (let i = 1; i < pts.length; i++) {
+          dist += Math.hypot(
+            pts[i].x - pts[i - 1].x,
+            pts[i].y - pts[i - 1].y
+          );
+          if (dist >= 30) {
+            const idx = Math.floor(getAngle(last, pts[i]) / 36);
+            res += (idx - 7 + 10) % 10; // 旋轉校正
+            last = pts[i];
+            dist = 0;
+          }
+        }
+        return res;
+      };
+
+      const compressSeq = (s) =>
+        s
+          .replace(/(.)\1+/g, "$1")
+          .replace(
+            /012|210|123|321|234|432|345|543|456|654|567|765|678|876|789|987/g,
+            (m) => m[0] + m[m.length - 1]
+          );
+
+      const getGridCell = (p) => {
+        const edge = Math.max(maxX - minX, maxY - minY);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const left = cx - edge / 2;
+        const top = cy - edge / 2;
+        const size = edge / 3;
+        let col = Math.floor((p.x - left) / size);
+        let row = Math.floor((p.y - top) / size);
+        col = clamp(col, 0, 2);
+        row = clamp(row, 0, 2);
+        return row * 3 + col + 1; // 1~9
+      };
+
+      /* --- Canvas Events --- */
+      const beginStroke = (e) => {
+        drawing = true;
+        lastImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        points = [];
+        resetBounds();
+
+        const p = getPos(e);
+        points.push(p);
+        updateBounds(p);
+
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        e.preventDefault();
+      };
+
+      const drawStroke = (e) => {
+        if (!drawing) return;
+        const p = getPos(e);
+        points.push(p);
+        updateBounds(p);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        e.preventDefault();
+      };
+
+      const endStroke = () => {
+        if (!drawing) return;
+        drawing = false;
+
+        /* 點一下 = 清除筆畫 */
+        if (maxX - minX < 5 && maxY - minY < 5) {
+          ctx.putImageData(lastImage, 0, 0);
+          updateFloatingSuggestions();
+          return;
+        }
+
+        strokeStr = compressSeq(strokeStr + encodeStroke(points));
+        gridStr +=
+          getGridCell(points[0]) + getGridCell(points[points.length - 1]);
+
+        updateFloatingSuggestions();
+      };
+
+      canvas.addEventListener("mousedown", beginStroke);
+      canvas.addEventListener("mousemove", drawStroke);
+      canvas.addEventListener("mouseup", endStroke);
+      canvas.addEventListener("mouseout", endStroke);
+      canvas.addEventListener("touchstart", beginStroke, { passive: false });
+      canvas.addEventListener("touchmove", drawStroke, { passive: false });
+      canvas.addEventListener("touchend", endStroke, { passive: false });
+
+      /* -------------------------------------------------
+       * 5. Toggle Groups (remark)
+       * ------------------------------------------------- */
+      const toggleGroups = {
+        加辣: ["加辣", "大辣", "中辣", "小辣", "不辣"],
+        蒜泥: ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],
+        烏醋: ["烏醋", "烏醋多", "烏醋少", "不烏醋"],
+        香菜: ["香菜", "香菜多", "香菜少", "不香菜"],
+        胡椒粉: ["胡椒粉", "胡椒多", "胡椒少", "不胡椒"],
+        滷汁: ["滷汁", "滷汁多", "滷汁少", "不滷汁"],
+        荷包蛋: ["荷包蛋", "半熟荷包蛋"],
+        冰: ["冰", "冰沙"],
+        油膏: ["油膏", "不油膏"],
+        豆芽: ["豆芽", "豆芽多", "豆芽少", "不豆芽"],
+      };
+
+      /* -------------------------------------------------
+       * 6. Special Styles  (bg / text)
+       * ------------------------------------------------- */
+      const specialStyle = {
+        加辣: { bg: "#d10000", text: "#ffffff" }, // 紅底白字
+      };
+
+      /* -------------------------------------------------
+       * 7. Floating Suggestions
+       * ------------------------------------------------- */
+      function updateFloatingSuggestions() {
+        const box = document.getElementById("floatingSuggestions");
+        box.innerHTML = "";
+
+        /* ---- 類別判定 ---- */
+        const category =
+          phase === "item"
+            ? "items"
+            : phase === "itemQuantity" || phase === "remarkQuantity"
+            ? "amount"
+            : phase === "remark"
+            ? "remark"
+            : "memo";
+
+        /* ---- 收集候選 ---- */
+        let suggestions = [];
+
+        if (!strokeStr && !gridStr) {
+          suggestions = defaultTags[category].slice();
+        } else {
+          const tags = allTags.filter((t) => t.category === category);
+          tags.forEach((tag) => {
+            if (!tag.data?.length) return;
+
+            /* 計算最小差異 */
+            let minDiff = Infinity;
+            tag.data.forEach((rec) => {
+              minDiff = Math.min(
+                minDiff,
+                seqDiff(strokeStr, rec.stroke) + seqDiff(gridStr, rec.grid)
+              );
+            });
+
+            /* 支援多價格 / 多名稱 (以 / 分隔) */
+            if (tag.name.includes("/")) {
+              const names = tag.name.split("/");
+              const prices = String(tag.price).includes("/")
+                ? tag.price.split("/")
+                : [];
+              names.forEach((nm, idx) => {
+                suggestions.push({
+                  tagName: nm.trim(),
+                  diff: minDiff,
+                  candidatePrice: prices[idx] ? +prices[idx] : +tag.price,
+                });
+              });
+            } else {
+              suggestions.push({
+                tagName: tag.name,
+                diff: minDiff,
+                candidatePrice: +tag.price,
+              });
+            }
+          });
+
+          suggestions.sort((a, b) => a.diff - b.diff);
+        }
+
+        /* 顯示數量限制 */
+        const limit =
+          phase === "remark"
+            ? 3
+            : phase === "remarkQuantity"
+            ? 3
+            : 4;
+
+        suggestions = suggestions.slice(0, limit);
+        if (!suggestions.length) {
+          suggestions = defaultTags[category].slice(0, limit);
+        }
+
+        /* ---- 建立按鈕 ---- */
+        suggestions.forEach((s) => {
+          const btn = document.createElement("button");
+          btn.textContent = s.tagName;
+
+          /* 特定關鍵字換色 */
+          for (const [kw, sty] of Object.entries(specialStyle)) {
+            if (s.tagName.includes(kw)) {
+              btn.style.background = sty.bg;
+              btn.style.border = `3px solid ${sty.bg}`;
+              btn.style.color = sty.text;
+              break;
+            }
+          }
+
+          btn.onclick = () => handleSuggestionClick(s);
+          box.appendChild(btn);
+        });
+
+        /* remarkQuantity 階段「全部」 */
+        if (phase === "remarkQuantity") {
+          const allBtn = document.createElement("button");
+          allBtn.textContent = "全部";
+          allBtn.style.background = "orange";
+          allBtn.style.border = "3px solid orange";
+          allBtn.style.color = "black";
+          allBtn.onclick = () => {
+            tempCustom.quantity = null; // 無數量
+            currentOrder.remarks.push(tempCustom);
+            rebuildCurrentLine();
+            clearCanvasOnly();
+            finalizeOrder();
+          };
+          box.appendChild(allBtn);
+        }
+
+        /* remark 階段完成 / 點餐 */
+        if (phase === "remark" && currentOrder.item) {
+          const ok = document.createElement("button");
+          ok.textContent = editingIndex !== null ? "完成" : "點餐";
+          ok.style.background = "orange";
+          ok.style.border = "3px solid orange";
+          ok.style.color = "#000";
+          ok.onclick = finalizeOrder;
+          box.appendChild(ok);
+        }
+
+        /* remark 階段工具列顯示 */
+        document.getElementById("customToolsContainer").style.display =
+          phase === "remark" ? "flex" : "none";
+      }
+
+      /* ---- 建議按鈕點擊 ---- */
+      function handleSuggestionClick(s) {
+        /* itemQuantity → 進入 remark */
+        if (phase === "itemQuantity") {
+          currentOrder.item.quantity = +s.tagName;
+          currentLine = `${currentOrder.item.tagName} × ${s.tagName}`;
+          clearCanvasOnly();
+          phase = "remark";
+          rebuildCurrentLine();
+          updateOrderDisplay();
+          updateFloatingSuggestions();
+          return;
+        }
+
+        /* remarkQuantity → 完成 */
+        if (phase === "remarkQuantity") {
+          tempCustom.quantity = +s.tagName;
+          currentOrder.remarks.push(tempCustom);
+          rebuildCurrentLine();
+          clearCanvasOnly();
+          finalizeOrder();
+          return;
+        }
+
+        /* 其他 phase */
+        switch (phase) {
+          case "item":
+            if (s.tagName === "備註") {
+              phase = "memo";
+              clearCanvasOnly();
+              updateFloatingSuggestions();
+              return;
+            }
+            currentOrder.item = {
+              tagName: s.tagName,
+              candidatePrice: s.candidatePrice,
+              quantity: 0,
+            };
+            currentLine = s.tagName;
+            phase = "itemQuantity";
+            clearCanvasOnly();
+            break;
+
+          case "remark":
+            tempCustom = {
+              tagName: s.tagName,
+              candidatePrice: s.candidatePrice,
+              quantity: 0,
+            };
+            if (toggleGroups[s.tagName]) {
+              tempCustom.toggleKey = s.tagName;
+              tempCustom.toggleIndex = 0;
+            }
+            currentLine += ` + ${s.tagName}`;
+            phase = "remarkQuantity";
+            clearCanvasOnly();
+            break;
+
+          case "memo":
+            globalRemark = s.tagName;
+            phase = "item";
+            clearCanvasOnly();
+            break;
+        }
+
+        updateOrderDisplay();
+        updateFloatingSuggestions();
+      }
+
+      /* -------------------------------------------------
+       * 8. Order Display
+       * ------------------------------------------------- */
+      const rebuildCurrentLine = () => {
+        if (!currentOrder.item) return;
+        currentLine = `${currentOrder.item.tagName} × ${currentOrder.item.quantity}`;
+        currentOrder.remarks.forEach((r) => {
+          currentLine += ` + ${r.tagName}${
+            r.quantity != null ? ` × ${r.quantity}` : ""
+          }`;
+        });
+      };
+
+      const calcGrandTotal = () =>
+        itemList.reduce((sum, o) => {
+          let sub = o.item.candidatePrice * o.item.quantity;
+          o.remarks.forEach((r) => {
+            if (r.quantity != null) sub += r.candidatePrice * r.quantity;
+          });
+          return sum + sub;
+        }, 0);
+
+      function updateOrderDisplay() {
+        const box = document.getElementById("orderDisplay");
+        box.innerHTML = "";
+
+        /* ---- 已完成項目 ---- */
+        itemList.forEach((o, idx) => {
+          const div = document.createElement("div");
+          div.style.cursor = "pointer";
+
+          /* 主餐 */
+          let html = `${o.item.tagName} × ${o.item.quantity}`;
+
+          /* remark */
+          o.remarks.forEach((r, rIdx) => {
+            const txt =
+              r.quantity != null ? `${r.tagName} × ${r.quantity}` : r.tagName;
+            html +=
+              ` + <span class="customItem" data-oi="${idx}" data-ri="${rIdx}">` +
+              `${formatRemark(txt)}</span>`;
+          });
+          div.innerHTML = html;
+
+          if (editingIndex === idx) div.classList.add("editingOrder");
+
+          /* 點擊編輯 */
+          div.onclick = (e) => {
+            e.stopPropagation();
+            if (editingIndex === idx) return;
+
+            editingIndex = idx;
+            currentOrder = JSON.parse(JSON.stringify(o));
+            rebuildCurrentLine();
+            phase = "remark";
+
+            updateOrderDisplay();
+            updateFloatingSuggestions();
+          };
+
+          box.appendChild(div);
+        });
+
+        /* ---- 尚未確定 (currentLine) ---- */
+        if (currentLine.trim()) {
+          const tmp = document.createElement("div");
+          tmp.className = "pendingOrder";
+          tmp.textContent = currentLine;
+          box.appendChild(tmp);
+        }
+
+        /* ---- 總金額 & 全局備註 ---- */
+        if (itemList.length) {
+          box.appendChild(
+            Object.assign(document.createElement("div"), {
+              textContent: "----------",
+            })
+          );
+
+          box.appendChild(
+            Object.assign(document.createElement("div"), {
+              textContent: "總金額: " + calcGrandTotal(),
+            })
+          );
+
+          if (!editingIndex && globalRemark.trim()) {
+            box.appendChild(document.createElement("br"));
+            const rm = document.createElement("div");
+            rm.innerHTML = "備註: " + formatRemark(globalRemark);
+            box.appendChild(rm);
+          }
+        }
+
+        /* remark 文字切換 */
+        box.querySelectorAll(".customItem").forEach((sp) => {
+          sp.onclick = (e) => {
+            e.stopPropagation();
+            const oi = +sp.dataset.oi;
+            const ri = +sp.dataset.ri;
+            const r = itemList[oi].remarks[ri];
+            if (!r.toggleKey) return;
+            const g = toggleGroups[r.toggleKey];
+            if (!g) return;
+            r.toggleIndex = (r.toggleIndex + 1) % g.length;
+            r.tagName = g[r.toggleIndex];
+            updateOrderDisplay();
+          };
+        });
+      }
+
+      /* -------------------------------------------------
+       * 9. finalize / clear
+       * ------------------------------------------------- */
+      const clearCanvasOnly = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        strokeStr = gridStr = "";
+        resetBounds();
+        updateFloatingSuggestions();
+      };
+
+      function finalizeOrder() {
+        if (!currentOrder.item) return;
+
+        /* 編輯回寫 */
+        if (editingIndex !== null) {
+          itemList[editingIndex] = JSON.parse(JSON.stringify(currentOrder));
+          editingIndex = null;
+        } else {
+          /* 同商品合併 */
+          const idx = itemList.findIndex(
+            (o) =>
+              o.item.tagName === currentOrder.item.tagName &&
+              o.item.candidatePrice === currentOrder.item.candidatePrice
+          );
+
+          if (idx >= 0) {
+            /* 合併數量 */
+            itemList[idx].item.quantity += currentOrder.item.quantity;
+            /* 合併 remark */
+            currentOrder.remarks.forEach((n) => {
+              const ex = itemList[idx].remarks.find(
+                (r) =>
+                  r.tagName === n.tagName &&
+                  r.candidatePrice === n.candidatePrice
+              );
+              if (ex) {
+                if (n.quantity != null) {
+                  ex.quantity = (ex.quantity ?? 0) + n.quantity;
+                }
+              } else {
+                itemList[idx].remarks.push(n);
+              }
+            });
+          } else {
+            itemList.push(JSON.parse(JSON.stringify(currentOrder)));
+          }
+        }
+
+        currentOrder = { item: null, remarks: [] };
+        currentLine = "";
+        phase = "item";
+
+        updateOrderDisplay();
+        clearCanvasOnly();
+      }
+
+      /* -------------------------------------------------
+       * 10. Submit to PHP
+       * ------------------------------------------------- */
+      function submitOrder() {
+        if (!itemList.length) {
+          alert("沒有訂單可以送出");
+          return;
+        }
+
+        /* 聚合相同品項 */
+        const agg = {};
+        itemList.forEach((o) => {
+          const dish = o.item.tagName;
+          const memo = o.remarks
+            .map((r) =>
+              r.quantity != null ? `${r.tagName}×${r.quantity}` : r.tagName
+            )
+            .join(" ");
+
+          if (!agg[dish]) {
+            agg[dish] = {
+              price: o.item.candidatePrice,
+              quantity: 0,
+              eggCost: 0,
+              remark: "",
+            };
+          }
+          agg[dish].quantity += o.item.quantity;
+          if (memo) {
+            agg[dish].remark
+              ? (agg[dish].remark += " / " + memo)
+              : (agg[dish].remark = memo);
+          }
+        });
+
+        const orderId = String(currentOrderNum).padStart(2, "0");
+        currentOrderNum = (currentOrderNum % 10) + 1;
+
+        fetch("complete_order.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, items: agg, memo: globalRemark }),
+        })
+          .then((res) => res.text())
+          .then((txt) => {
+            if (txt.includes("成功")) {
+              itemList = [];
+              globalRemark = "";
+              updateOrderDisplay();
+              clearCanvasOnly();
+              window.location.href = "order.php";
+            } else {
+              alert(txt);
+            }
+          })
+          .catch((err) => alert("提交訂單失敗: " + err));
+      }
+
+      /* -------------------------------------------------
+       * 11. Hide Logo on First Tap / Click
+       * ------------------------------------------------- */
+      const hideLogo = () =>
+        (document.getElementById("centerLogo").style.display = "none");
+      document.addEventListener("touchstart", hideLogo, { once: true });
+      document.addEventListener("click", hideLogo, { once: true });
+
+      /* -------------------------------------------------
+       * 12. Virtual Joystick
+       * ------------------------------------------------- */
+      const joyBtn = document.getElementById("dragButton");
+      const knob = document.getElementById("joystickKnob");
+
+      let startX = 0,
+        startY = 0,
+        dragging = false;
+
+      const joyStart = (e) => {
+        dragging = true;
+        const p = e.touches ? e.touches[0] : e;
+        startX = p.clientX;
+        startY = p.clientY;
+        knob.style.transition = "none";
+        e.preventDefault();
+      };
+
+      const joyMove = (e) => {
+        if (!dragging) return;
+        const p = e.touches ? e.touches[0] : e;
+        let dx = p.clientX - startX;
+        let dy = p.clientY - startY;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          dy = 0;
+          dx = clamp(dx, -100, 100);
+        } else {
+          dx = 0;
+          dy = clamp(dy, -100, 100);
+        }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        e.preventDefault();
+      };
+
+      const joyEnd = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        knob.style.transition = "transform 0.2s ease-out";
+
+        const p = e.changedTouches ? e.changedTouches[0] : e;
+        const dx = p.clientX - startX;
+        const dy = p.clientY - startY;
+
+        /* 左右判定 */
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx < -50) {
+            /* 左滑：清除 */
+            if (strokeStr || gridStr) {
+              clearCanvasOnly();
+            } else if (editingIndex !== null) {
+              itemList.splice(editingIndex, 1);
+              editingIndex = null;
+              currentOrder = { item: null, remarks: [] };
+              currentLine = "";
+              phase = "item";
+              updateOrderDisplay();
+              updateFloatingSuggestions();
+            } else {
+              finalizeOrder(); // 清掉未完成輸入
+            }
+          } else if (dx > 50) {
+            location.reload(); // 右滑：全部清除
+          }
+        } else {
+          if (dy < -50) submitOrder(); // 上滑：送出
+          else if (dy > 50) {
+            window.location.href = "order.php"; // 下滑：查看訂單
+          }
+        }
+
+        knob.style.transform = "translate(0, 0)";
+      };
+
+      joyBtn.addEventListener("mousedown", joyStart, { passive: false });
+      document.addEventListener("mousemove", joyMove, { passive: false });
+      document.addEventListener("mouseup", joyEnd, { passive: false });
+
+      joyBtn.addEventListener("touchstart", joyStart, { passive: false });
+      document.addEventListener("touchmove", joyMove, { passive: false });
+      document.addEventListener("touchend", joyEnd, { passive: false });
+    </script>
+  </body>
+</html>
