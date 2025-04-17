@@ -1,8 +1,11 @@
-<!DOCTYPE html><html lang="zh-Hant">
+<!DOCTYPE html>
+<html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>手寫資料編輯器</title><style>
+<title>手寫資料編輯器</title>
+
+<style>
 @font-face {
   font-family: "Cubic";
   src: url("Cubic_11_1.100_R.ttf") format("truetype");
@@ -61,15 +64,26 @@ html,body{
 #addSection{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;}
 #addSection input{font-family:"Cubic",Arial,sans-serif;font-size:18px;padding:4px 6px;background:#111;border:2px solid #555;color:#fff;border-radius:4px;}
 .hidden{display:none;}
-</style></head>
-<body><!-- 浮動備選標籤 --><div id="floatingSuggestions"></div><!-- 畫板 --><canvas id="canvas"></canvas>
+</style>
+</head>
+<body>
 
-<!-- 分類按鈕 --><div id="catBtns">
+<!-- 浮動備選標籤 -->
+<div id="floatingSuggestions"></div>
+
+<!-- 畫板 -->
+<canvas id="canvas"></canvas>
+
+<!-- 分類按鈕 -->
+<div id="catBtns">
   <button class="btn" data-cat="items">items</button>
   <button class="btn" data-cat="amount">amount</button>
   <button class="btn" data-cat="remark">remark</button>
   <button class="btn" data-cat="memo">memo</button>
-</div><!-- 底部工具列 --><div id="tools">
+</div>
+
+<!-- 底部工具列 -->
+<div id="tools">
   <button id="clearBtn" class="btn smallBtn">清畫板</button>
   <div style="position:relative;">
     <button id="optBtn" class="btn smallBtn">選項 ▾</button>
@@ -80,28 +94,34 @@ html,body{
     </div>
     <input id="fileInput" type="file" accept="application/json" class="hidden" />
   </div>
-</div><!-- 模態框 --><div id="modalOverlay">
+</div>
+
+<!-- 模態框 -->
+<div id="modalOverlay">
   <div id="modalBox">
     <h3 id="modalTitle"></h3>
-    <div id="tagList"></div><!-- 管理區 -->
-<div id="manageArea">
-  <div id="tagInfo"></div>
-  <button id="addStrokeBtn" class="actionBtn">新增筆畫</button>
-  <button id="resetTagBtn" class="actionBtn">清空此標籤資料</button>
-  <button id="delTagBtn" class="actionBtn" style="border-color:red;">刪除標籤</button>
-</div>
+    <div id="tagList"></div>
 
-<!-- 新增標籤 -->
-<div id="addSection">
-  <input id="newTagName" placeholder="新標籤名稱" />
-  <input id="newTagPrice" type="number" min="0" step="1" style="width:80px" />
-  <button id="addTagBtn" class="btn smallBtn">新增標籤</button>
-</div>
+    <!-- 管理區 -->
+    <div id="manageArea">
+      <div id="tagInfo"></div>
+      <button id="addStrokeBtn" class="actionBtn">新增筆畫</button>
+      <button id="resetTagBtn" class="actionBtn">清空此標籤資料</button>
+      <button id="delTagBtn" class="actionBtn" style="border-color:red;">刪除標籤</button>
+    </div>
 
-<button id="closeModal" class="btn smallBtn" style="align-self:center;">關閉</button>
+    <!-- 新增標籤 -->
+    <div id="addSection">
+      <input id="newTagName" placeholder="新標籤名稱" />
+      <input id="newTagPrice" type="number" min="0" step="1" style="width:80px" />
+      <button id="addTagBtn" class="btn smallBtn">新增標籤</button>
+    </div>
 
+    <button id="closeModal" class="btn smallBtn" style="align-self:center;">關閉</button>
   </div>
-</div><script>
+</div>
+
+<script>
 /**************** Utility ****************/ 
 const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
 const seqDiff=(a,b)=>{let d=0;for(let i=0;i<Math.max(a.length,b.length);i++)d+=(i<a.length&&i<b.length)?Math.abs(+a[i]-+b[i]):3;return d;};
@@ -156,5 +176,6 @@ addTag.onclick=()=>{const nm=nName.value.trim();if(!nm){alert("請輸入名稱")
 addStroke.onclick=()=>{if(!selTag){alert("未選取標籤");return;}if(!strokeStr||!gridStr){alert("請先在畫板書寫！");return;}if(confirm(`確認將筆畫存入「${selTag.name}」？`)){selTag.data.push({stroke:strokeStr,grid:gridStr});saveLS();ctx.clearRect(0,0,canvas.width,canvas.height);strokeStr=gridStr="";fBox.innerHTML="";showManage();renderTags();}};
 resetTag.onclick=()=>{if(selTag&&confirm("清空此標籤所有筆畫？")){selTag.data=[];saveLS();showManage();renderTags();}};
 delTag.onclick=()=>{if(selTag&&confirm(`確定刪除「${selTag.name}」？`)){tagData=tagData.filter(t=>t!==selTag);saveLS();renderTags();mArea.style.display="none";}};
-</script></body>
+</script>
+</body>
 </html>
