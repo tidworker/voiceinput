@@ -1,895 +1,980 @@
-<!DOCTYPE html>  
-<html lang="zh-Hant">  
-<head>  
-  <meta charset="utf-8" />  
-  <meta name="viewport"  
-        content="width=device-width, initial-scale=1, maximum-scale=1" />  
-  <title>手寫辨識系統（訂單累計與價格計算）</title>  
-  
-  <!-- ============ Font & Base Style ============ -->  
-  <style>  
-    @font-face {  
-      font-family: "Cubic";  
-      src: url("Cubic_11_1.100_R.ttf") format("truetype");  
-      font-weight: normal;  
-      font-style: normal;  
-    }  
-  
-    html, body {  
-      margin: 0;  
-      padding: 0;  
-      width: 100%;  
-      height: 100%;  
-      font-family: "Cubic", Arial, sans-serif;  
-      background: #000;  
-      user-select: none;  
-    }  
-  
-    #appContainer {  
-      position: relative;  
-      width: 100%;  
-      height: 100%;  
-      overflow: hidden;  
-    }  
-  
-    /* ============ Canvas ============ */  
-    canvas {  
-      position: absolute;  
-      left: 5%;  
-      top: 30px;  
-      width: 90vw;  
-      height: 65vh;  
-      background: transparent;  
-      border: none;  
-      z-index: 2;  
-    }  
-  
-    /* ============ Floating Suggestions ============ */  
-    #floatingSuggestions {  
-      position: absolute;  
-      top: 63%;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      display: grid;  
-      grid-template-columns: repeat(2, auto);  
-      gap: 5px;  
-      max-width: 95vw;  
-      z-index: 10;  
-    }  
-  
-    #floatingSuggestions button {  
-      background: #000;  
-      border: 3px solid orange;  
-      border-radius: 5px;  
-      font-size: 24px;  
-      padding: 5px 15px;  
-      margin: 2px;  
-      white-space: nowrap;  
-      color: #fff;  
-      width: 160px;  
-    }  
-  
-    /* ============ Order Display ============ */  
-    #orderDisplay {  
-      position: fixed;  
-      top: 100px;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      z-index: 1000;  
-      background: transparent;  
-      padding: 10px;  
-      border-radius: 5px;  
-      max-height: 90vh;  
-      width: 390px;  
-      overflow-y: auto;  
-      font-size: 24px;  
-      color: #fff;  
-      text-align: center;  
-    }  
-  
-    .pendingOrder {  
-      color: orange;  
-      margin: 1em 0;  
-    }  
-  
-    /* ============ Virtual Joystick ============ */  
-    #dragButton {  
-      position: absolute;  
-      top: 85%;  
-      left: 50%;  
-      transform: translate(-50%, -50%);  
-      width: 100px;  
-      height: 100px;  
-      z-index: 999;  
-    }  
-  
-    #joystickKnob {  
-      width: 100%;  
-      height: 100%;  
-      transform: translate(0, 0);  
-      transition: transform 0.2s ease-out;  
-      cursor: grab;  
-    }  
-  
-    #joystickKnob:active {  
-      cursor: grabbing;  
-      transition: none;  
-    }  
-  
-    /* ============ Others ============ */  
-    #customToolsContainer {  
-      position: absolute;  
-      top: 80%;  
-      left: 50%;  
-      transform: translateX(-50%);  
-      display: none;  
-      gap: 10px;  
-      z-index: 10;  
-    }  
-  
-    #centerLogo {  
-      position: absolute;  
-      top: 39%;  
-      left: 50%;  
-      transform: translate(-50%, -50%);  
-      z-index: 9999;  
-      cursor: pointer;  
-    }  
-  
-    #centerLogo img { max-width: 120px; height: auto; }  
-  
-    button, input, select, textarea {  
-      font-family: "Cubic", Arial, sans-serif;  
-    }  
-  
-    .editingOrder {  
-      border: 1px dashed orange;  
-      padding: 4px;  
-    }  
-  </style>  
-</head>  
-  
-<body>  
-  <div id="appContainer">  
-    <!-- 首次點擊/觸碰後隱藏的 Logo -->  
-    <div id="centerLogo">  
-      <img src="logo2.png" alt="Logo2" />  
-    </div>  
-  
-    <!-- 建議按鈕 -->  
-    <div id="floatingSuggestions"></div>  
-  
-    <!-- remark 階段自訂工具列 -->  
-    <div id="customToolsContainer"></div>  
-  
-    <!-- 繪圖畫布 -->  
-    <canvas id="canvas"></canvas>  
-  
-    <!-- 訂單顯示 -->  
-    <div id="orderDisplay"></div>  
-  
-    <!-- 虛擬搖桿 -->  
-    <div id="dragButton">  
-      <img src="logo.png"  
-           id="joystickKnob"  
-           alt="清除/送出訂單"  
-           draggable="false" />  
-    </div>  
-  </div>  
-  
-  <!-- ==================== Script ==================== -->  
-  <script>  
-    /* -------------------------------------------------  
-     * 0. Utilities  
-     * ------------------------------------------------- */  
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));  
-  
-    const formatRemark = (str) =>  
-      str  
-        .replace(/冰(?:\s*[×xX*]?\s*\d+)?/g,  
-                 '<span style="color:white">$&</span>')  
-        .replace(/溫(?:\s*[×xX*]?\s*\d+)?/g,  
-                 '<span style="color:white">$&</span>');  
-  
-    const seqDiff = (a, b) => {  
-      const len = Math.max(a.length, b.length);  
-      let d = 0;  
-      for (let i = 0; i < len; i++) {  
-        d += (i < a.length && i < b.length) ? Math.abs(+a[i] - +b[i]) : 3;  
-      }  
-      return d;  
-    };  
-  
-    /* -------------------------------------------------  
-     * 1. Default Tags  
-     * ------------------------------------------------- */  
-    const defaultTags = {  
-      items: [  
-        { tagName: "蛋餅",     candidatePrice: 30 },  
-        { tagName: "大腸麵線", candidatePrice: 50 },  
-        { tagName: "大炒麵",   candidatePrice: 40 },  
-        { tagName: "備註",     candidatePrice: 0  }  
-      ],  
-      amount: [  
-        { tagName: "1" }, { tagName: "2" },  
-        { tagName: "3" }, { tagName: "4" }  
-      ],  
-      remark: [  
-        { tagName: "加辣" }, { tagName: "冰" }, { tagName: "溫" }  
-      ],  
-      memo: [  
-        { tagName: "辣另外包" }, { tagName: "電話訂餐" },  
-        { tagName: "內用"     }, { tagName: "分開袋"   }  
-      ]  
-    };  
-  
-    /* -------------------------------------------------  
-     * 2. Global State  
-     * ------------------------------------------------- */  
-    let phase            = "item";  
-    let currentOrder     = { item: null, remarks: [] };  
-    let tempCustom       = null;  
-    let itemList         = [];  
-    let currentLine      = "";  
-    let globalRemark     = "";  
-    let editingIndex     = null;  
-    let currentOrderNum  = 1;  // 1~10 循環  
-    let allTags          = [];  
-  
-    /* 讀取 tags.json */  
-    fetch("tags.json")  
-      .then(res => res.json())  
-      .then(json => { allTags = json; updateFloatingSuggestions(); })  
-      .catch(()  => { updateFloatingSuggestions(); });  
-  
-    /* -------------------------------------------------  
-     * 3. Canvas & Stroke Recognition  
-     * ------------------------------------------------- */  
-    const canvas = document.getElementById("canvas");  
-    const ctx    = canvas.getContext("2d");  
-  
-    const resizeCanvas = () => {  
-      const r = canvas.getBoundingClientRect();  
-      canvas.width  = r.width;  
-      canvas.height = r.height;  
-    };  
-    window.addEventListener("resize", resizeCanvas);  
-    resizeCanvas();  
-  
-    ctx.lineWidth   = 2;  
-    ctx.lineCap     = "round";  
-    ctx.strokeStyle = "gray";  
-  
-    let drawing   = false,  
-        points    = [],  
-        strokeStr = "",  
-        gridStr   = "",  
-        lastImage = null;  
-  
-    let minX, maxX, minY, maxY;  
-    const resetBounds = () => {  
-      minX = Infinity; maxX = -Infinity;  
-      minY = Infinity; maxY = -Infinity;  
-    };  
-    resetBounds();  
-  
-    const getPos = (e) => {  
-      const r = canvas.getBoundingClientRect();  
-      return e.touches  
-        ? { x: e.touches[0].clientX - r.left,  
-            y: e.touches[0].clientY - r.top  }  
-        : { x: e.clientX - r.left, y: e.clientY - r.top };  
-    };  
-  
-    const updateBounds = (p) => {  
-      minX = Math.min(minX, p.x);  
-      maxX = Math.max(maxX, p.x);  
-      minY = Math.min(minY, p.y);  
-      maxY = Math.max(maxY, p.y);  
-    };  
-  
-    const getAngle = (a, b) => {  
-      const deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;  
-      return (deg < 0) ? deg + 360 : deg;  
-    };  
-  
-    const encodeStroke = (pts) => {  
-      if (pts.length < 2) return "";  
-      let res  = "", last = pts[0], dist = 0;  
-      for (let i = 1; i < pts.length; i++) {  
-        dist += Math.hypot(pts[i].x - pts[i - 1].x,  
-                           pts[i].y - pts[i - 1].y);  
-        if (dist >= 30) {  
-          const idx = Math.floor(getAngle(last, pts[i]) / 36);  
-          res += (idx - 7 + 10) % 10;      // 旋轉校正  
-          last = pts[i]; dist = 0;  
-        }  
-      }  
-      return res;  
-    };  
-  
-    const compressSeq = (s) =>  
-      s.replace(/(.)\1+/g, "$1")  
-       .replace(/012|210|123|321|234|432|345|543|456|654|567|765|678|876|789|987/g,  
-                (m) => m[0] + m[m.length - 1]);  
-  
-    const getGridCell = (p) => {  
-      const edge = Math.max(maxX - minX, maxY - minY);  
-      const cx   = (minX + maxX) / 2;  
-      const cy   = (minY + maxY) / 2;  
-      const left = cx - edge / 2;  
-      const top  = cy - edge / 2;  
-      const size = edge / 3;  
-      let col    = Math.floor((p.x - left) / size);  
-      let row    = Math.floor((p.y - top)  / size);  
-      col = clamp(col, 0, 2);  
-      row = clamp(row, 0, 2);  
-      return row * 3 + col + 1;            // 1~9  
-    };  
-  
-    /* --- Canvas Events --- */  
-    const beginStroke = (e) => {  
-      drawing  = true;  
-      lastImage = ctx.getImageData(0, 0, canvas.width, canvas.height);  
-      points   = [];  
-      resetBounds();  
-  
-      const p = getPos(e);  
-      points.push(p);  
-      updateBounds(p);  
-  
-      ctx.beginPath();  
-      ctx.moveTo(p.x, p.y);  
-      e.preventDefault();  
-    };  
-  
-    const drawStroke = (e) => {  
-      if (!drawing) return;  
-      const p = getPos(e);  
-      points.push(p);  
-      updateBounds(p);  
-      ctx.lineTo(p.x, p.y);  
-      ctx.stroke();  
-      e.preventDefault();  
-    };  
-  
-    const endStroke = () => {  
-      if (!drawing) return;  
-      drawing = false;  
-  
-      /* 點一下 = 清除筆畫 */  
-      if (maxX - minX < 5 && maxY - minY < 5) {  
-        ctx.putImageData(lastImage, 0, 0);  
-        updateFloatingSuggestions();  
-        return;  
-      }  
-  
-      strokeStr = compressSeq(strokeStr + encodeStroke(points));  
-      gridStr  += getGridCell(points[0]) +  
-                  getGridCell(points[points.length - 1]);  
-  
-      updateFloatingSuggestions();  
-    };  
-  
-    canvas.addEventListener("mousedown",  beginStroke);  
-    canvas.addEventListener("mousemove",  drawStroke);  
-    canvas.addEventListener("mouseup",    endStroke);  
-    canvas.addEventListener("mouseout",   endStroke);  
-    canvas.addEventListener("touchstart", beginStroke, { passive: false });  
-    canvas.addEventListener("touchmove",  drawStroke,  { passive: false });  
-    canvas.addEventListener("touchend",   endStroke,   { passive: false });  
-  
-    /* -------------------------------------------------  
-     * 4. Toggle Groups (remark)  
-     * ------------------------------------------------- */  
-    const toggleGroups = {  
-      加辣  : ["加辣", "大辣", "中辣", "小辣", "不辣"],  
-      蒜泥  : ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],  
-      烏醋  : ["烏醋", "烏醋多", "烏醋少", "不烏醋"],  
-      香菜  : ["香菜", "香菜多", "香菜少", "不香菜"],  
-      胡椒粉: ["胡椒粉", "胡椒多", "胡椒少", "不胡椒"],  
-      滷汁  : ["滷汁", "滷汁多", "滷汁少", "不滷汁"],  
-      荷包蛋: ["荷包蛋", "半熟荷包蛋"],  
-      冰    : ["冰", "冰沙"],  
-      油膏  : ["油膏", "不油膏"],  
-      豆芽  : ["豆芽", "豆芽多", "豆芽少", "不豆芽"]  
-    };  
-  
-    /* -------------------------------------------------  
-     * 5. Special Styles  (bg / text)  
-     * ------------------------------------------------- */  
-    const specialStyle = {  
-      "加辣": { bg: "#d10000", text: "#ffffff" }  // 紅底白字  
-      // 例： "冰": { bg: "#1e90ff", text: "#ffffff" }  
-    };  
-  
-    /* -------------------------------------------------  
-     * 6. Floating Suggestions  
-     * ------------------------------------------------- */  
-    function updateFloatingSuggestions() {  
-      const box = document.getElementById("floatingSuggestions");  
-      box.innerHTML = "";  
-  
-      /* ---- 類別判定 ---- */  
-      const category =  
-        phase === "item"                ? "items"  :  
-        phase === "itemQuantity" ||  
-        phase === "remarkQuantity"      ? "amount" :  
-        phase === "remark"              ? "remark" :  
-        "memo";  
-  
-      /* ---- 收集候選 ---- */  
-      let suggestions = [];  
-  
-      if (!strokeStr && !gridStr) {  
-        suggestions = defaultTags[category].slice();  
-      } else {  
-        const tags = allTags.filter(t => t.category === category);  
-        tags.forEach(tag => {  
-          if (!tag.data?.length) return;  
-  
-          /* 計算最小差異 */  
-          let minDiff = Infinity;  
-          tag.data.forEach(rec => {  
-            minDiff = Math.min(minDiff,  
-              seqDiff(strokeStr, rec.stroke) +  
-              seqDiff(gridStr  , rec.grid));  
-          });  
-  
-          /* 支援多價格 / 多名稱 (以 / 分隔) */  
-          if (tag.name.includes("/")) {  
-            const names  = tag.name.split("/");  
-            const prices = String(tag.price).includes("/")  
-                         ? tag.price.split("/") : [];  
-            names.forEach((nm, idx) => {  
-              suggestions.push({  
-                tagName       : nm.trim(),  
-                diff          : minDiff,  
-                candidatePrice: prices[idx] ? +prices[idx] : +tag.price  
-              });  
-            });  
-          } else {  
-            suggestions.push({  
-              tagName       : tag.name,  
-              diff          : minDiff,  
-              candidatePrice: +tag.price  
-            });  
-          }  
-        });  
-  
-        suggestions.sort((a, b) => a.diff - b.diff);  
-      }  
-  
-      /* 顯示數量限制 */  
-      const limit =  
-        phase === "remark"        ? 3 :  
-        phase === "remarkQuantity"? 3 : 4;  
-  
-      suggestions = suggestions.slice(0, limit);  
-      if (!suggestions.length) {  
-        suggestions = defaultTags[category].slice(0, limit);  
-      }  
-  
-      /* ---- 建立按鈕 ---- */  
-      suggestions.forEach(s => {  
-        const btn = document.createElement("button");  
-        btn.textContent = s.tagName;  
-  
-        /* 特定關鍵字換色 */  
-        for (const [kw, sty] of Object.entries(specialStyle)) {  
-          if (s.tagName.includes(kw)) {  
-            btn.style.background = sty.bg;  
-            btn.style.border     = `3px solid ${sty.bg}`;  
-            btn.style.color      = sty.text;  
-            break;  
-          }  
-        }  
-  
-        btn.onclick = () => handleSuggestionClick(s);  
-        box.appendChild(btn);  
-      });  
-  
-      /* remarkQuantity 階段「全部」 */  
-      if (phase === "remarkQuantity") {  
-        const allBtn = document.createElement("button");  
-        allBtn.textContent       = "全部";  
-        allBtn.style.background  = "orange";  
-        allBtn.style.border      = "3px solid orange";  
-        allBtn.style.color       = "black";  
-        allBtn.onclick           = () => {  
-          tempCustom.quantity = null;          // 無數量  
-          currentOrder.remarks.push(tempCustom);  
-          rebuildCurrentLine();  
-          clearCanvasOnly();  
-          finalizeOrder();  
-        };  
-        box.appendChild(allBtn);  
-      }  
-  
-      /* remark 階段完成 / 點餐 */  
-      if (phase === "remark" && currentOrder.item) {  
-        const ok = document.createElement("button");  
-        ok.textContent      = editingIndex !== null ? "完成" : "點餐";  
-        ok.style.background = "orange";  
-        ok.style.border     = "3px solid orange";  
-        ok.style.color      = "#000";  
-        ok.onclick          = finalizeOrder;  
-        box.appendChild(ok);  
-      }  
-  
-      /* remark 階段工具列顯示 */  
-      document.getElementById("customToolsContainer").style.display =  
-        (phase === "remark") ? "flex" : "none";  
-    }  
-  
-    /* ---- 建議按鈕點擊 ---- */  
-    function handleSuggestionClick(s) {  
-      /* itemQuantity → 進入 remark */  
-      if (phase === "itemQuantity") {  
-        currentOrder.item.quantity = +s.tagName;  
-        currentLine = `${currentOrder.item.tagName} × ${s.tagName}`;  
-        clearCanvasOnly();  
-        phase = "remark";  
-        rebuildCurrentLine();  
-        updateOrderDisplay();  
-        updateFloatingSuggestions();  
-        return;  
-      }  
-  
-      /* remarkQuantity → 完成 */  
-      if (phase === "remarkQuantity") {  
-        tempCustom.quantity = +s.tagName;  
-        currentOrder.remarks.push(tempCustom);  
-        rebuildCurrentLine();  
-        clearCanvasOnly();  
-        finalizeOrder();  
-        return;  
-      }  
-  
-      /* 其他 phase */  
-      switch (phase) {  
-        case "item":  
-          if (s.tagName === "備註") {  
-            phase = "memo";  
-            clearCanvasOnly();  
-            updateFloatingSuggestions();  
-            return;  
-          }  
-          currentOrder.item = {  
-            tagName       : s.tagName,  
-            candidatePrice: s.candidatePrice,  
-            quantity      : 0  
-          };  
-          currentLine = s.tagName;  
-          phase       = "itemQuantity";  
-          clearCanvasOnly();  
-          break;  
-  
-        case "remark":  
-          tempCustom = {  
-            tagName       : s.tagName,  
-            candidatePrice: s.candidatePrice,  
-            quantity      : 0  
-          };  
-          if (toggleGroups[s.tagName]) {  
-            tempCustom.toggleKey   = s.tagName;  
-            tempCustom.toggleIndex = 0;  
-          }  
-          currentLine += ` + ${s.tagName}`;  
-          phase        = "remarkQuantity";  
-          clearCanvasOnly();  
-          break;  
-  
-        case "memo":  
-          globalRemark = s.tagName;  
-          phase        = "item";  
-          clearCanvasOnly();  
-          break;  
-      }  
-  
-      updateOrderDisplay();  
-      updateFloatingSuggestions();  
-    }  
-  
-    /* -------------------------------------------------  
-     * 7. Order Display  
-     * ------------------------------------------------- */  
-    const rebuildCurrentLine = () => {  
-      if (!currentOrder.item) return;  
-      currentLine =  
-        `${currentOrder.item.tagName} × ${currentOrder.item.quantity}`;  
-      currentOrder.remarks.forEach(r => {  
-        currentLine += ` + ${r.tagName}` +  
-                       (r.quantity != null ? ` × ${r.quantity}` : "");  
-      });  
-    };  
-  
-    const calcGrandTotal = () =>  
-      itemList.reduce((sum, o) => {  
-        let sub = o.item.candidatePrice * o.item.quantity;  
-        o.remarks.forEach(r => {  
-          if (r.quantity != null) sub += r.candidatePrice * r.quantity;  
-        });  
-        return sum + sub;  
-      }, 0);  
-  
-    function updateOrderDisplay() {  
-      const box = document.getElementById("orderDisplay");  
-      box.innerHTML = "";  
-  
-      /* ---- 已完成項目 ---- */  
-      itemList.forEach((o, idx) => {  
-        const div = document.createElement("div");  
-        div.style.cursor = "pointer";  
-  
-        /* 主餐 */  
-        let html =  
-          `${o.item.tagName} × ${o.item.quantity}`;  
-  
-        /* remark */  
-        o.remarks.forEach((r, rIdx) => {  
-          const txt = r.quantity != null  
-                     ? `${r.tagName} × ${r.quantity}`  
-                     : r.tagName;  
-          html += ` + <span class="customItem"`  
-               +  ` data-oi="${idx}" data-ri="${rIdx}">`  
-               +  `${formatRemark(txt)}</span>`;  
-        });  
-        div.innerHTML = html;  
-  
-        if (editingIndex === idx) div.classList.add("editingOrder");  
-  
-        /* 點擊編輯 */  
-        div.onclick = (e) => {  
-          e.stopPropagation();  
-          if (editingIndex === idx) return;  
-  
-          editingIndex = idx;  
-          currentOrder = JSON.parse(JSON.stringify(o));  
-          rebuildCurrentLine();  
-          phase = "remark";  
-  
-          updateOrderDisplay();  
-          updateFloatingSuggestions();  
-        };  
-  
-        box.appendChild(div);  
-      });  
-  
-      /* ---- 尚未確定 (currentLine) ---- */  
-      if (currentLine.trim()) {  
-        const tmp = document.createElement("div");  
-        tmp.className = "pendingOrder";  
-        tmp.textContent = currentLine;  
-        box.appendChild(tmp);  
-      }  
-  
-      /* ---- 總金額 & 全局備註 ---- */  
-      if (itemList.length) {  
-        box.appendChild(Object.assign(document.createElement("div"),  
-             { textContent: "----------" }));  
-  
-        box.appendChild(Object.assign(document.createElement("div"),  
-             { textContent: "總金額: " + calcGrandTotal() }));  
-  
-        if (!editingIndex && globalRemark.trim()) {  
-          box.appendChild(document.createElement("br"));  
-          const rm = document.createElement("div");  
-          rm.innerHTML = "備註: " + formatRemark(globalRemark);  
-          box.appendChild(rm);  
-        }  
-      }  
-  
-      /* remark 文字切換 */  
-      box.querySelectorAll(".customItem").forEach(sp => {  
-        sp.onclick = (e) => {  
-          e.stopPropagation();  
-          const oi = +sp.dataset.oi;  
-          const ri = +sp.dataset.ri;  
-          const r  = itemList[oi].remarks[ri];  
-          if (!r.toggleKey) return;  
-          const g = toggleGroups[r.toggleKey];  
-          if (!g) return;  
-          r.toggleIndex = (r.toggleIndex + 1) % g.length;  
-          r.tagName     = g[r.toggleIndex];  
-          updateOrderDisplay();  
-        };  
-      });  
-    }  
-  
-    /* -------------------------------------------------  
-     * 8. finalize / clear  
-     * ------------------------------------------------- */  
-    const clearCanvasOnly = () => {  
-      ctx.clearRect(0, 0, canvas.width, canvas.height);  
-      strokeStr = gridStr = "";  
-      resetBounds();  
-      updateFloatingSuggestions();  
-    };  
-  
-    function finalizeOrder() {  
-      if (!currentOrder.item) return;  
-  
-      /* 編輯回寫 */  
-      if (editingIndex !== null) {  
-        itemList[editingIndex] = JSON.parse(JSON.stringify(currentOrder));  
-        editingIndex = null;  
-      } else {  
-        /* 同商品合併 */  
-        const idx = itemList.findIndex(o =>  
-          o.item.tagName       === currentOrder.item.tagName &&  
-          o.item.candidatePrice === currentOrder.item.candidatePrice);  
-  
-        if (idx >= 0) {  
-          /* 合併數量 */  
-          itemList[idx].item.quantity += currentOrder.item.quantity;  
-          /* 合併 remark */  
-          currentOrder.remarks.forEach(n => {  
-            const ex = itemList[idx].remarks.find(r =>  
-              r.tagName === n.tagName &&  
-              r.candidatePrice === n.candidatePrice);  
-            if (ex) {  
-              if (n.quantity != null) {  
-                ex.quantity = (ex.quantity ?? 0) + n.quantity;  
-              }  
-            } else {  
-              itemList[idx].remarks.push(n);  
-            }  
-          });  
-        } else {  
-          itemList.push(JSON.parse(JSON.stringify(currentOrder)));  
-        }  
-      }  
-  
-      currentOrder = { item: null, remarks: [] };  
-      currentLine  = "";  
-      phase        = "item";  
-  
-      updateOrderDisplay();  
-      clearCanvasOnly();  
-    }  
-  
-    /* -------------------------------------------------  
-     * 9. Submit to PHP  
-     * ------------------------------------------------- */  
-    function submitOrder() {  
-      if (!itemList.length) {  
-        alert("沒有訂單可以送出");  
-        return;  
-      }  
-  
-      /* 聚合相同品項 */  
-      const agg = {};  
-      itemList.forEach(o => {  
-        const dish = o.item.tagName;  
-        const memo = o.remarks.map(r =>  
-          r.quantity != null  
-            ? `${r.tagName}×${r.quantity}` : r.tagName).join(" ");  
-  
-        if (!agg[dish]) {  
-          agg[dish] = {  
-            price   : o.item.candidatePrice,  
-            quantity: 0,  
-            eggCost : 0,  
-            remark  : ""  
-          };  
-        }  
-        agg[dish].quantity += o.item.quantity;  
-        if (memo) {  
-          agg[dish].remark  
-            ? agg[dish].remark += " / " + memo  
-            : agg[dish].remark  = memo;  
-        }  
-      });  
-  
-      const orderId = String(currentOrderNum).padStart(2, "0");  
-      currentOrderNum = (currentOrderNum % 10) + 1;  
-  
-      fetch("complete_order.php", {  
-        method : "POST",  
-        headers: { "Content-Type": "application/json" },  
-        body   : JSON.stringify({ orderId, items: agg, memo: globalRemark })  
-      })  
-      .then(res => res.text())  
-      .then(txt => {  
-        if (txt.includes("成功")) {  
-          itemList = [];  
-          globalRemark = "";  
-          updateOrderDisplay();  
-          clearCanvasOnly();  
-          window.location.href = "order.php";  
-        } else {  
-          alert(txt);  
-        }  
-      })  
-      .catch(err => alert("提交訂單失敗: " + err));  
-    }  
-  
-    /* -------------------------------------------------  
-     * 10. Hide Logo on First Tap / Click  
-     * ------------------------------------------------- */  
-    const hideLogo = () =>  
-      document.getElementById("centerLogo").style.display = "none";  
-    document.addEventListener("touchstart", hideLogo, { once: true });  
-    document.addEventListener("click",      hideLogo, { once: true });  
-  
-    /* -------------------------------------------------  
-     * 11. Virtual Joystick  
-     * ------------------------------------------------- */  
-    const joyBtn = document.getElementById("dragButton");  
-    const knob   = document.getElementById("joystickKnob");  
-  
-    let startX = 0, startY = 0, dragging = false;  
-  
-    const joyStart = (e) => {  
-      dragging = true;  
-      const p  = e.touches ? e.touches[0] : e;  
-      startX = p.clientX; startY = p.clientY;  
-      knob.style.transition = "none";  
-      e.preventDefault();  
-    };  
-  
-    const joyMove = (e) => {  
-      if (!dragging) return;  
-      const p   = e.touches ? e.touches[0] : e;  
-      let dx = p.clientX - startX;  
-      let dy = p.clientY - startY;  
-  
-      if (Math.abs(dx) >= Math.abs(dy)) {  
-        dy = 0; dx = clamp(dx, -100, 100);  
-      } else {  
-        dx = 0; dy = clamp(dy, -100, 100);  
-      }  
-      knob.style.transform = `translate(${dx}px, ${dy}px)`;  
-      e.preventDefault();  
-    };  
-  
-    const joyEnd = (e) => {  
-      if (!dragging) return;  
-      dragging = false;  
-      knob.style.transition = "transform 0.2s ease-out";  
-  
-      const p  = e.changedTouches ? e.changedTouches[0] : e;  
-      const dx = p.clientX - startX;  
-      const dy = p.clientY - startY;  
-  
-      /* 左右判定 */  
-      if (Math.abs(dx) > Math.abs(dy)) {  
-        if (dx < -50) {  
-          /* 左滑：清除 */  
-          if (strokeStr || gridStr) {  
-            clearCanvasOnly();  
-          } else if (editingIndex !== null) {  
-            itemList.splice(editingIndex, 1);  
-            editingIndex = null;  
-            currentOrder = { item: null, remarks: [] };  
-            currentLine  = "";  
-            phase        = "item";  
-            updateOrderDisplay();  
-            updateFloatingSuggestions();  
-          } else {  
-            finalizeOrder();        // 清掉未完成輸入  
-          }  
-        } else if (dx > 50) {  
-          location.reload();        // 右滑：全部清除  
-        }  
-      } else {  
-        if (dy < -50) submitOrder(); // 上滑：送出  
-        else if (dy > 50) {  
-          window.location.href = "order.php"; // 下滑：查看訂單  
-        }  
-      }  
-  
-      knob.style.transform = "translate(0, 0)";  
-    };  
-  
-    joyBtn.addEventListener("mousedown",  joyStart, { passive: false });  
-    document.addEventListener("mousemove", joyMove,  { passive: false });  
-    document.addEventListener("mouseup",   joyEnd,   { passive: false });  
-  
-    joyBtn.addEventListener("touchstart", joyStart, { passive: false });  
-    document.addEventListener("touchmove", joyMove, { passive: false });  
-    document.addEventListener("touchend",  joyEnd,  { passive: false });  
-  </script>  
-</body>  
-</html>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1"
+    />
+    <title>手寫辨識系統（訂單累計與價格計算）</title>
+
+    <!-- ==================== Font & Base Style ==================== -->
+    <style>
+      @font-face {
+        font-family: "Cubic";
+        src: url("Cubic_11_1.100_R.ttf") format("truetype");
+        font-weight: normal;
+        font-style: normal;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        font-family: "Cubic", Arial, sans-serif;
+        background: #000;
+        user-select: none;
+      }
+
+      /* ============ Banner ============ */
+      #banner {
+        width: 90%;
+        font-size: 18px;
+        color: orange;
+        margin: 0 auto;
+        text-align: center;
+        padding: 10px 0;
+      }
+
+      /* ============ Layout Containers ============ */
+      #appContainer {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* ============ Canvas ============ */
+      canvas {
+        position: absolute;
+        top: 30px;
+        left: 50%;
+        transform:translateX(-50%);
+        width: 90vw;
+        height: 55vh;
+        background: transparent;
+        border: none;
+        z-index: 2;
+      }
+
+      /* ============ Floating Suggestions ============ */
+      #floatingSuggestions {
+        position: absolute;
+        top: 63%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        gap: 5px;
+        max-width: 95vw;
+        z-index: 10;
+      }
+
+      #floatingSuggestions button {
+        background: #000;
+        border: 3px solid orange;
+        border-radius: 5px;
+        font-size: 24px;
+        padding: 5px 15px;
+        margin: 2px;
+        color: #fff;
+        white-space: nowrap;
+        width: 160px;
+      }
+
+      /* ============ Order Display ============ */
+      #orderDisplay {
+        position: fixed;
+        top: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: transparent;
+        padding: 10px;
+        border-radius: 5px;
+        max-height: 90vh;
+        width: 390px;
+        overflow-y: auto;
+        font-size: 24px;
+        color: #fff;
+        text-align: center;
+      }
+
+      .pendingOrder {
+        color: orange;
+        margin: 1em 0;
+      }
+
+      /* ============ Virtual Joystick ============ */
+      #dragButton {
+        position: absolute;
+        top: 85%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100px;
+        height: 100px;
+        z-index: 999;
+      }
+
+      #joystickKnob {
+        width: 100%;
+        height: 100%;
+        transform: translate(0, 0);
+        transition: transform 0.2s ease-out;
+        cursor: grab;
+      }
+
+      #joystickKnob:active {
+        cursor: grabbing;
+        transition: none;
+      }
+
+      /* ============ Others ============ */
+      #customToolsContainer {
+        position: absolute;
+        top: 80%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        gap: 10px;
+        z-index: 10;
+      }
+
+      #centerLogo {
+        position: absolute;
+        top: 36%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        cursor: pointer;
+      }
+
+      #centerLogo img {
+        max-width: 120px;
+        height: auto;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font-family: "Cubic", Arial, sans-serif;
+      }
+
+      .editingOrder {
+        border: 1px dashed orange;
+        padding: 4px;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <!-- ==================== App Container ==================== -->
+    <div id="appContainer">
+      <!-- 首次點擊/觸碰後隱藏的 Logo -->
+      <div id="centerLogo">
+        <img src="logo2.png" alt="Logo2" />
+      </div>
+
+      <!-- 建議按鈕 -->
+      <div id="floatingSuggestions"></div>
+
+      <!-- remark 階段自訂工具列 -->
+      <div id="customToolsContainer"></div>
+
+      <!-- 繪圖畫布 -->
+      <canvas id="canvas"></canvas>
+
+      <!-- 訂單顯示 -->
+      <div id="orderDisplay"></div>
+
+      <!-- 虛擬搖桿 -->
+      <div id="dragButton">
+        <img
+          src="logo.png"
+          id="joystickKnob"
+          alt="清除/送出訂單"
+          draggable="false"
+        />
+      </div>
+    </div>
+
+    <!-- ==================== Script ==================== -->
+    <script>
+      /* -------------------------------------------------
+       * 0. Banner Auto‑Rotate
+       * ------------------------------------------------- */
+      const bannerMsgs = [
+        "蒜泥：ｓ　烏醋：ｗ　香菜：ㄘ",
+        "不：ｂ　不＋不ｂｓ",
+      ];
+      const bannerEl = document.getElementById("banner");
+      let bannerIdx = 0;
+      setInterval(() => {
+        bannerIdx = (bannerIdx + 1) % bannerMsgs.length;
+        bannerEl.textContent = bannerMsgs[bannerIdx];
+      }, 5000);
+
+      /* -------------------------------------------------
+       * 1. Utilities
+       * ------------------------------------------------- */
+      const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+      const formatRemark = (str) =>
+        str
+          .replace(
+            /冰(?:\s*[×xX*]?\s*\d+)?/g,
+            '<span style="color:white">$&</span>'
+          )
+          .replace(
+            /溫(?:\s*[×xX*]?\s*\d+)?/g,
+            '<span style="color:white">$&</span>'
+          );
+      const seqDiff = (a, b) => {
+        const len = Math.max(a.length, b.length);
+        let d = 0;
+        for (let i = 0; i < len; i++) {
+          d += i < a.length && i < b.length ? Math.abs(+a[i] - +b[i]) : 3;
+        }
+        return d;
+      };
+
+      /* -------------------------------------------------
+       * 2. Default Tags
+       * ------------------------------------------------- */
+      const defaultTags = {
+        items: [
+          { tagName: "蛋餅", candidatePrice: 30 },
+          { tagName: "大腸麵線", candidatePrice: 50 },
+          { tagName: "大炒麵", candidatePrice: 40 },
+          { tagName: "備註", candidatePrice: 0 },
+        ],
+        amount: [
+          { tagName: "1" },
+          { tagName: "2" },
+          { tagName: "3" },
+          { tagName: "4" },
+        ],
+        remark: [
+          { tagName: "冰" },
+          { tagName: "加辣" },
+          { tagName: "溫" },
+        ],
+        memo: [
+          { tagName: "辣另外包" },
+          { tagName: "電話訂餐" },
+          { tagName: "內用" },
+          { tagName: "分開袋" },
+        ],
+      };
+
+      /* -------------------------------------------------
+       * 3. Global State
+       * ------------------------------------------------- */
+      let phase = "item";
+      let currentOrder = { item: null, remarks: [] };
+      let tempCustom = null;
+      let itemList = [];
+      let currentLine = "";
+      let globalRemark = "";
+      let editingIndex = null;
+      let currentOrderNum = 1; // 1~10 循環
+      let allTags = [];
+
+      /* 讀取 tags.json */
+      fetch("tags.json")
+        .then((res) => res.json())
+        .then((json) => {
+          allTags = json;
+          updateFloatingSuggestions();
+        })
+        .catch(() => {
+          updateFloatingSuggestions();
+        });
+
+      /* -------------------------------------------------
+       * 4. Canvas & Stroke Recognition
+       * ------------------------------------------------- */
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      const resizeCanvas = () => {
+        const r = canvas.getBoundingClientRect();
+        canvas.width = r.width;
+        canvas.height = r.height;
+      };
+      window.addEventListener("resize", resizeCanvas);
+      resizeCanvas();
+
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "gray";
+
+      let drawing = false,
+        points = [],
+        strokeStr = "",
+        gridStr = "",
+        lastImage = null;
+
+      let minX, maxX, minY, maxY;
+      const resetBounds = () => {
+        minX = Infinity;
+        maxX = -Infinity;
+        minY = Infinity;
+        maxY = -Infinity;
+      };
+      resetBounds();
+
+      const getPos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        return e.touches
+          ? {
+              x: e.touches[0].clientX - r.left,
+              y: e.touches[0].clientY - r.top,
+            }
+          : { x: e.clientX - r.left, y: e.clientY - r.top };
+      };
+
+      const updateBounds = (p) => {
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y);
+        maxY = Math.max(maxY, p.y);
+      };
+
+      const getAngle = (a, b) => {
+        const deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+        return deg < 0 ? deg + 360 : deg;
+      };
+
+      const encodeStroke = (pts) => {
+        if (pts.length < 2) return "";
+        let res = "",
+          last = pts[0],
+          dist = 0;
+        for (let i = 1; i < pts.length; i++) {
+          dist += Math.hypot(
+            pts[i].x - pts[i - 1].x,
+            pts[i].y - pts[i - 1].y
+          );
+          if (dist >= 30) {
+            const idx = Math.floor(getAngle(last, pts[i]) / 36);
+            res += (idx - 7 + 10) % 10; // 旋轉校正
+            last = pts[i];
+            dist = 0;
+          }
+        }
+        return res;
+      };
+
+      const compressSeq = (s) =>
+        s
+          .replace(/(.)\1+/g, "$1")
+          .replace(
+            /012|210|123|321|234|432|345|543|456|654|567|765|678|876|789|987/g,
+            (m) => m[0] + m[m.length - 1]
+          );
+
+      const getGridCell = (p) => {
+        const edge = Math.max(maxX - minX, maxY - minY);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        const left = cx - edge / 2;
+        const top = cy - edge / 2;
+        const size = edge / 3;
+        let col = Math.floor((p.x - left) / size);
+        let row = Math.floor((p.y - top) / size);
+        col = clamp(col, 0, 2);
+        row = clamp(row, 0, 2);
+        return row * 3 + col + 1; // 1~9
+      };
+
+      /* --- Canvas Events --- */
+      const beginStroke = (e) => {
+        drawing = true;
+        lastImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        points = [];
+        resetBounds();
+
+        const p = getPos(e);
+        points.push(p);
+        updateBounds(p);
+
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        e.preventDefault();
+      };
+
+      const drawStroke = (e) => {
+        if (!drawing) return;
+        const p = getPos(e);
+        points.push(p);
+        updateBounds(p);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        e.preventDefault();
+      };
+
+      const endStroke = () => {
+        if (!drawing) return;
+        drawing = false;
+
+        /* 點一下 = 清除筆畫 */
+        if (maxX - minX < 5 && maxY - minY < 5) {
+          ctx.putImageData(lastImage, 0, 0);
+          updateFloatingSuggestions();
+          return;
+        }
+
+        strokeStr = compressSeq(strokeStr + encodeStroke(points));
+        gridStr +=
+          getGridCell(points[0]) + getGridCell(points[points.length - 1]);
+
+        updateFloatingSuggestions();
+      };
+
+      canvas.addEventListener("mousedown", beginStroke);
+      canvas.addEventListener("mousemove", drawStroke);
+      canvas.addEventListener("mouseup", endStroke);
+      canvas.addEventListener("mouseout", endStroke);
+      canvas.addEventListener("touchstart", beginStroke, { passive: false });
+      canvas.addEventListener("touchmove", drawStroke, { passive: false });
+      canvas.addEventListener("touchend", endStroke, { passive: false });
+
+      /* -------------------------------------------------
+       * 5. Toggle Groups (remark)
+       * ------------------------------------------------- */
+      const toggleGroups = {
+        加辣: ["加辣", "大辣", "中辣", "小辣", "不辣"],
+        蒜泥: ["蒜泥", "蒜泥多", "蒜泥少", "不蒜泥"],
+        烏醋: ["烏醋", "烏醋多", "烏醋少", "不烏醋"],
+        香菜: ["香菜", "香菜多", "香菜少", "不香菜"],
+        胡椒粉: ["胡椒粉", "胡椒多", "胡椒少", "不胡椒"],
+        滷汁: ["滷汁", "滷汁多", "滷汁少", "不滷汁"],
+        荷包蛋: ["荷包蛋", "半熟荷包蛋"],
+        冰: ["冰", "冰沙"],
+        油膏: ["油膏", "不油膏"],
+        豆芽: ["豆芽", "豆芽多", "豆芽少", "不豆芽"],
+      };
+
+      /* -------------------------------------------------
+       * 6. Special Styles  (bg / text)
+       * ------------------------------------------------- */
+      const specialStyle = {
+        加辣: { bg: "#d10000", text: "#ffffff" }, // 紅底白字
+      };
+
+      /* -------------------------------------------------
+       * 7. Floating Suggestions
+       * ------------------------------------------------- */
+      function updateFloatingSuggestions() {
+        const box = document.getElementById("floatingSuggestions");
+        box.innerHTML = "";
+
+        /* ---- 類別判定 ---- */
+        const category =
+          phase === "item"
+            ? "items"
+            : phase === "itemQuantity" || phase === "remarkQuantity"
+            ? "amount"
+            : phase === "remark"
+            ? "remark"
+            : "memo";
+
+        /* ---- 收集候選 ---- */
+        let suggestions = [];
+
+        if (!strokeStr && !gridStr) {
+          suggestions = defaultTags[category].slice();
+        } else {
+          const tags = allTags.filter((t) => t.category === category);
+          tags.forEach((tag) => {
+            if (!tag.data?.length) return;
+
+            /* 計算最小差異 */
+            let minDiff = Infinity;
+            tag.data.forEach((rec) => {
+              minDiff = Math.min(
+                minDiff,
+                seqDiff(strokeStr, rec.stroke) + seqDiff(gridStr, rec.grid)
+              );
+            });
+
+            /* 支援多價格 / 多名稱 (以 / 分隔) */
+            if (tag.name.includes("/")) {
+              const names = tag.name.split("/");
+              const prices = String(tag.price).includes("/")
+                ? tag.price.split("/")
+                : [];
+              names.forEach((nm, idx) => {
+                suggestions.push({
+                  tagName: nm.trim(),
+                  diff: minDiff,
+                  candidatePrice: prices[idx] ? +prices[idx] : +tag.price,
+                });
+              });
+            } else {
+              suggestions.push({
+                tagName: tag.name,
+                diff: minDiff,
+                candidatePrice: +tag.price,
+              });
+            }
+          });
+
+          suggestions.sort((a, b) => a.diff - b.diff);
+        }
+
+        /* 顯示數量限制 */
+        const limit =
+          phase === "remark"
+            ? 3
+            : phase === "remarkQuantity"
+            ? 3
+            : 4;
+
+        suggestions = suggestions.slice(0, limit);
+        if (!suggestions.length) {
+          suggestions = defaultTags[category].slice(0, limit);
+        }
+
+        /* ---- 建立按鈕 ---- */
+        suggestions.forEach((s) => {
+          const btn = document.createElement("button");
+          btn.textContent = s.tagName;
+
+          /* 特定關鍵字換色 */
+          for (const [kw, sty] of Object.entries(specialStyle)) {
+            if (s.tagName.includes(kw)) {
+              btn.style.background = sty.bg;
+              btn.style.border = `3px solid ${sty.bg}`;
+              btn.style.color = sty.text;
+              break;
+            }
+          }
+
+          btn.onclick = () => handleSuggestionClick(s);
+          box.appendChild(btn);
+        });
+
+        /* remarkQuantity 階段「全部」 */
+        if (phase === "remarkQuantity") {
+          const allBtn = document.createElement("button");
+          allBtn.textContent = "全部";
+          allBtn.style.background = "orange";
+          allBtn.style.border = "3px solid orange";
+          allBtn.style.color = "black";
+          allBtn.onclick = () => {
+            tempCustom.quantity = null; // 無數量
+            currentOrder.remarks.push(tempCustom);
+            rebuildCurrentLine();
+            clearCanvasOnly();
+            finalizeOrder();
+          };
+          box.appendChild(allBtn);
+        }
+
+        /* remark 階段完成 / 點餐 */
+        if (phase === "remark" && currentOrder.item) {
+          const ok = document.createElement("button");
+          ok.textContent = editingIndex !== null ? "完成" : "點餐";
+          ok.style.background = "orange";
+          ok.style.border = "3px solid orange";
+          ok.style.color = "#000";
+          ok.onclick = finalizeOrder;
+          box.appendChild(ok);
+        }
+
+        /* remark 階段工具列顯示 */
+        document.getElementById("customToolsContainer").style.display =
+          phase === "remark" ? "flex" : "none";
+      }
+
+      /* ---- 建議按鈕點擊 ---- */
+      function handleSuggestionClick(s) {
+        /* itemQuantity → 進入 remark */
+        if (phase === "itemQuantity") {
+          currentOrder.item.quantity = +s.tagName;
+          currentLine = `${currentOrder.item.tagName} × ${s.tagName}`;
+          clearCanvasOnly();
+          phase = "remark";
+          rebuildCurrentLine();
+          updateOrderDisplay();
+          updateFloatingSuggestions();
+          return;
+        }
+
+        /* remarkQuantity → 完成 */
+        if (phase === "remarkQuantity") {
+          tempCustom.quantity = +s.tagName;
+          currentOrder.remarks.push(tempCustom);
+          rebuildCurrentLine();
+          clearCanvasOnly();
+          finalizeOrder();
+          return;
+        }
+
+        /* 其他 phase */
+        switch (phase) {
+          case "item":
+            if (s.tagName === "備註") {
+              phase = "memo";
+              clearCanvasOnly();
+              updateFloatingSuggestions();
+              return;
+            }
+            currentOrder.item = {
+              tagName: s.tagName,
+              candidatePrice: s.candidatePrice,
+              quantity: 0,
+            };
+            currentLine = s.tagName;
+            phase = "itemQuantity";
+            clearCanvasOnly();
+            break;
+
+          case "remark":
+            tempCustom = {
+              tagName: s.tagName,
+              candidatePrice: s.candidatePrice,
+              quantity: 0,
+            };
+            if (toggleGroups[s.tagName]) {
+              tempCustom.toggleKey = s.tagName;
+              tempCustom.toggleIndex = 0;
+            }
+            currentLine += ` + ${s.tagName}`;
+            phase = "remarkQuantity";
+            clearCanvasOnly();
+            break;
+
+          case "memo":
+            globalRemark = s.tagName;
+            phase = "item";
+            clearCanvasOnly();
+            break;
+        }
+
+        updateOrderDisplay();
+        updateFloatingSuggestions();
+      }
+
+      /* -------------------------------------------------
+       * 8. Order Display
+       * ------------------------------------------------- */
+      const rebuildCurrentLine = () => {
+        if (!currentOrder.item) return;
+        currentLine = `${currentOrder.item.tagName} × ${currentOrder.item.quantity}`;
+        currentOrder.remarks.forEach((r) => {
+          currentLine += ` + ${r.tagName}${
+            r.quantity != null ? ` × ${r.quantity}` : ""
+          }`;
+        });
+      };
+
+      const calcGrandTotal = () =>
+        itemList.reduce((sum, o) => {
+          let sub = o.item.candidatePrice * o.item.quantity;
+          o.remarks.forEach((r) => {
+            if (r.quantity != null) sub += r.candidatePrice * r.quantity;
+          });
+          return sum + sub;
+        }, 0);
+
+      function updateOrderDisplay() {
+        const box = document.getElementById("orderDisplay");
+        box.innerHTML = "";
+
+        /* ---- 已完成項目 ---- */
+        itemList.forEach((o, idx) => {
+          const div = document.createElement("div");
+          div.style.cursor = "pointer";
+
+          /* 主餐 */
+          let html = `${o.item.tagName} × ${o.item.quantity}`;
+
+          /* remark */
+          o.remarks.forEach((r, rIdx) => {
+            const txt =
+              r.quantity != null ? `${r.tagName} × ${r.quantity}` : r.tagName;
+            html +=
+              ` + <span class="customItem" data-oi="${idx}" data-ri="${rIdx}">` +
+              `${formatRemark(txt)}</span>`;
+          });
+          div.innerHTML = html;
+
+          if (editingIndex === idx) div.classList.add("editingOrder");
+
+          /* 點擊編輯 */
+          div.onclick = (e) => {
+            e.stopPropagation();
+            if (editingIndex === idx) return;
+
+            editingIndex = idx;
+            currentOrder = JSON.parse(JSON.stringify(o));
+            rebuildCurrentLine();
+            phase = "remark";
+
+            updateOrderDisplay();
+            updateFloatingSuggestions();
+          };
+
+          box.appendChild(div);
+        });
+
+        /* ---- 尚未確定 (currentLine) ---- */
+        if (currentLine.trim()) {
+          const tmp = document.createElement("div");
+          tmp.className = "pendingOrder";
+          tmp.textContent = currentLine;
+          box.appendChild(tmp);
+        }
+
+        /* ---- 總金額 & 全局備註 ---- */
+        if (itemList.length) {
+          box.appendChild(
+            Object.assign(document.createElement("div"), {
+              textContent: "----------",
+            })
+          );
+
+          box.appendChild(
+            Object.assign(document.createElement("div"), {
+              textContent: "總金額: " + calcGrandTotal(),
+            })
+          );
+
+          if (!editingIndex && globalRemark.trim()) {
+            box.appendChild(document.createElement("br"));
+            const rm = document.createElement("div");
+            rm.innerHTML = "備註: " + formatRemark(globalRemark);
+            box.appendChild(rm);
+          }
+        }
+
+        /* remark 文字切換 */
+        box.querySelectorAll(".customItem").forEach((sp) => {
+          sp.onclick = (e) => {
+            e.stopPropagation();
+            const oi = +sp.dataset.oi;
+            const ri = +sp.dataset.ri;
+            const r = itemList[oi].remarks[ri];
+            if (!r.toggleKey) return;
+            const g = toggleGroups[r.toggleKey];
+            if (!g) return;
+            r.toggleIndex = (r.toggleIndex + 1) % g.length;
+            r.tagName = g[r.toggleIndex];
+            updateOrderDisplay();
+          };
+        });
+      }
+
+      /* -------------------------------------------------
+       * 9. finalize / clear
+       * ------------------------------------------------- */
+      const clearCanvasOnly = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        strokeStr = gridStr = "";
+        resetBounds();
+        updateFloatingSuggestions();
+      };
+
+      function finalizeOrder() {
+        if (!currentOrder.item) return;
+
+        /* 編輯回寫 */
+        if (editingIndex !== null) {
+          itemList[editingIndex] = JSON.parse(JSON.stringify(currentOrder));
+          editingIndex = null;
+        } else {
+          /* 同商品合併 */
+          const idx = itemList.findIndex(
+            (o) =>
+              o.item.tagName === currentOrder.item.tagName &&
+              o.item.candidatePrice === currentOrder.item.candidatePrice
+          );
+
+          if (idx >= 0) {
+            /* 合併數量 */
+            itemList[idx].item.quantity += currentOrder.item.quantity;
+            /* 合併 remark */
+            currentOrder.remarks.forEach((n) => {
+              const ex = itemList[idx].remarks.find(
+                (r) =>
+                  r.tagName === n.tagName &&
+                  r.candidatePrice === n.candidatePrice
+              );
+              if (ex) {
+                if (n.quantity != null) {
+                  ex.quantity = (ex.quantity ?? 0) + n.quantity;
+                }
+              } else {
+                itemList[idx].remarks.push(n);
+              }
+            });
+          } else {
+            itemList.push(JSON.parse(JSON.stringify(currentOrder)));
+          }
+        }
+
+        currentOrder = { item: null, remarks: [] };
+        currentLine = "";
+        phase = "item";
+
+        updateOrderDisplay();
+        clearCanvasOnly();
+      }
+
+      /* -------------------------------------------------
+       * 10. Submit to PHP
+       * ------------------------------------------------- */
+      function submitOrder() {
+        if (!itemList.length) {
+          alert("沒有訂單可以送出");
+          return;
+        }
+
+        /* 聚合相同品項 */
+        const agg = {};
+        itemList.forEach((o) => {
+          const dish = o.item.tagName;
+          const memo = o.remarks
+            .map((r) =>
+              r.quantity != null ? `${r.tagName}×${r.quantity}` : r.tagName
+            )
+            .join(" ");
+
+          if (!agg[dish]) {
+            agg[dish] = {
+              price: o.item.candidatePrice,
+              quantity: 0,
+              eggCost: 0,
+              remark: "",
+            };
+          }
+          agg[dish].quantity += o.item.quantity;
+          if (memo) {
+            agg[dish].remark
+              ? (agg[dish].remark += " / " + memo)
+              : (agg[dish].remark = memo);
+          }
+        });
+
+        const orderId = String(currentOrderNum).padStart(2, "0");
+        currentOrderNum = (currentOrderNum % 10) + 1;
+
+        fetch("complete_order.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, items: agg, memo: globalRemark }),
+        })
+          .then((res) => res.text())
+          .then((txt) => {
+            if (txt.includes("成功")) {
+              itemList = [];
+              globalRemark = "";
+              updateOrderDisplay();
+              clearCanvasOnly();
+              window.location.href = "order.php";
+            } else {
+              alert(txt);
+            }
+          })
+          .catch((err) => alert("提交訂單失敗: " + err));
+      }
+
+      /* -------------------------------------------------
+       * 11. Hide Logo on First Tap / Click
+       * ------------------------------------------------- */
+      const hideLogo = () =>
+        (document.getElementById("centerLogo").style.display = "none");
+      document.addEventListener("touchstart", hideLogo, { once: true });
+      document.addEventListener("click", hideLogo, { once: true });
+
+      /* -------------------------------------------------
+       * 12. Virtual Joystick
+       * ------------------------------------------------- */
+      const joyBtn = document.getElementById("dragButton");
+      const knob = document.getElementById("joystickKnob");
+
+      let startX = 0,
+        startY = 0,
+        dragging = false;
+
+      const joyStart = (e) => {
+        dragging = true;
+        const p = e.touches ? e.touches[0] : e;
+        startX = p.clientX;
+        startY = p.clientY;
+        knob.style.transition = "none";
+        e.preventDefault();
+      };
+
+      const joyMove = (e) => {
+        if (!dragging) return;
+        const p = e.touches ? e.touches[0] : e;
+        let dx = p.clientX - startX;
+        let dy = p.clientY - startY;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          dy = 0;
+          dx = clamp(dx, -100, 100);
+        } else {
+          dx = 0;
+          dy = clamp(dy, -100, 100);
+        }
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        e.preventDefault();
+      };
+
+      const joyEnd = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        knob.style.transition = "transform 0.2s ease-out";
+
+        const p = e.changedTouches ? e.changedTouches[0] : e;
+        const dx = p.clientX - startX;
+        const dy = p.clientY - startY;
+
+        /* 左右判定 */
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx < -50) {
+            /* 左滑：清除 */
+            if (strokeStr || gridStr) {
+              clearCanvasOnly();
+            } else if (editingIndex !== null) {
+              itemList.splice(editingIndex, 1);
+              editingIndex = null;
+              currentOrder = { item: null, remarks: [] };
+              currentLine = "";
+              phase = "item";
+              updateOrderDisplay();
+              updateFloatingSuggestions();
+            } else {
+              finalizeOrder(); // 清掉未完成輸入
+            }
+          } else if (dx > 50) {
+            location.reload(); // 右滑：全部清除
+          }
+        } else {
+          if (dy < -50) submitOrder(); // 上滑：送出
+          else if (dy > 50) {
+            window.location.href = "order.php"; // 下滑：查看訂單
+          }
+        }
+
+        knob.style.transform = "translate(0, 0)";
+      };
+
+      joyBtn.addEventListener("mousedown", joyStart, { passive: false });
+      document.addEventListener("mousemove", joyMove, { passive: false });
+      document.addEventListener("mouseup", joyEnd, { passive: false });
+
+      joyBtn.addEventListener("touchstart", joyStart, { passive: false });
+      document.addEventListener("touchmove", joyMove, { passive: false });
+      document.addEventListener("touchend", joyEnd, { passive: false });
+    </script>
+  </body>
+</html>
