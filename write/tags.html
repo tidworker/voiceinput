@@ -9,22 +9,28 @@
 @font-face{font-family:"Cubic";src:url("Cubic_11_1.100_R.ttf") format("truetype");}
 html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:#fff;
           font-family:"Cubic";user-select:none;overflow:hidden;}
+/* === 共用按鈕 === */
 .btn{background:#000;border:3px solid orange;border-radius:5px;color:#fff;
      font-size:20px;padding:5px 12px;line-height:1.3;white-space:nowrap;
      overflow:hidden;text-overflow:ellipsis;touch-action:manipulation;font-family:"Cubic";}
 .smallBtn{font-size:18px;padding:4px 10px;}
+/* === 畫板 === */
 #canvas{position:absolute;left:5%;top:80px;width:90vw;height:55vh;background:#111;border:2px dashed #555;}
+/* === 浮動建議 === */
 #floatingSuggestions{position:absolute;top:25px;left:50%;transform:translateX(-50%);
                      max-width:95vw;display:flex;flex-wrap:wrap;gap:6px;z-index:9;}
 #floatingSuggestions .btn{font-size:18px;}
+/* === 分類、工具列 === */
 #catBtns{position:absolute;top:calc(55vh + 95px);left:50%;transform:translateX(-50%);
          display:flex;gap:10px;z-index:8;}
 #tools{position:absolute;top:calc(55vh + 140px);left:50%;transform:translateX(-50%);
        display:flex;gap:10px;z-index:8;}
+/* === 下拉選單 === */
 #menu{position:absolute;bottom:45px;right:0;display:none;flex-direction:column;background:#222;
       border:3px solid orange;border-radius:8px;overflow:hidden;}
 #menu .menuItem{comp:btn;font-size:18px;border-width:2px;border-radius:0;width:140px;text-align:center;}
 #menu .menuItem:not(:last-child){border-bottom:none;}
+/* === 模態框 === */
 #modalOverlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;
               align-items:center;justify-content:center;z-index:99;}
 #modalBox{background:#222;border:3px solid orange;border-radius:10px;max-width:92vw;max-height:82vh;
@@ -42,29 +48,32 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:#fff;
 </head>
 <body>
 
+<!-- 浮動建議 -->
 <div id="floatingSuggestions"></div>
+<!-- 畫板 -->
 <canvas id="canvas"></canvas>
-
+<!-- 分類按鈕 -->
 <div id="catBtns">
   <button class="btn" data-cat="items">items</button>
   <button class="btn" data-cat="amount">amount</button>
   <button class="btn" data-cat="remark">remark</button>
   <button class="btn" data-cat="memo">memo</button>
 </div>
-
+<!-- 工具列 -->
 <div id="tools">
   <button id="clearBtn" class="btn smallBtn">清畫板</button>
   <div style="position:relative;">
     <button id="optBtn" class="btn smallBtn">選項 ▾</button>
     <div id="menu">
-      <button id="dlJson" class="menuItem">下載 JSON</button>
-      <button id="upJson" class="menuItem">上傳 JSON</button>
-      <button id="clrAll" class="menuItem">清空全部標籤</button>
+      <button id="dlJson"      class="menuItem">下載 JSON</button>
+      <button id="upJson"      class="menuItem">上傳 JSON</button>
+      <button id="clrAll"      class="menuItem">清空全部標籤</button>
     </div>
     <input id="fileInput" type="file" accept="application/json" class="hidden" />
   </div>
 </div>
 
+<!-- 模態框 -->
 <div id="modalOverlay">
   <div id="modalBox">
     <h3 id="modalTitle"></h3>
@@ -73,16 +82,215 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#000;color:#fff;
     <div id="manageArea">
       <div id="tagInfo"></div>
       <button id="addStrokeBtn" class="actionBtn">新增筆畫</button>
-      <button id="resetTagBtn" class="actionBtn">清空此標籤資料</button>
-      <button id="delTagBtn" class="actionBtn" style="border-color:red;">刪除標籤</button>
+      <button id="resetTagBtn"  class="actionBtn">清空此標籤資料</button>
+      <button id="delTagBtn"    class="actionBtn" style="border-color:red;">刪除標籤</button>
     </div>
 
     <div id="addSection">
-      <input id="newTagName" placeholder="標籤名稱(/分隔)" />
+      <input id="newTagName"  placeholder="標籤名稱(/分隔)" />
       <input id="newTagPrice" placeholder="價格(/分隔)" style="width:120px" />
-      <button id="addTagBtn" class="btn smallBtn">新增標籤</button>
+      <button id="addTagBtn"  class="btn smallBtn">新增標籤</button>
     </div>
 
     <button id="closeModal" class="btn smallBtn" style="align-self:center;">關閉</button>
   </div>
 </div>
+
+<script>
+/**************** Utils ****************/
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const seqDiff=(a,b)=>{let d=0;for(let i=0;i<Math.max(a.length,b.length);i++)d+=(i<a.length&&i<b.length)?Math.abs(+a[i]-+b[i]):3;return d;};
+const compressSeq=s=>s.replace(/(.)\1+/g,"$1")
+                      .replace(/012|210|123|321|234|432|345|543|456|654|567|765|678|876|789|987/g,
+                               m=>m[0]+m[m.length-1]);
+
+/**************** Data：安全載入 + 舊格式轉換 ****************/
+const LS_KEY="handwrite_tags";
+let raw=localStorage.getItem(LS_KEY),tagData;
+try{tagData=raw?JSON.parse(raw):[];}catch{localStorage.removeItem(LS_KEY);tagData=[];}
+if(!Array.isArray(tagData)) tagData=[];
+tagData=tagData.filter(t=>t&&typeof t==="object");
+tagData.forEach(t=>{
+  if(!t.names){t.names=[t.name||""];delete t.name;}
+  if(t.category==null) t.category="items";
+});
+const saveLS=()=>localStorage.setItem(LS_KEY,JSON.stringify(tagData));
+
+/**************** Canvas ****************/
+const canvas=document.getElementById("canvas"),ctx=canvas.getContext("2d");
+const resize=()=>{const r=canvas.getBoundingClientRect();canvas.width=r.width;canvas.height=r.height;};
+addEventListener("resize",resize);resize();
+ctx.lineWidth=2;ctx.lineCap="round";ctx.strokeStyle="#bbb";
+
+let drawing=false,pts=[],strokeStr="",gridStr="",minX,maxX,minY,maxY;
+const resetB=()=>{minX=minY=Infinity;maxX=maxY=-Infinity;};
+const pos=e=>{const r=canvas.getBoundingClientRect();return e.touches?{x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top}:{x:e.clientX-r.left,y:e.clientY-r.top};};
+const updB=p=>{minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minY=Math.min(minY,p.y);maxY=Math.max(maxY,p.y);};
+const ang=(a,b)=>{let d=Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI;return d<0?d+360:d;};
+const enc=ps=>{
+  if(ps.length<2)return"";
+  let r="",l=ps[0],d=0;
+  for(let i=1;i<ps.length;i++){
+    d+=Math.hypot(ps[i].x-ps[i-1].x,ps[i].y-ps[i-1].y);
+    if(d>=30){const idx=Math.floor(ang(l,ps[i])/36);r+=(idx-7+10)%10;l=ps[i];d=0;}
+  }
+  return r;
+};
+const grid=p=>{
+  const e=Math.max(maxX-minX,maxY-minY),cx=(minX+maxX)/2,cy=(minY+maxY)/2,l=cx-e/2,t=cy-e/2,s=e/3;
+  let c=Math.floor((p.x-l)/s),r=Math.floor((p.y-t)/s);
+  c=clamp(c,0,2);r=clamp(r,0,2);
+  return r*3+c+1;
+};
+
+/**************** Floating suggestions ****************/
+const fBox=document.getElementById("floatingSuggestions");
+const drawSug=()=>{
+  fBox.innerHTML="";
+  if(!strokeStr||!gridStr)return;
+  let sug=[];
+  tagData.forEach(t=>{
+    if(!t.data.length)return;
+    let m=Infinity;
+    t.data.forEach(rec=>{
+      m=Math.min(m,seqDiff(strokeStr,rec.stroke)+seqDiff(gridStr,rec.grid));
+    });
+    sug.push({t,d:m});
+  });
+  sug.sort((a,b)=>a.d-b.d).slice(0,3).forEach(s=>{
+    const b=document.createElement("button");
+    b.className="btn";
+    b.textContent=s.t.names[0];
+    b.onclick=()=>{
+      s.t.data.push({stroke:strokeStr,grid:gridStr});
+      saveLS();
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      strokeStr=gridStr="";fBox.innerHTML="";
+    };
+    fBox.appendChild(b);
+  });
+};
+
+/**************** Canvas events ****************/
+const start=e=>{
+  drawing=true;pts=[];strokeStr=gridStr="";resetB();
+  const p=pos(e);pts.push(p);updB(p);
+  ctx.beginPath();ctx.moveTo(p.x,p.y);e.preventDefault();
+};
+const move=e=>{
+  if(!drawing)return;
+  const p=pos(e);pts.push(p);updB(p);
+  ctx.lineTo(p.x,p.y);ctx.stroke();e.preventDefault();
+};
+const end=()=>{
+  if(!drawing)return;
+  drawing=false;
+  if(maxX-minX<5&&maxY-minY<5){ctx.clearRect(0,0,canvas.width,canvas.height);return;}
+  strokeStr=compressSeq(enc(pts));
+  gridStr=""+grid(pts[0])+grid(pts[pts.length-1]);
+  drawSug();
+};
+canvas.addEventListener("mousedown",start);
+canvas.addEventListener("mousemove",move);
+canvas.addEventListener("mouseup",end);
+canvas.addEventListener("touchstart",start,{passive:false});
+canvas.addEventListener("touchmove",move,{passive:false});
+canvas.addEventListener("touchend",end);
+
+/**************** Tools ****************/
+document.getElementById("clearBtn").onclick=()=>{ctx.clearRect(0,0,canvas.width,canvas.height);strokeStr=gridStr="";fBox.innerHTML="";};
+const menu=document.getElementById("menu");
+document.getElementById("optBtn").onclick=e=>{menu.style.display=menu.style.display?"":"flex";e.stopPropagation();};
+addEventListener("click",()=>menu.style.display="none");
+document.getElementById("dlJson").onclick=()=>{
+  const blob=new Blob([JSON.stringify(tagData,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);const a=document.createElement("a");
+  a.href=url;a.download="tags.json";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+};
+const fileIn=document.getElementById("fileInput");
+document.getElementById("upJson").onclick=()=>fileIn.click();
+fileIn.onchange=()=>{
+  const f=fileIn.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(Array.isArray(data)){if(confirm("覆蓋現有標籤？")){tagData=data;saveLS();renderTags();alert("已匯入");}}
+      else alert("檔案格式錯誤");
+    }catch{alert("解析失敗");}
+  };
+  r.readAsText(f);
+};
+document.getElementById("clrAll").onclick=()=>{if(confirm("確定刪除所有標籤？")){tagData=[];saveLS();renderTags();alert("已清空");}};
+
+/**************** Modal ****************/
+const overlay=document.getElementById("modalOverlay"),
+      mTitle=document.getElementById("modalTitle"),
+      tagList=document.getElementById("tagList"),
+      mArea=document.getElementById("manageArea"),
+      tInfo=document.getElementById("tagInfo"),
+      addStroke=document.getElementById("addStrokeBtn"),
+      resetTag=document.getElementById("resetTagBtn"),
+      delTag=document.getElementById("delTagBtn"),
+      nName=document.getElementById("newTagName"),
+      nPrice=document.getElementById("newTagPrice"),
+      addTag=document.getElementById("addTagBtn");
+
+let curCat="items",selTag=null;
+const renderTags=()=>{
+  tagList.innerHTML="";selTag=null;mArea.style.display="none";
+  tagData.filter(t=>t.category===curCat).forEach(t=>{
+    const b=document.createElement("button");
+    b.className="tagBtn btn";
+    const priceTxt=curCat==="items"?` ($${Array.isArray(t.price)?t.price.join('/') : t.price})`:"";
+    b.textContent=`${t.names.join('/')} ${priceTxt} | ${t.data.length}`;
+    b.onclick=()=>{selTag=t;showManage();};
+    b.oncontextmenu=e=>{
+      e.preventDefault();
+      if(confirm(`刪除「${t.names.join('/')}」?`)){tagData=tagData.filter(x=>x!==t);saveLS();renderTags();}
+    };
+    tagList.appendChild(b);
+  });
+  nPrice.classList.toggle("hidden",curCat!=="items");
+};
+const showManage=()=>{
+  tInfo.textContent=`選定：${selTag.names.join('/')} ${
+    curCat==="items"?`($${Array.isArray(selTag.price)?selTag.price.join('/') : selTag.price})`:""
+  } | 筆數 ${selTag.data.length}`;
+  mArea.style.display="flex";
+};
+const openModal=c=>{curCat=c;mTitle.textContent=`[${c}] 標籤管理`;renderTags();overlay.style.display="flex";};
+document.querySelectorAll("#catBtns .btn").forEach(b=>b.onclick=()=>openModal(b.dataset.cat));
+document.getElementById("closeModal").onclick=()=>overlay.style.display="none";
+overlay.onclick=e=>{if(e.target===overlay)overlay.style.display="none";};
+
+/* === 新增標籤 === */
+addTag.onclick=()=>{
+  const rawName=nName.value.trim(),rawPrice=nPrice.value.trim();
+  if(!rawName){alert("請輸入名稱");return;}
+  const names=rawName.split("/").map(s=>s.trim()).filter(Boolean);
+  if(!names.length){alert("名稱格式錯誤");return;}
+  if(tagData.some(t=>t.category===curCat && t.names.some(n=>names.includes(n)))){alert("其中部分名稱已存在");return;}
+  let priceArr=[];
+  if(curCat==="items"){
+    priceArr=rawPrice?rawPrice.split("/").map(s=>Number(s.trim())||0):[0];
+    if(priceArr.length!==1 && priceArr.length!==names.length){alert("價格數量需為 1 或等同名稱數量");return;}
+  }
+  tagData.push({category:curCat,names,price:curCat==="items"?(priceArr.length>1?priceArr:priceArr[0]):undefined,data:[]});
+  saveLS();nName.value="";nPrice.value="";renderTags();
+};
+/* === 筆畫相關 === */
+addStroke.onclick=()=>{
+  if(!selTag){alert("未選取標籤");return;}
+  if(!strokeStr||!gridStr){alert("請先在畫板書寫！");return;}
+  if(confirm(`確認存入「${selTag.names.join('/')}」？`)){
+    selTag.data.push({stroke:strokeStr,grid:gridStr});saveLS();
+    ctx.clearRect(0,0,canvas.width,canvas.height);strokeStr=gridStr="";fBox.innerHTML="";
+    showManage();renderTags();
+  }
+};
+resetTag.onclick=()=>{if(selTag&&confirm("清空此標籤所有筆畫？")){selTag.data=[];saveLS();showManage();renderTags();}};
+delTag.onclick=()=>{if(selTag&&confirm(`確定刪除「${selTag.names.join('/')}」？`)){tagData=tagData.filter(t=>t!==selTag);saveLS();renderTags();mArea.style.display="none";}};
+</script>
+</body>
+</html>
