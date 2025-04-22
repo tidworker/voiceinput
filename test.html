@@ -3,50 +3,118 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QR Code 產生器</title>
+  <title>簡易點餐系統</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-    h1 { margin-bottom: 16px; }
-    input, button { font-size: 16px; padding: 8px; }
-    #qrcode { margin-top: 20px; }
-    #qrcode a { display: inline-block; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    h1 {
+      color: orange;
+      margin-bottom: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    input[type="number"] {
+      width: 60px;
+      padding: 4px;
+      font-size: 16px;
+    }
+    button {
+      background: #000;
+      color: #fff;
+      border: 2px solid orange;
+      border-radius: 4px;
+      padding: 8px 16px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #qrcode {
+      margin-top: 20px;
+    }
+    #qrcode a {
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
-  <h1>QR Code 產生器</h1>
-  <p>
-    <input type="text" id="inputText" placeholder="請輸入要傳遞的文字" size="30" />
-    <button id="btnGenerate">產生 QR Code</button>
-  </p>
+  <h1>歡迎點餐</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>品項</th>
+        <th>價格</th>
+        <th>數量</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>蔥油餅</td>
+        <td>30元</td>
+        <td><input type="number" min="0" value="0" data-name="蔥油餅" /></td>
+      </tr>
+      <tr>
+        <td>豆漿</td>
+        <td>25元</td>
+        <td><input type="number" min="0" value="0" data-name="豆漿" /></td>
+      </tr>
+      <tr>
+        <td>饅頭</td>
+        <td>20元</td>
+        <td><input type="number" min="0" value="0" data-name="饅頭" /></td>
+      </tr>
+      <!-- 你可以依需求再增加更多品項 -->
+    </tbody>
+  </table>
+
+  <button id="btnGenerate">產生 QR Code</button>
+
   <div id="qrcode"></div>
 
-  <!-- 引入 QRCode.js -->
+  <!-- QRCode.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    const inputEl = document.getElementById('inputText');
-    const btnGenerate = document.getElementById('btnGenerate');
+    const btn = document.getElementById('btnGenerate');
     const qrContainer = document.getElementById('qrcode');
 
-    btnGenerate.addEventListener('click', () => {
-      const text = inputEl.value.trim();
-      if (!text) {
-        alert('請先輸入文字');
+    btn.addEventListener('click', () => {
+      // 收集所有品項數量
+      const inputs = document.querySelectorAll('tbody input[type="number"]');
+      const orders = [];
+      inputs.forEach(el => {
+        const qty = parseInt(el.value, 10);
+        if (qty > 0) {
+          orders.push(`${el.dataset.name} x${qty}`);
+        }
+      });
+      if (orders.length === 0) {
+        alert('請至少點一項餐點');
         return;
       }
 
-      // 組成帶文字參數的目標 URL
+      // 組成要傳遞的字串
+      const orderText = orders.join('；');
+      // 組 URL（使用 text 參數，讓 test2.html 可直接填入）
       const url = 'https://tidworker.github.io/voiceinput/test2.html?text='
-                + encodeURIComponent(text);
+                + encodeURIComponent(orderText);
 
-      // 清空舊的 QR Code
+      // 清除舊 QR
       qrContainer.innerHTML = '';
 
-      // 建立一個 <a> 包裹 QR Code，預設在同一頁導向
+      // 用 <a> 包 QR，點擊或掃描都在同一頁導向
       const link = document.createElement('a');
-      link.href = url;   // 同一分頁跳轉
-      link.title = '點我前往並帶入文字';
+      link.href = url;
+      link.title = '點此開啟並帶入點餐結果';
 
-      // 用 QRCode.js 在這個 <a> 裡畫出 QR 圖
       new QRCode(link, {
         text: url,
         width: 256,
