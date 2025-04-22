@@ -3,30 +3,91 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>讀取 QR 參數並填入</title>
+  <title>訂單結果</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #fff;
+      color: #000;
+    }
+    h1 {
+      color: orange;
+      margin-bottom: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background: #f0f0f0;
+    }
+    #noOrder {
+      margin-top: 20px;
+      color: #666;
+    }
+  </style>
 </head>
 <body>
-  <h1>收到的文字：</h1>
-  <!-- 這裡的 id 要跟下面 script 對應 -->
-  <input type="text" id="textInput" placeholder="文字將自動填入" size="30" />
+  <h1>您的點餐結果</h1>
+
+  <div id="content">
+    <!-- 這裡將動態插入訂單表格或提示文字 -->
+  </div>
 
   <script>
-    // 解析 URL 中的 query 參數
+    // 1. 從 URL 取回 text 參數
     const params = new URLSearchParams(window.location.search);
-    const text = params.get('text');
-    if (text) {
-      // 將參數值填入 input
-      document.getElementById('textInput').value = text;
-      // 如果你不需要原本的掃描功能，可以直接 return
-      // return;
+    const textParam = params.get('text');  // 例： "蔥油餅 x2；豆漿 x1"
+
+    const container = document.getElementById('content');
+
+    if (!textParam) {
+      // 沒有參數時顯示提示
+      const p = document.createElement('p');
+      p.id = 'noOrder';
+      p.textContent = '尚未接收到任何訂單。';
+      container.appendChild(p);
+
+    } else {
+      // 2. 解析每一筆訂單
+      // 預期格式「品項 x數量；品項 x數量；...」
+      const items = textParam.split('；').map(item => {
+        const m = item.trim().match(/^(.+?)\s*x\s*(\d+)$/i);
+        if (m) {
+          return { name: m[1], qty: parseInt(m[2], 10) };
+        }
+        // 如果不符合，就當作整串文字顯示一次
+        return { name: item.trim(), qty: '' };
+      });
+
+      // 3. 建立表格
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      thead.innerHTML = '<tr><th>品項</th><th>數量</th></tr>';
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      items.forEach(it => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td');
+        tdName.textContent = it.name;
+        const tdQty  = document.createElement('td');
+        tdQty.textContent = it.qty;
+        tr.appendChild(tdName);
+        tr.appendChild(tdQty);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+
+      container.appendChild(table);
     }
-
-    // 如果你還要保留原本掃 QR Code 的功能，可以把原來的 scanner 初始化程式碼接在這裡
-    // 例如：
-    // initQRCameraScanner();
   </script>
-
-  <!-- 下面放你原本的掃描程式碼，若有的話 -->
-  <!-- <script src="path/to/your/qr-scanner.js"></script> -->
 </body>
 </html>
