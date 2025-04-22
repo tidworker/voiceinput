@@ -5,9 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>QR Code 產生器</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    h1 { margin-bottom: 16px; }
     input, button { font-size: 16px; padding: 8px; }
     #qrcode { margin-top: 20px; }
+    #qrcode a { display: inline-block; }
   </style>
 </head>
 <body>
@@ -18,32 +20,41 @@
   </p>
   <div id="qrcode"></div>
 
-  <!-- 載入 QRCode.js（CDN） -->
+  <!-- 引入 QRCode.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    const input = document.getElementById('inputText');
-    const btn    = document.getElementById('btnGenerate');
-    const container = document.getElementById('qrcode');
+    const inputEl = document.getElementById('inputText');
+    const btnGenerate = document.getElementById('btnGenerate');
+    const qrContainer = document.getElementById('qrcode');
 
-    btn.addEventListener('click', () => {
-      const text = input.value.trim();
+    btnGenerate.addEventListener('click', () => {
+      const text = inputEl.value.trim();
       if (!text) {
         alert('請先輸入文字');
         return;
       }
-      // 把文字當作 query 參數加到目標頁面 URL
+
+      // 組成帶文字參數的目標 URL
       const url = 'https://tidworker.github.io/voiceinput/test2.html?text='
                 + encodeURIComponent(text);
 
-      // 清空上一次的 QR Code
-      container.innerHTML = '';
-      // 產生新的 QR Code
-      new QRCode(container, {
+      // 清空舊的 QR Code
+      qrContainer.innerHTML = '';
+
+      // 建立一個 <a> 包裹 QR Code，預設在同一頁導向
+      const link = document.createElement('a');
+      link.href = url;   // 同一分頁跳轉
+      link.title = '點我前往並帶入文字';
+
+      // 用 QRCode.js 在這個 <a> 裡畫出 QR 圖
+      new QRCode(link, {
         text: url,
         width: 256,
         height: 256,
         correctLevel: QRCode.CorrectLevel.H
       });
+
+      qrContainer.appendChild(link);
     });
   </script>
 </body>
