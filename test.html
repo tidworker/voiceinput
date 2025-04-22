@@ -24,12 +24,26 @@
       padding: 8px;
       text-align: left;
     }
-    input[type="number"] {
-      width: 60px;
-      padding: 4px;
-      font-size: 16px;
+    .qty-btn {
+      background: #000;
+      color: #fff;
+      border: 2px solid orange;
+      border-radius: 4px;
+      width: 30px;
+      height: 30px;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
     }
-    button {
+    .qty-display {
+      display: inline-block;
+      width: 40px;
+      text-align: center;
+      font-size: 16px;
+      margin: 0 6px;
+    }
+    #btnGenerate {
       background: #000;
       color: #fff;
       border: 2px solid orange;
@@ -60,19 +74,31 @@
       <tr>
         <td>蔥油餅</td>
         <td>30元</td>
-        <td><input type="number" min="0" value="0" data-name="蔥油餅" /></td>
+        <td>
+          <button class="qty-btn minus" data-name="蔥油餅">－</button>
+          <span class="qty-display">0</span>
+          <button class="qty-btn plus" data-name="蔥油餅">＋</button>
+        </td>
       </tr>
       <tr>
         <td>豆漿</td>
         <td>25元</td>
-        <td><input type="number" min="0" value="0" data-name="豆漿" /></td>
+        <td>
+          <button class="qty-btn minus" data-name="豆漿">－</button>
+          <span class="qty-display">0</span>
+          <button class="qty-btn plus" data-name="豆漿">＋</button>
+        </td>
       </tr>
       <tr>
         <td>饅頭</td>
         <td>20元</td>
-        <td><input type="number" min="0" value="0" data-name="饅頭" /></td>
+        <td>
+          <button class="qty-btn minus" data-name="饅頭">－</button>
+          <span class="qty-display">0</span>
+          <button class="qty-btn plus" data-name="饅頭">＋</button>
+        </td>
       </tr>
-      <!-- 你可以依需求再增加更多品項 -->
+      <!-- 可依需求增加更多品項 -->
     </tbody>
   </table>
 
@@ -83,36 +109,47 @@
   <!-- QRCode.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    const btn = document.getElementById('btnGenerate');
-    const qrContainer = document.getElementById('qrcode');
+    // 加減按鈕邏輯
+    document.querySelectorAll('.qty-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tr      = btn.closest('tr');
+        const display = tr.querySelector('.qty-display');
+        let qty = parseInt(display.textContent, 10);
+        if (btn.classList.contains('plus')) {
+          qty++;
+        } else {
+          qty = Math.max(0, qty - 1);
+        }
+        display.textContent = qty;
+      });
+    });
 
-    btn.addEventListener('click', () => {
-      // 收集所有品項數量
-      const inputs = document.querySelectorAll('tbody input[type="number"]');
+    // 產生 QR Code
+    document.getElementById('btnGenerate').addEventListener('click', () => {
+      const rows = document.querySelectorAll('tbody tr');
       const orders = [];
-      inputs.forEach(el => {
-        const qty = parseInt(el.value, 10);
+      rows.forEach(tr => {
+        const name    = tr.querySelector('.qty-btn').dataset.name;
+        const qty     = parseInt(tr.querySelector('.qty-display').textContent, 10);
         if (qty > 0) {
-          orders.push(`${el.dataset.name} x${qty}`);
+          orders.push(`${name} x${qty}`);
         }
       });
+
       if (orders.length === 0) {
         alert('請至少點一項餐點');
         return;
       }
 
-      // 組成要傳遞的字串
       const orderText = orders.join('；');
-      // 組 URL（使用 text 參數，讓 test2.html 可直接填入）
       const url = 'https://tidworker.github.io/voiceinput/test2.html?text='
                 + encodeURIComponent(orderText);
 
-      // 清除舊 QR
+      const qrContainer = document.getElementById('qrcode');
       qrContainer.innerHTML = '';
 
-      // 用 <a> 包 QR，點擊或掃描都在同一頁導向
       const link = document.createElement('a');
-      link.href = url;
+      link.href  = url;
       link.title = '點此開啟並帶入點餐結果';
 
       new QRCode(link, {
