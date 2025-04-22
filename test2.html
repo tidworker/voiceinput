@@ -28,6 +28,10 @@
     th {
       background: #f0f0f0;
     }
+    tfoot td {
+      font-weight: bold;
+      background: #fafafa;
+    }
     #noOrder {
       margin-top: 20px;
       color: #666;
@@ -38,53 +42,76 @@
   <h1>您的點餐結果</h1>
 
   <div id="content">
-    <!-- 這裡將動態插入訂單表格或提示文字 -->
+    <!-- 動態插入訂單表格或提示文字 -->
   </div>
 
   <script>
-    // 1. 從 URL 取回 text 參數
-    const params = new URLSearchParams(window.location.search);
-    const textParam = params.get('text');  // 例： "蔥油餅 x2；豆漿 x1"
-
+    const params    = new URLSearchParams(window.location.search);
+    const textParam = params.get('text');  // 例: "蔥油餅 x2；豆漿 x1"
     const container = document.getElementById('content');
 
+    // 價格對照表
+    const priceMap = {
+      '蔥油餅': 30,
+      '豆漿':   25,
+      '饅頭':   20
+      // 如有其它品項，請在此補上
+    };
+
     if (!textParam) {
-      // 沒有參數時顯示提示
       const p = document.createElement('p');
       p.id = 'noOrder';
       p.textContent = '尚未接收到任何訂單。';
       container.appendChild(p);
-
     } else {
-      // 2. 解析每一筆訂單
-      // 預期格式「品項 x數量；品項 x數量；...」
+      // 解析每筆訂單
       const items = textParam.split('；').map(item => {
         const m = item.trim().match(/^(.+?)\s*x\s*(\d+)$/i);
         if (m) {
           return { name: m[1], qty: parseInt(m[2], 10) };
         }
-        // 如果不符合，就當作整串文字顯示一次
-        return { name: item.trim(), qty: '' };
+        return { name: item.trim(), qty: 0 };
       });
 
-      // 3. 建立表格
+      // 建表
       const table = document.createElement('table');
+      // 表頭
       const thead = document.createElement('thead');
-      thead.innerHTML = '<tr><th>品項</th><th>數量</th></tr>';
+      thead.innerHTML = `
+        <tr>
+          <th>品項</th>
+          <th>數量</th>
+          <th>單價 (元)</th>
+          <th>小計 (元)</th>
+        </tr>`;
       table.appendChild(thead);
 
+      // 表身
+      let total = 0;
       const tbody = document.createElement('tbody');
       items.forEach(it => {
+        const unitPrice = priceMap[it.name] || 0;
+        const subtotal  = unitPrice * it.qty;
+        total += subtotal;
+
         const tr = document.createElement('tr');
-        const tdName = document.createElement('td');
-        tdName.textContent = it.name;
-        const tdQty  = document.createElement('td');
-        tdQty.textContent = it.qty;
-        tr.appendChild(tdName);
-        tr.appendChild(tdQty);
+        tr.innerHTML = `
+          <td>${it.name}</td>
+          <td>${it.qty}</td>
+          <td>${unitPrice}</td>
+          <td>${subtotal}</td>`;
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
+
+      // 表尾：總金額
+      const tfoot = document.createElement('tfoot');
+      tfoot.innerHTML = `
+        <tr>
+          <td colspan="3">總金額 (元)</td>
+          <td>${total}</td>
+        </tr>`;
+      table.appendChild(tfoot);
 
       container.appendChild(table);
     }
