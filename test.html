@@ -6,8 +6,8 @@
   <title>簡易點餐系統</title>
   <style>
     body {
-      background: #000;
-      color: #fff;
+      background: #fff;            /* 白底 */
+      color: #000;                 /* 黑字 */
       font-family: Arial, sans-serif;
       padding: 20px;
     }
@@ -23,10 +23,11 @@
     th, td {
       padding: 8px;
       text-align: left;
+      border-bottom: 1px solid #ccc;
     }
     .qty-btn {
-      background: #000;
-      color: #fff;
+      background: #fff;            /* 按鈕白底 */
+      color: #000;                 /* 文字黑色 */
       border: 2px solid orange;
       border-radius: 4px;
       width: 30px;
@@ -44,8 +45,8 @@
       margin: 0 6px;
     }
     #btnGenerate {
-      background: #000;
-      color: #fff;
+      background: #fff;            /* 按鈕白底 */
+      color: #000;                 /* 文字黑色 */
       border: 2px solid orange;
       border-radius: 4px;
       padding: 8px 16px;
@@ -109,7 +110,7 @@
   <!-- QRCode.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    // 加減按鈕邏輯
+    // 按鈕 +/– 調整數量
     document.querySelectorAll('.qty-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const tr      = btn.closest('tr');
@@ -129,8 +130,8 @@
       const rows = document.querySelectorAll('tbody tr');
       const orders = [];
       rows.forEach(tr => {
-        const name    = tr.querySelector('.qty-btn').dataset.name;
-        const qty     = parseInt(tr.querySelector('.qty-display').textContent, 10);
+        const name = tr.querySelector('.qty-btn').dataset.name;
+        const qty  = parseInt(tr.querySelector('.qty-display').textContent, 10);
         if (qty > 0) {
           orders.push(`${name} x${qty}`);
         }
