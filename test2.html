@@ -1,15 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
-  <meta charset="utf-8">
-  <!-- 在手機上自適應 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手寫辨識系統 (訂單累計與價格計算)</title>
+  <meta charset="UTF-8">
+  <title>QR Code 掃描器</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
+    video {
       width: 100%;
+      max-width: 400px;
+      border: 2px solid orange;
+    }
+  </style>
+</head>
+<body>
+  <h2>掃描 QR Code</h2>
+  <video id="video" autoplay></video>
+  <p id="result">掃描結果會顯示在這裡</p>
+
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <script>
+    const codeReader = new ZXing.BrowserMultiFormatReader();
+    const videoElement = document.getElementById('video');
+    const resultElement = document.getElementById('result');
+
+    codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
+      if (result) {
+        resultElement.textContent = '掃描結果：' + result.text;
+      }
+    });
+  </script>
+</body>
+</html>
       height: 100%;
       font-family: Arial, sans-serif;
       background: black;
