@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>電話可聽高頻雙向傳輸（強化接收）</title>
+  <title>電話可聽高頻雙向傳輸（接收回覆完成）</title>
   <style>
     body { background:#000; color:#fff; font-family:Arial; display:flex; flex-direction:column; align-items:center; padding:20px; margin:0 }
-    .container { background:#111; padding:20px; border-radius:12px; box-shadow:0 0 10px rgba(0,0,0,0.5); width:100%; max-width:350px; margin-bottom:20px; text-align:center }
+    .container { background:#111; padding:20px; border-radius:12px; box-shadow:0 0 10px rgba(0,0,0,0.5); width:100%; max-width:400px; margin-bottom:20px; text-align:center }
     input, button { width:100%; padding:10px; font-size:16px; border:2px solid orange; border-radius:8px; background:#222; color:#fff; margin-bottom:10px; cursor:pointer }
     button:disabled { opacity:.5; cursor:default }
     #status, #received { margin-top:10px; font-size:14px; word-break:break-all }
@@ -101,7 +101,8 @@ function playTone(sym, dur) {
   osc.frequency.value = symbolFreq[sym];
   gain.gain.setValueAtTime(0.7, audioCtx.currentTime);
   osc.connect(gain).connect(audioCtx.destination);
-  osc.start(); osc.stop(audioCtx.currentTime + dur);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
 }
 function wait(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
@@ -111,7 +112,7 @@ async function startAckListening(){
   const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
   ackSource = audioCtx.createMediaStreamSource(stream);
   ackAnalyser = audioCtx.createAnalyser();
-  ackAnalyser.fftSize = 4096; // 提升頻率分辨率
+  ackAnalyser.fftSize = 4096;
   ackSource.connect(ackAnalyser);
   ackDataArray = new Uint8Array(ackAnalyser.frequencyBinCount);
   ackTimer = setInterval(decodeAckFrame, 200);
@@ -151,14 +152,13 @@ startRxBtn.addEventListener('click', async ()=>{
   const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
   rxSource = audioCtx.createMediaStreamSource(stream);
   rxAnalyser = audioCtx.createAnalyser();
-  rxAnalyser.fftSize = 4096; // 同樣提升解析度
+  rxAnalyser.fftSize = 4096;
   rxSource.connect(rxAnalyser);
   rxDataArray = new Uint8Array(rxAnalyser.frequencyBinCount);
 
-  rxState = 0; buffer = ''; receivedEl.textContent = '';
-  lastSignalTime = Date.now();
-  lastSym = null; symCount = 0;
-  startRxBtn.disabled = true; stopRxBtn.disabled = false;
+  rxState=0; buffer=''; receivedEl.textContent='';
+  lastSignalTime=Date.now(); lastSym=null; symCount=0;
+  startRxBtn.disabled=true; stopRxBtn.disabled=false;
 
   rxTimer = setInterval(decodeRxFrame, 200);
   timeoutTimer = setInterval(checkTimeout, 500);
@@ -173,34 +173,32 @@ function decodeRxFrame(){
   for(let i=0;i<rxDataArray.length;i++){
     const f = i * sr / N;
     if(f<700||f>2000) continue;
-    if(rxDataArray[i] > maxA){
-      maxA = rxDataArray[i]; idx = i;
-    }
+    if(rxDataArray[i]>maxA){ maxA=rxDataArray[i]; idx=i; }
   }
-  if(maxA < 60) return;
-  const f = idx * sr / N;
-  const sym = getSymbolFromFreq(f);
+  if(maxA<60) return;
+  const freq = idx * sr / N;
+  const sym = getSymbolFromFreq(freq);
   if(!sym) return;
 
   // 多幀確認
-  if(sym === lastSym) {
-    symCount++;
-  } else {
-    lastSym = sym; symCount = 1;
-  }
+  if(sym === lastSym) symCount++;
+  else { lastSym = sym; symCount = 1; }
   if(symCount < 2) return;
-  symCount = 0; // 確認後重置
+  symCount = 0;
 
   lastSignalTime = Date.now();
 
-  if(sym === 'S'){
+  if(sym==='S'){
     rxState = 1; buffer = '';
   }
   else if(rxState===1 && sym>='0'&&sym<='9'){
-    buffer += sym; receivedEl.textContent = buffer;
+    buffer += sym;
+    receivedEl.textContent = buffer;
   }
-  else if(sym==='E'&&rxState===1){
+  else if(sym==='E' && rxState===1){
+    // 接收完成：播放完成音訊，顯示最終結果，並停止接收
     playTone('A', 0.3);
+    receivedEl.textContent = buffer;
     stopReceiving();
   }
 }
@@ -216,7 +214,7 @@ function stopReceiving(){
   clearInterval(timeoutTimer);
   if(rxSource && rxSource.mediaStream)
     rxSource.mediaStream.getTracks().forEach(t=>t.stop());
-  startRxBtn.disabled = false; stopRxBtn.disabled = true;
+  startRxBtn.disabled=false; stopRxBtn.disabled=true;
 }
 </script>
 </body>
