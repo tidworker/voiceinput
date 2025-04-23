@@ -3,122 +3,244 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>高頻音訊數字傳輸</title>
+  <title>高頻音訊雙向傳輸</title>
   <style>
     body {
-      background: #000;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
+      background: #000; color: #fff; font-family: Arial, sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 20px; margin: 0;
     }
     .container {
-      background: #111;
-      padding: 20px;
-      border-radius: 12px;
+      background: #111; padding: 20px; border-radius: 12px;
       box-shadow: 0 0 10px rgba(0,0,0,0.5);
-      text-align: center;
-      width: 90%;
-      max-width: 400px;
+      text-align: center; width: 100%; max-width: 400px;
+      margin-bottom: 20px;
     }
-    input[type="text"] {
-      width: calc(100% - 24px);
-      padding: 10px;
-      font-size: 16px;
-      border: 2px solid orange;
-      border-radius: 8px;
-      background: #222;
-      color: #fff;
-      margin-bottom: 10px;
-    }
-    button {
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
-      background: #000;
-      border: 2px solid orange;
-      border-radius: 8px;
-      color: #fff;
+    input, button {
+      width: 100%; padding: 10px; font-size: 16px;
+      border: 2px solid orange; border-radius: 8px;
+      background: #222; color: #fff; margin-bottom: 10px;
       cursor: pointer;
     }
-    button:active {
-      opacity: 0.7;
+    button:disabled { opacity: 0.5; cursor: default; }
+    #status, #received {
+      margin-top: 10px; font-size: 14px; word-break: break-all;
     }
-    #status {
-      margin-top: 10px;
-      font-size: 14px;
-      color: #0f0;
-    }
+    #received { color: #0f0; min-height:1.2em; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>高頻音訊數字傳輸</h2>
-    <input id="numericInput" type="text" placeholder="請輸入僅包含 0–9 的數字">
-    <button id="playBtn">播放高頻音訊</button>
-    <div id="status"></div>
+
+  <div class="container" id="tx">
+    <h2>發送（Transmit）</h2>
+    <input id="numericInput" type="text" placeholder="請輸入 0–9 數字序列">
+    <button id="sendBtn">播放訊息</button>
+    <div id="status">狀態：空閒</div>
   </div>
 
-  <script>
-    // 建立 AudioContext
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  <div class="container" id="rx">
+    <h2>接收（Receive）</h2>
+    <button id="startRxBtn">開始接收</button>
+    <button id="stopRxBtn" disabled>停止接收</button>
+    <div id="received">－－</div>
+  </div>
 
-    // 將數字 0–9 對應到頻率範圍 18000–18900 Hz
-    const digitFreqMap = {};
-    for (let d = 0; d <= 9; d++) {
-      digitFreqMap[d] = 18000 + d * 100;
+<script>
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+// 定義符號與頻率
+const symbolFreq = {
+  'S': 19000,    // Start
+  'E': 19050,    // End
+  'A': 19100,    // ACK
+  '0': 18000, '1': 18100,'2':18200,'3':18300,'4':18400,
+  '5':18500,'6':18600,'7':18700,'8':18800,'9':18900
+};
+
+// 允許偵測的符號清單
+const validSymbols = Object.keys(symbolFreq);
+
+// 根據 FFT 頻率找最接近的符號
+function getSymbolFromFreq(freq) {
+  let best = null, minDiff = Infinity;
+  for (let sym of validSymbols) {
+    let diff = Math.abs(freq - symbolFreq[sym]);
+    if (diff < minDiff && diff < 50) { // 容許 ±50Hz 誤差
+      minDiff = diff; best = sym;
+    }
+  }
+  return best;
+}
+
+// ---- 發送（Transmit） ----
+const sendBtn = document.getElementById('sendBtn');
+const inputEl = document.getElementById('numericInput');
+const statusEl = document.getElementById('status');
+
+let ackSource, ackAnalyser, ackDataArray, ackTimer;
+
+sendBtn.addEventListener('click', async () => {
+  const msg = inputEl.value.trim();
+  if (!/^[0-9]+$/.test(msg)) {
+    statusEl.textContent = '狀態：請輸入僅含 0–9 的數字';
+    return;
+  }
+  sendBtn.disabled = true;
+  statusEl.textContent = '狀態：開始傳送…';
+
+  // 先啟動 ACK 偵測
+  await startAckListening();
+
+  // 重複傳送直到收到 ACK
+  const toneDur = 0.18, gapDur = 0.05;
+  let retry = true;
+  while (retry) {
+    // 傳送 Start
+    playTone('S', toneDur);
+    await wait((toneDur + gapDur) * 1000);
+
+    // 傳送內容
+    for (let ch of msg) {
+      playTone(ch, toneDur);
+      await wait((toneDur + gapDur) * 1000);
     }
 
-    const playBtn = document.getElementById('playBtn');
-    const inputEl = document.getElementById('numericInput');
-    const statusEl = document.getElementById('status');
+    // 傳送 End
+    playTone('E', toneDur);
+    await wait((toneDur + gapDur) * 1000);
 
-    playBtn.addEventListener('click', async () => {
-      const digits = inputEl.value.trim();
-      if (!/^[0-9]+$/.test(digits)) {
-        statusEl.textContent = '請輸入僅包含 0–9 的數字。';
-        return;
-      }
-      playBtn.disabled = true;
-      statusEl.textContent = '播放中…';
+    // 等待短暫時間，看是否收到 ACK
+    await wait(500);
+    if (receivedAck) retry = false;
+  }
 
-      // 每個音符持續時間（秒）
-      const toneDuration = 0.2;
-      // 音符間隔（秒）
-      const gapDuration = 0.05;
-      let currentTime = audioCtx.currentTime;
+  stopAckListening();
+  statusEl.textContent = '狀態：已收到完成回覆 ✅';
+  sendBtn.disabled = false;
+});
 
-      for (const ch of digits) {
-        const freq = digitFreqMap[ch];
-        // 建立振盪器
-        const osc = audioCtx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        // 建立增益控制
-        const gainNode = audioCtx.createGain();
-        gainNode.gain.setValueAtTime(0.5, currentTime);
+function playTone(symbol, duration) {
+  const osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = symbolFreq[symbol];
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
 
-        // 連接節點
-        osc.connect(gainNode).connect(audioCtx.destination);
+// 簡易等待
+function wait(ms) {
+  return new Promise(res => setTimeout(res, ms));
+}
 
-        // 安排啟動和停止
-        osc.start(currentTime);
-        osc.stop(currentTime + toneDuration);
+// ---- ACK 偵測 ----
+let receivedAck = false;
+async function startAckListening() {
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  ackSource = audioCtx.createMediaStreamSource(stream);
+  ackAnalyser = audioCtx.createAnalyser();
+  ackAnalyser.fftSize = 2048;
+  ackSource.connect(ackAnalyser);
+  const bufLen = ackAnalyser.frequencyBinCount;
+  ackDataArray = new Uint8Array(bufLen);
+  receivedAck = false;
+  ackTimer = setInterval(decodeAckFrame, 200);
+}
 
-        currentTime += toneDuration + gapDuration;
-      }
+function decodeAckFrame() {
+  ackAnalyser.getByteFrequencyData(ackDataArray);
+  const sr = audioCtx.sampleRate, fftSize = ackAnalyser.fftSize;
+  let maxAmp = 0, maxIdx = -1;
+  for (let i = 0; i < bufLen; i++) {
+    const freq = i * sr / fftSize;
+    if (freq < 18950 || freq > 19200) continue;
+    if (ackDataArray[i] > maxAmp) {
+      maxAmp = ackDataArray[i];
+      maxIdx = i;
+    }
+  }
+  if (maxAmp > 120 && maxIdx !== -1) {
+    const freq = maxIdx * sr / fftSize;
+    const sym = getSymbolFromFreq(freq);
+    if (sym === 'A') {
+      receivedAck = true;
+    }
+  }
+}
 
-      // 等待全部播放完畢
-      const totalTime = digits.length * (toneDuration + gapDuration);
-      setTimeout(() => {
-        statusEl.textContent = '播放結束';
-        playBtn.disabled = false;
-      }, totalTime * 1000 + 100);
-    });
-  </script>
+function stopAckListening() {
+  clearInterval(ackTimer);
+  if (ackSource && ackSource.mediaStream) 
+    ackSource.mediaStream.getTracks().forEach(t=>t.stop());
+}
+
+// ---- 接收（Receive） ----
+let rxSource, rxAnalyser, rxDataArray, rxTimer;
+const startRxBtn = document.getElementById('startRxBtn');
+const stopRxBtn  = document.getElementById('stopRxBtn');
+const receivedEl = document.getElementById('received');
+
+let rxState = 0;   // 0=等待Start, 1=接收中
+let buffer = '';
+
+startRxBtn.addEventListener('click', async () => {
+  if (audioCtx.state==='suspended') await audioCtx.resume();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  rxSource = audioCtx.createMediaStreamSource(stream);
+  rxAnalyser = audioCtx.createAnalyser();
+  rxAnalyser.fftSize = 2048;
+  rxSource.connect(rxAnalyser);
+  const bufLen = rxAnalyser.frequencyBinCount;
+  rxDataArray = new Uint8Array(bufLen);
+
+  buffer = ''; rxState = 0;
+  receivedEl.textContent = '';
+  startRxBtn.disabled = true;
+  stopRxBtn.disabled  = false;
+
+  rxTimer = setInterval(decodeRxFrame, 200);
+});
+
+stopRxBtn.addEventListener('click', () => {
+  clearInterval(rxTimer);
+  if (rxSource && rxSource.mediaStream)
+    rxSource.mediaStream.getTracks().forEach(t=>t.stop());
+  startRxBtn.disabled = false;
+  stopRxBtn.disabled  = true;
+});
+
+function decodeRxFrame() {
+  rxAnalyser.getByteFrequencyData(rxDataArray);
+  const sr = audioCtx.sampleRate, fftSize = rxAnalyser.fftSize;
+  let maxAmp = 0, maxIdx = -1;
+  for (let i=0; i<rxDataArray.length; i++){
+    const freq = i * sr / fftSize;
+    if (freq<18900 || freq>19250) continue;
+    if (rxDataArray[i] > maxAmp){
+      maxAmp = rxDataArray[i];
+      maxIdx = i;
+    }
+  }
+  if (maxAmp < 100) return;
+  const freq = maxIdx * sr / fftSize;
+  const sym = getSymbolFromFreq(freq);
+  if (!sym) return;
+
+  if (sym === 'S') {
+    rxState = 1; buffer = '';
+  } else if (rxState === 1 && sym >= '0' && sym <= '9') {
+    buffer += sym;
+    receivedEl.textContent = buffer;
+  } else if (sym === 'E' && rxState === 1) {
+    // 收到 End，送 ACK
+    playTone('A', 0.3);
+    rxState = 0;
+  }
+}
+</script>
 </body>
 </html>
