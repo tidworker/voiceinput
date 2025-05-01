@@ -1,166 +1,123 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>簡易點餐系統</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>點餐系統</title>
   <style>
-    body {
-      background: #fff;            /* 白底 */
-      color: #000;                 /* 黑字 */
+    html, body {
+      margin: 0;
+      padding: 0;
       font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    h1 {
-      color: orange;
-      margin-bottom: 16px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-bottom: 20px;
-    }
-    th, td {
-      padding: 8px;
-      text-align: left;
-      border-bottom: 1px solid #ccc;
-    }
-    .qty-btn {
-      background: #fff;            /* 按鈕白底 */
-      color: #000;                 /* 文字黑色 */
-      border: 2px solid orange;
-      border-radius: 4px;
-      width: 30px;
-      height: 30px;
-      font-size: 18px;
-      line-height: 1;
-      cursor: pointer;
+      background-color: white;
+      color: black;
+      height: 100%;
       user-select: none;
     }
-    .qty-display {
-      display: inline-block;
-      width: 40px;
-      text-align: center;
-      font-size: 16px;
-      margin: 0 6px;
+    #orderTable {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
     }
-    #btnGenerate {
-      background: #fff;            /* 按鈕白底 */
-      color: #000;                 /* 文字黑色 */
-      border: 2px solid orange;
-      border-radius: 4px;
-      padding: 8px 16px;
-      font-size: 16px;
-      cursor: pointer;
+    th, td {
+      padding: 6px;
+      text-align: left;
     }
-    #qrcode {
-      margin-top: 20px;
-    }
-    #qrcode a {
-      display: inline-block;
+    #totalAmount {
+      margin: 10px;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h1>歡迎點餐</h1>
-  <table>
+  <table id="orderTable">
     <thead>
       <tr>
         <th>品項</th>
-        <th>價格</th>
-        <th>數量</th>
+        <th>份數</th>
+        <th>備註</th>
+        <th>單價</th>
       </tr>
     </thead>
-    <tbody>
-      <tr>
-        <td>蔥油餅</td>
-        <td>30元</td>
-        <td>
-          <button class="qty-btn minus" data-name="蔥油餅">－</button>
-          <span class="qty-display">0</span>
-          <button class="qty-btn plus" data-name="蔥油餅">＋</button>
-        </td>
-      </tr>
-      <tr>
-        <td>豆漿</td>
-        <td>25元</td>
-        <td>
-          <button class="qty-btn minus" data-name="豆漿">－</button>
-          <span class="qty-display">0</span>
-          <button class="qty-btn plus" data-name="豆漿">＋</button>
-        </td>
-      </tr>
-      <tr>
-        <td>饅頭</td>
-        <td>20元</td>
-        <td>
-          <button class="qty-btn minus" data-name="饅頭">－</button>
-          <span class="qty-display">0</span>
-          <button class="qty-btn plus" data-name="饅頭">＋</button>
-        </td>
-      </tr>
-      <!-- 可依需求增加更多品項 -->
-    </tbody>
+    <tbody></tbody>
   </table>
+  <p id="totalAmount">總金額：0 元</p>
 
-  <button id="btnGenerate">產生 QR Code</button>
-
-  <div id="qrcode"></div>
-
-  <!-- QRCode.js CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script>
-    // 按鈕 +/– 調整數量
-    document.querySelectorAll('.qty-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tr      = btn.closest('tr');
-        const display = tr.querySelector('.qty-display');
-        let qty = parseInt(display.textContent, 10);
-        if (btn.classList.contains('plus')) {
-          qty++;
-        } else {
-          qty = Math.max(0, qty - 1);
-        }
-        display.textContent = qty;
+    let menu = [
+      { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
+      { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
+      { keywords: ["la"], name: "辣", price: 0 }
+    ];
+
+    function addOrderRow(dish, quantity, remark) {
+      if (!dish) return;
+      const tbody = document.querySelector("#orderTable tbody");
+      const row = tbody.insertRow();
+      row.insertCell().innerText = dish.name;
+      row.insertCell().innerText = quantity;
+      row.insertCell().innerText = remark;
+      row.insertCell().innerText = dish.price;
+      updateTotalAmount();
+    }
+
+    function updateTotalAmount() {
+      const tbody = document.querySelector("#orderTable tbody");
+      let total = 0;
+      [...tbody.rows].forEach(row => {
+        const qty = parseInt(row.cells[1].innerText);
+        const price = parseInt(row.cells[3].innerText);
+        total += qty * price;
       });
+      document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
+    }
+
+    function resetOrder() {
+      document.querySelector("#orderTable tbody").innerHTML = "";
+      document.getElementById("totalAmount").innerText = "總金額：0 元";
+    }
+
+    function startVoiceInput() {
+      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      recognition.lang = "zh-TW";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onresult = e => {
+        const transcript = e.results[0][0].transcript;
+        const result = processInput(transcript.trim());
+        result.forEach(o => addOrderRow(o.dish, o.quantity, ""));
+      };
+      recognition.onerror = () => {};
+      recognition.start();
+    }
+
+    function processInput(inputText) {
+      const tokens = inputText.split(/和|、|跟| /).filter(t => t);
+      const result = [];
+      tokens.forEach(token => {
+        const match = token.match(/^(.+?)(\d+)$/);
+        const name = match ? match[1] : token;
+        const qty = match ? parseInt(match[2]) : 1;
+        const dish = menu.find(item => item.keywords.includes(name.toLowerCase()));
+        if (dish) result.push({ dish, quantity: qty });
+      });
+      return result;
+    }
+
+    let timer = null;
+    let longPress = false;
+
+    document.body.addEventListener("touchstart", () => {
+      longPress = false;
+      timer = setTimeout(() => {
+        longPress = true;
+        resetOrder();
+      }, 800);
     });
 
-    // 產生 QR Code
-    document.getElementById('btnGenerate').addEventListener('click', () => {
-      const rows = document.querySelectorAll('tbody tr');
-      const orders = [];
-      rows.forEach(tr => {
-        const name = tr.querySelector('.qty-btn').dataset.name;
-        const qty  = parseInt(tr.querySelector('.qty-display').textContent, 10);
-        if (qty > 0) {
-          orders.push(`${name} x${qty}`);
-        }
-      });
-
-      if (orders.length === 0) {
-        alert('請至少點一項餐點');
-        return;
-      }
-
-      const orderText = orders.join('；');
-      const url = 'https://tidworker.github.io/voiceinput/test2.html?text='
-                + encodeURIComponent(orderText);
-
-      const qrContainer = document.getElementById('qrcode');
-      qrContainer.innerHTML = '';
-
-      const link = document.createElement('a');
-      link.href  = url;
-      link.title = '點此開啟並帶入點餐結果';
-
-      new QRCode(link, {
-        text: url,
-        width: 256,
-        height: 256,
-        correctLevel: QRCode.CorrectLevel.H
-      });
-
-      qrContainer.appendChild(link);
+    document.body.addEventListener("touchend", () => {
+      clearTimeout(timer);
+      if (!longPress) startVoiceInput();
     });
   </script>
 </body>
