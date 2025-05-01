@@ -6,22 +6,27 @@
   <title>點餐系統</title>
   <style>
     html, body {
-      margin: 0;
-      padding: 0;
+      margin: 0; padding: 0;
       font-family: Arial, sans-serif;
       background-color: white;
       color: black;
       height: 100%;
       user-select: none;
     }
+    #status {
+      margin: 8px;
+      font-size: 14px;
+      color: #555;
+    }
     #orderTable {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
+      margin-top: 4px;
     }
     th, td {
       padding: 6px;
       text-align: left;
+      border-bottom: 1px solid #ccc;
     }
     #totalAmount {
       margin: 10px;
@@ -30,6 +35,10 @@
   </style>
 </head>
 <body>
+  <!-- 語音點餐系統狀態 -->
+  <p id="status">狀態：等待點餐</p>
+
+  <!-- 訂單列表 -->
   <table id="orderTable">
     <thead>
       <tr>
@@ -41,15 +50,19 @@
     </thead>
     <tbody></tbody>
   </table>
+
+  <!-- 總金額 -->
   <p id="totalAmount">總金額：0 元</p>
 
   <script>
-    let menu = [
+    // ---- 菜單設定 ----
+    const menu = [
       { keywords: ["chonyobin", "bujiadan", "bujia"], name: "蔥油餅", price: 20 },
       { keywords: ["chonyobinjiadan", "danbin", "jiadan", "la"], name: "蔥油餅加蛋", price: 30 },
       { keywords: ["la"], name: "辣", price: 0 }
     ];
 
+    // ---- 訂單操作函式 ----
     function addOrderRow(dish, quantity, remark) {
       if (!dish) return;
       const tbody = document.querySelector("#orderTable tbody");
@@ -65,8 +78,8 @@
       const tbody = document.querySelector("#orderTable tbody");
       let total = 0;
       [...tbody.rows].forEach(row => {
-        const qty = parseInt(row.cells[1].innerText);
-        const price = parseInt(row.cells[3].innerText);
+        const qty   = parseInt(row.cells[1].innerText) || 0;
+        const price = parseInt(row.cells[3].innerText) || 0;
         total += qty * price;
       });
       document.getElementById("totalAmount").innerText = "總金額：" + total + " 元";
@@ -75,49 +88,88 @@
     function resetOrder() {
       document.querySelector("#orderTable tbody").innerHTML = "";
       document.getElementById("totalAmount").innerText = "總金額：0 元";
+      document.getElementById("status").innerText = "狀態：訂單已清空";
     }
 
-    function startVoiceInput() {
-      const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-      recognition.lang = "zh-TW";
-      recognition.interimResults = false;
-      recognition.maxAlternatives = 1;
-      recognition.onresult = e => {
-        const transcript = e.results[0][0].transcript;
-        const result = processInput(transcript.trim());
-        result.forEach(o => addOrderRow(o.dish, o.quantity, ""));
-      };
-      recognition.onerror = () => {};
-      recognition.start();
-    }
+    // ---- 語音辨識輔助 ----
+    let currentRecognition = null;
+    let recognizing = false;
 
-    function processInput(inputText) {
-      const tokens = inputText.split(/和|、|跟| /).filter(t => t);
-      const result = [];
-      tokens.forEach(token => {
-        const match = token.match(/^(.+?)(\d+)$/);
-        const name = match ? match[1] : token;
-        const qty = match ? parseInt(match[2]) : 1;
-        const dish = menu.find(item => item.keywords.includes(name.toLowerCase()));
-        if (dish) result.push({ dish, quantity: qty });
+    // 單次辨識，回傳 Promise<string>
+    function startVoiceInputSingle() {
+      return new Promise(resolve => {
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRec) { resolve(""); return; }
+        const recog = new SpeechRec();
+        currentRecognition = recog;
+        recog.lang = "zh-TW";
+        recog.interimResults = false;
+        recog.maxAlternatives = 1;
+        recog.onresult = evt => {
+          const t = evt.results[0][0].transcript;
+          resolve(t);
+        };
+        recog.onerror = () => resolve("");
+        recog.start();
       });
-      return result;
     }
 
-    let timer = null;
+    // 依原始邏輯拆解多筆指令
+    function processMultipleVoiceInput(inputText) {
+      let tokens = inputText.split(/和|、|跟| /).filter(t => t.trim());
+      let orders = [];
+      tokens.forEach(token => {
+        let m = token.match(/^(.+?)(\d+)$/);
+        let namePart = m ? m[1] : token;
+        let qty = m ? parseInt(m[2]) : 1;
+        let dish = menu.find(item => item.keywords.includes(namePart.toLowerCase()));
+        if (dish) orders.push({ dish, quantity: qty });
+      });
+      return orders;
+    }
+
+    // 連續辨識迴圈
+    function continuousRecognition() {
+      if (!recognizing) return;
+      startVoiceInputSingle().then(transcript => {
+        if (!recognizing) return;
+        const orders = processMultipleVoiceInput(transcript.trim());
+        orders.forEach(o => addOrderRow(o.dish, o.quantity, ""));
+        continuousRecognition();
+      });
+    }
+
+    // 開始點餐
+    function startVoiceOrdering() {
+      recognizing = true;
+      document.getElementById("status").innerText = "狀態：開始點餐";
+      continuousRecognition();
+    }
+    // 結束點餐
+    function endVoiceOrdering() {
+      recognizing = false;
+      if (currentRecognition) currentRecognition.stop();
+      document.getElementById("status").innerText = "狀態：等待點餐";
+    }
+
+    // ---- 手勢控制：長按清除，短觸雙擊切換點餐 ----
+    let touchTimer = null;
     let longPress = false;
 
     document.body.addEventListener("touchstart", () => {
       longPress = false;
-      timer = setTimeout(() => {
+      touchTimer = setTimeout(() => {
         longPress = true;
         resetOrder();
       }, 800);
     });
 
     document.body.addEventListener("touchend", () => {
-      clearTimeout(timer);
-      if (!longPress) startVoiceInput();
+      clearTimeout(touchTimer);
+      if (longPress) return;
+      // 短觸：若尚未點餐，則開始；若已點餐，則結束
+      if (!recognizing) startVoiceOrdering();
+      else endVoiceOrdering();
     });
   </script>
 </body>
